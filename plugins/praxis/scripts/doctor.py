@@ -58,6 +58,9 @@ def checks(root: Path):
     )
     out.append(("quality gate", "DISABLED" if gate_off else "ENABLED"))
     out.append(("auto-pilot", "ON" if common.autopilot_on(root) else "OFF"))
+    if common.is_git_repo(root):
+        merge = "auto" if common.auto_merge_on(root) else "PR only (human merges)"
+        out.append((f"git delivery (base: {common.git_default_branch(root)})", merge))
     out.append((".praxis.toml config", "present" if (root / ".praxis.toml").exists() else "defaults"))
     return out
 

@@ -32,7 +32,12 @@ constraint it satisfies.
    errors/exceptions, and side effects — not the line-by-line implementation.
 5. Prefer self-documenting code over comments: a well-named function or variable
    removes the need for the comment entirely.
-6. Write comments in the language and style already used in the file/project.
+6. Write comments in the language and style already used in the file/project, and
+   keep that style consistent across it.
+7. No scaffolding or narration. Don't number steps ("Step 1: …"), don't leave
+   section-label comments that only restate the block below, and don't point at a
+   doc or a step list in place of the reasoning. Cite a doc only to justify a
+   specific non-obvious choice (rule 2) — never as a stand-in for explaining it.
 
 ## TODO hygiene
 - Do not leave bare `TODO`/`FIXME` in delivered code. If a follow-up is genuinely
@@ -48,6 +53,21 @@ constraint it satisfies.
   introducing a new style.
 - No dead code, no commented-out blocks "just in case" — version control is the
   history. Remove them.
+
+## Simplicity — build only what's needed
+Write the simplest thing that solves the actual problem, and reuse before you
+write (KISS/YAGNI).
+
+- **Reuse before writing.** Look for an existing function, helper, constant, type,
+  or dependency that already does the job, and use it. Don't reinvent a wheel the
+  codebase (or its stdlib/framework) already provides.
+- **No speculation (YAGNI).** Don't add a parameter, config flag, abstraction
+  layer, generic, or extension point for a use case that isn't here yet. Solve
+  today's requirement; generalise when a second real caller appears.
+- **No unused surface.** Every function, argument, branch, and export must have a
+  caller. A helper "for later" is dead code — leave it out until it's needed.
+- **Right-size the pattern.** Reach for a design pattern, indirection, or new
+  module only when the problem warrants it; a plain function usually wins.
 
 ## Cleanliness before "done"
 - Remove debug output (`console.log`, `println!`, `print`, `debugger`).

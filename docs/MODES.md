@@ -91,6 +91,20 @@ Still include a turn cap in the task and be ready to `Ctrl+C`.
 
 ---
 
+## Delivery — human-in-the-loop by default
+
+Finishing the code and delivering it are separate steps. Praxis never pushes on
+every edit; when a change is complete and audited, `/praxis:ship` turns it into a
+Conventional Commit and a pull request — and stops there for you to review and
+merge. Merging is the one irreversible step praxis leaves to you.
+
+Opt into autonomy with `git.auto_merge` (`.praxis.toml`), `PRAXIS_AUTO_MERGE=on`,
+or `git_delivery.py on`: praxis then reviews and merges its own PR, but only on a
+green audit and passing checks, and never by force-pushing the base branch. See
+[DELIVERY.md](DELIVERY.md).
+
+---
+
 ## Determinism summary
 
 | Concern | Mechanism | Deterministic? |

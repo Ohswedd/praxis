@@ -5,8 +5,8 @@ argument-hint: "[optional: what changed]"
 
 Use the `claudemd-living` skill.
 
-Reconcile the root and nested CLAUDE.md files with the current state of the code
-${ARGUMENTS:+(context: $ARGUMENTS)}. Pick the correct scope for each change, draft
-minimal edits, verify them with `claudemd_check.py` plus `@praxis:claudemd-verifier`
-so no still-valid instruction is lost or contradicted, then show the diff and the
-verifier verdict before writing.
+Reconcile the root and nested CLAUDE.md files with the current code
+${ARGUMENTS:+(context: $ARGUMENTS)}. Pick the right scope per change, draft minimal
+edits, and verify them with `claudemd_check.py` plus `@praxis:claudemd-verifier` so
+no still-valid instruction is lost or contradicted. Show the diff and the verifier
+verdict before writing.

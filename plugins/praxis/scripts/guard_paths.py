@@ -10,7 +10,7 @@ run before the permission-mode check:
      Note: a Read deny only blocks the Read tool; `cat .env` in Bash is caught
      by the Bash branch below.
   2. Catastrophic / irreversible shell commands (rm -rf on broad paths,
-     disk wipes, forced pushes to protected branches, `curl | sh`, fork bombs,
+     disk wipes, forced pushes (any branch), `curl | sh`, fork bombs,
      destructive SQL).
 
 Exit 2 blocks the tool and feeds the reason back to Claude.
@@ -26,6 +26,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 import common  # noqa: E402
 
 
+# `git … push …`, tolerating interposed global options (git -c k=v push,
+# git -C path push, git --git-dir=… push) so a force-push can't hide behind them.
+# Matches up to a command/comment boundary. This is a best-effort backstop over the
+# raw command string, not a shell parser: it cannot see through config-injected
+# refspecs (git -c remote.*.push=+…) or aliases. The permission system is the
+# primary control; this catches the common, obvious cases even when it is bypassed.
+_GIT_PUSH = r"\bgit\b(?:\s+-\S+(?:\s+\S+)?)*\s+push\b[^|&;#]*"
+
 # Commands that are effectively irreversible and should never run unattended.
 DANGEROUS_COMMAND_PATTERNS = [
     (r"\brm\s+(-[a-zA-Z]*\s+)*-?[a-zA-Z]*[rf][a-zA-Z]*\b.*\s(/|~|\$HOME|\.\s*$|\*)",
@@ -37,11 +45,17 @@ DANGEROUS_COMMAND_PATTERNS = [
     (r"\bmkfs\.", "Filesystem format"),
     (r"\bdd\b.*\bof=/dev/(sd|nvme|disk)", "Raw disk overwrite"),
     (r">\s*/dev/(sd|nvme|disk)", "Redirect over a raw disk device"),
-    (r"\bgit\s+push\b.*\s(--force|-f)\b.*\b(main|master|release|prod\w*)\b",
-     "Force-push to a protected branch"),
-    (r"\bgit\s+push\b.*\s(--force|-f)\b(?!.*--force-with-lease)",
-     "Force-push without --force-with-lease"),
+    # Force-push in any form — long/bundled flag or the '+refspec' syntax, on any
+    # branch, with or without --force-with-lease. It rewrites remote history, so a
+    # human runs it; praxis never does it unattended. The leading [\s'"] also catches
+    # a quoted flag/refspec (`git push "--force"`, `git push origin '+main'`).
+    (_GIT_PUSH + r"""[\s'"](--force|-[a-zA-Z]*f[a-zA-Z]*)\b""",
+     "Force-push (irreversible — run it yourself)"),
+    (_GIT_PUSH + r"""[\s'"]\+[^\s|&;]""",
+     "Force-push via +refspec (irreversible — run it yourself)"),
     (r"\bgit\s+(reset\s+--hard|clean\s+-[a-z]*f)", "Destructive git state reset"),
+    (r"\bgh\s+pr\s+merge\b.*\s--admin\b",
+     "Merging a PR with --admin (bypasses branch protection)"),
     (r"(curl|wget)\s+[^|]*\|\s*(sudo\s+)?(sh|bash|zsh)\b",
      "Piping a remote script straight into a shell"),
     (r"(?i)\bdrop\s+(table|database|schema)\b", "Destructive SQL (DROP)"),

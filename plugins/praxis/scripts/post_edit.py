@@ -130,7 +130,6 @@ def main() -> None:
     secrets = common.scan_file_for_secrets(fp)
     if secrets:
         # PostToolUse stderr is shown to the model; flag loudly but do not block.
-        common.emit_context("")  # no context injection here
         sys.stderr.write(
             f"[praxis] WARNING: possible secret(s) written to {fp.name}: "
             f"{', '.join(secrets)}. Remove/rotate and use an environment variable "
@@ -138,7 +137,7 @@ def main() -> None:
         )
 
     if notes:
-        # Non-context informational note for the transcript/debug log.
+        # Formatting succeeded; keep the hook silent in the transcript.
         print(json.dumps({"suppressOutput": True}))
     common.allow()
 

@@ -9,9 +9,8 @@ Run the auto-pilot toggle and report the new state:
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/autopilot.py" ${ARGUMENTS:-status}
 ```
 
-When ON: for this and subsequent tasks, do not ask the user design or approach
-questions. Do your own QA and resolve each decision by the best-practice that fits
-(use the `best-practices` skill's decision procedure), then record every non-trivial
-decision in the report's "Decisions taken autonomously" section. Only stop for an
-external blocker you genuinely cannot resolve yourself (e.g. a missing credential
-the user must supply). Safety guards and the quality gate remain active.
+When ON: don't ask design or approach questions. Do your own QA, resolve each
+decision by the best-practice that fits (`best-practices` skill), and record every
+non-trivial one under "Decisions taken autonomously" in the report. Stop only for a
+hard external blocker you cannot resolve (e.g. a missing credential). Safety guards
+and the quality gate stay active.

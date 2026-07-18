@@ -6,15 +6,18 @@ Versioning (breaking changes → a new MAJOR).
 ## Stable
 - **Commands:** `/praxis:task`, `/praxis:spec`, `/praxis:bootstrap`,
   `/praxis:audit`, `/praxis:sync`, `/praxis:docs`, `/praxis:discover`,
-  `/praxis:autopilot`, `/praxis:release`, `/praxis:doctor`.
-- **Config file:** `.praxis.toml` — keys `gate.enabled`, `gate.require_tests`, `autopilot.default`, `audit.depth`.
+  `/praxis:autopilot`, `/praxis:ship`, `/praxis:release`, `/praxis:doctor`.
+- **Config file:** `.praxis.toml` — keys `gate.enabled`, `gate.require_tests`,
+  `autopilot.default`, `audit.depth`, `git.auto_merge`, `git.default_branch`.
 - **Environment variables:** `PRAXIS_GATE` (`off` disables the Stop gate),
-  `PRAXIS_AUTOPILOT` (`on` enables auto-pilot).
+  `PRAXIS_AUTOPILOT` (`on` enables auto-pilot), `PRAXIS_AUTO_MERGE` (`on` enables
+  autonomous PR review-and-merge).
 - **Escapes:** `.claude/.praxis/skip-gate` (per-repo gate opt-out).
 - **State files** under `.claude/.praxis/` (git-ignored):
-  `task.json`, `quality_report.json`, `gate_notified.json`, `autopilot`.
+  `task.json`, `quality_report.json`, `gate_notified.json`, `autopilot`, `auto-merge`.
 - **Helper CLIs** (stable flags): `task_state.py`, `report.py`, `changelog.py`,
-  `adr.py`, `workspaces.py`, `autopilot.py`, `doctor.py`, `selfcheck.py`.
+  `adr.py`, `workspaces.py`, `autopilot.py`, `git_delivery.py`, `doctor.py`,
+  `selfcheck.py`.
 - **Managed marker:** `<!-- praxis:managed -->` in a Praxis-managed `CLAUDE.md`.
 - **The `/docs` + `CHANGELOG.md` + `docs/adr/` contract** Praxis maintains.
 

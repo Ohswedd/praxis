@@ -11,7 +11,7 @@
     {
       "name": "praxis",
       "source": "./plugins/praxis",
-      "description": "Turn a terse prompt into a complete, production-ready change with living documentation: restructure \u2192 investigate \u2192 plan \u2192 implement (code-craft + best-practices) \u2192 full audit \u2192 update /docs, CHANGELOG and ADRs \u2192 structured report. Bootstraps any repo, keeps CLAUDE.md and docs verified and regression-free, runs fully autonomous in auto-pilot, and gates every change so nothing is placeholdered, undocumented, or silently out of scope."
+      "description": "Turn a terse prompt into a complete, production-ready change with living documentation: restructure \u2192 investigate \u2192 plan \u2192 implement (code-craft + best-practices) \u2192 full audit \u2192 update /docs, CHANGELOG and ADRs \u2192 structured report, then an optional reviewable PR. Bootstraps any repo, keeps CLAUDE.md and docs verified and regression-free, runs fully autonomous in auto-pilot, and gates every change so nothing is placeholdered, undocumented, or silently out of scope."
     }
   ]
 }

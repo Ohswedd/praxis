@@ -4,6 +4,23 @@ All notable changes to praxis are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- Git/GitHub delivery — new `/praxis:ship` command and `git-delivery` skill: write a Conventional Commit, branch, push, and open a PR. Human-in-the-loop merge by default; opt-in `git.auto_merge` (config, `PRAXIS_AUTO_MERGE`, or `git_delivery.py on`) reviews and merges autonomously — never without a green audit or by force-pushing the base branch. Adds `git.auto_merge`/`git.default_branch` config keys and git-delivery status in `/praxis:doctor`.
+
+### Changed
+- Compacted and unified every command body; sharpened the `code-craft` comment standard to forbid step-narration and doc-pointer scaffolding.
+- Delivery no longer adds AI authorship attribution to commits or PR bodies; the git-delivery skill and CONTRIBUTING.md codify the rule.
+- Strengthened simplicity/reuse enforcement: code-craft gains a build-only-what-is-needed section, the duplication auditor now also flags over-engineering (YAGNI), and the orchestrator reinforces it.
+- Refreshed the README (delivery, configuration, updated capability/safety sections) and cleaned the architecture diagram's skills list (deduplicated, added git-delivery); plugin/marketplace descriptions mention delivery.
+
+### Fixed
+- `changelog.py add` now inserts a new `[Unreleased]` section below the document title and keeps subsections in Keep-a-Changelog order. Removed a dead no-op (`emit_context("")`) in `post_edit.py` and step-narration comments in `changelog.py`.
+
+### Security
+- Hardened the PreToolUse guard against branch-history rewrites: it now blocks `gh pr merge --admin` (a branch-protection bypass) and every force-push form — flag, bundled `-f`, or `+refspec`, in any argument order, and behind interposed git global options — so autonomous auto-merge can never override branch protection or rewrite a branch. praxis never force-pushes; a human runs it.
+
 ## [1.1.2] - 2026-07-18
 ### Fixed
 - Three component manifests had an unquoted `: ` (colon-space) inside their YAML
