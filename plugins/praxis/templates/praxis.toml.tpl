@@ -14,3 +14,10 @@ default = false
 [audit]
 # Informational depth hint for the auditors: "high" | "max".
 depth = "high"
+
+[git]
+# Auto-review and merge praxis's own PRs after a green audit. Off (default) opens
+# the PR and hands it to a human to review and merge — the loop stays gated.
+auto_merge = false
+# PR base branch. Empty auto-detects from origin/HEAD, then main/master.
+default_branch = ""

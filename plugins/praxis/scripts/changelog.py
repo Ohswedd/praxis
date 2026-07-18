@@ -48,6 +48,32 @@ def ensure(root) -> str:
     return p.read_text(encoding="utf-8")
 
 
+def _canonical_insert_index(lines, unreleased, section_end, ctype) -> int:
+    """Index for a new '### ctype' block that keeps subsections in TYPES order.
+
+    Places the block after every subsection that ranks before this type and before
+    the first that ranks after it, so [Unreleased] follows Keep a Changelog order
+    regardless of the order entries are recorded.
+    """
+    rank = TYPES.index(ctype)
+    insert_at = unreleased + 1
+    while insert_at < section_end and lines[insert_at].strip() == "":
+        insert_at += 1
+    i = insert_at
+    while i < section_end:
+        if lines[i].startswith("### "):
+            existing = lines[i][4:].strip().capitalize()
+            if existing in TYPES and TYPES.index(existing) < rank:
+                i += 1
+                while i < section_end and not lines[i].startswith(("### ", "## ")):
+                    i += 1
+                insert_at = i
+                continue
+            return i
+        i += 1
+    return insert_at
+
+
 def add(root, ctype: str, message: str) -> None:
     ctype = ctype.strip().capitalize()
     if ctype not in TYPES:
@@ -56,39 +82,36 @@ def add(root, ctype: str, message: str) -> None:
     text = ensure(root)
     lines = text.splitlines()
 
-    # locate [Unreleased] header
     try:
-        u = next(i for i, l in enumerate(lines) if l.strip().lower().startswith("## [unreleased]"))
+        unreleased = next(i for i, l in enumerate(lines)
+                          if l.strip().lower().startswith("## [unreleased]"))
     except StopIteration:
-        lines.insert(0, "## [Unreleased]"); u = 0
+        # No [Unreleased] yet: place it above the latest version section, never
+        # above the document title.
+        unreleased = next((i for i, l in enumerate(lines) if l.startswith("## ")), len(lines))
+        lines[unreleased:unreleased] = ["## [Unreleased]", ""]
 
-    # find the end of the [Unreleased] section (next '## ' or EOF)
-    end = len(lines)
-    for i in range(u + 1, len(lines)):
+    section_end = len(lines)
+    for i in range(unreleased + 1, len(lines)):
         if lines[i].startswith("## "):
-            end = i
+            section_end = i
             break
 
-    # find the type subsection within [Unreleased]
-    sub = None
-    for i in range(u + 1, end):
+    subsection = None
+    for i in range(unreleased + 1, section_end):
         if lines[i].strip().lower() == f"### {ctype.lower()}":
-            sub = i
+            subsection = i
             break
 
     bullet = f"- {message}"
-    if sub is None:
-        # insert subsection in canonical order just after the Unreleased header block
-        insert_at = u + 1
-        while insert_at < end and not lines[insert_at].startswith("### ") and lines[insert_at].strip() == "":
-            insert_at += 1
-        block = [f"### {ctype}", bullet, ""]
-        lines[insert_at:insert_at] = block
+    if subsection is None:
+        insert_at = _canonical_insert_index(lines, unreleased, section_end, ctype)
+        lines[insert_at:insert_at] = [f"### {ctype}", bullet, ""]
     else:
-        # append bullet right after the last existing bullet in the subsection
-        last_bullet = sub
-        j = sub + 1
-        while j < end and not lines[j].startswith("### ") and not lines[j].startswith("## "):
+        # Append after the subsection's last bullet so entries keep insertion order.
+        last_bullet = subsection
+        j = subsection + 1
+        while j < section_end and not lines[j].startswith(("### ", "## ")):
             if lines[j].startswith("- "):
                 last_bullet = j
             j += 1

@@ -5,21 +5,14 @@ argument-hint: "[explicit version, optional]"
 
 Prepare a release for the current project:
 
-1. Review the pending changes:
-   ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/changelog.py" show
-   ```
-2. Determine the next version (unless the user gave one in ${ARGUMENTS}):
-   inspect commits since the last tag and the `[Unreleased]` entries, then apply
-   SemVer per Conventional Commits — breaking change → MAJOR, `feat` → MINOR,
-   `fix`/`perf` → PATCH. State your reasoning.
-3. Finalize the changelog into a dated version section:
-   ```bash
-   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/changelog.py" release <version>
-   ```
-4. Bump any version files the project uses (package.json, pyproject.toml, etc.) to
-   match, following the repo's existing convention.
-5. Prepare (do not push without confirmation) the commit and tag:
-   `chore(release): v<version>` and tag `v<version>`. Show the user the diff first.
+1. Review pending changes: `changelog.py show`.
+2. Determine the next version (unless given in ${ARGUMENTS}) from commits since the
+   last tag and the `[Unreleased]` entries, applying SemVer per Conventional
+   Commits — breaking → MAJOR, `feat` → MINOR, `fix`/`perf` → PATCH. State your reasoning.
+3. Finalize the changelog into a dated section: `changelog.py release <version>`.
+4. Bump any version files the project uses (package.json, pyproject.toml, …) to match.
+5. Prepare — don't push without confirmation — the commit `chore(release): v<version>`
+   and tag `v<version>`. Show the diff first.
 
-Keep it consistent with the project's existing release process if one exists.
+(Scripts live under `${CLAUDE_PLUGIN_ROOT}/scripts/`.) Match the project's existing
+release process if one exists.

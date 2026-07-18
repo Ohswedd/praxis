@@ -32,7 +32,12 @@ constraint it satisfies.
    errors/exceptions, and side effects — not the line-by-line implementation.
 5. Prefer self-documenting code over comments: a well-named function or variable
    removes the need for the comment entirely.
-6. Write comments in the language and style already used in the file/project.
+6. Write comments in the language and style already used in the file/project, and
+   keep that style consistent across it.
+7. No scaffolding or narration. Don't number steps ("Step 1: …"), don't leave
+   section-label comments that only restate the block below, and don't point at a
+   doc or a step list in place of the reasoning. Cite a doc only to justify a
+   specific non-obvious choice (rule 2) — never as a stand-in for explaining it.
 
 ## TODO hygiene
 - Do not leave bare `TODO`/`FIXME` in delivered code. If a follow-up is genuinely

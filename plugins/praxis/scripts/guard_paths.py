@@ -42,6 +42,8 @@ DANGEROUS_COMMAND_PATTERNS = [
     (r"\bgit\s+push\b.*\s(--force|-f)\b(?!.*--force-with-lease)",
      "Force-push without --force-with-lease"),
     (r"\bgit\s+(reset\s+--hard|clean\s+-[a-z]*f)", "Destructive git state reset"),
+    (r"\bgh\s+pr\s+merge\b.*\s--admin\b",
+     "Merging a PR with --admin (bypasses branch protection)"),
     (r"(curl|wget)\s+[^|]*\|\s*(sudo\s+)?(sh|bash|zsh)\b",
      "Piping a remote script straight into a shell"),
     (r"(?i)\bdrop\s+(table|database|schema)\b", "Destructive SQL (DROP)"),

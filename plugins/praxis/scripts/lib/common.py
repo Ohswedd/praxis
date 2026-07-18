@@ -113,6 +113,28 @@ def is_git_repo(root: Path) -> bool:
     return _run(["git", "rev-parse", "--is-inside-work-tree"], cwd=root).strip() == "true"
 
 
+def git_current_branch(root: Path) -> str:
+    return _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root).strip()
+
+
+def git_default_branch(root: Path) -> str:
+    """The integration branch PRs target.
+
+    Config wins; otherwise infer from origin/HEAD, then fall back to whichever of
+    main/master exists locally. Offline-safe — no network probe.
+    """
+    configured = read_config(root).get("git.default_branch")
+    if configured:
+        return str(configured)
+    ref = _run(["git", "symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], cwd=root).strip()
+    if ref:
+        return ref.rsplit("/", 1)[-1]
+    for candidate in ("main", "master"):
+        if _run(["git", "rev-parse", "--verify", "--quiet", candidate], cwd=root).strip():
+            return candidate
+    return "main"
+
+
 def git_status_porcelain(root: Path) -> List[str]:
     out = _run(["git", "status", "--porcelain"], cwd=root)
     return [ln for ln in out.splitlines() if ln.strip()]
@@ -315,11 +337,26 @@ def autopilot_on(root: Path) -> bool:
     return bool(read_config(root).get("autopilot.default", False))
 
 
+def auto_merge_on(root: Path) -> bool:
+    """True if autonomous review-and-merge is enabled (env, toggle file, or config).
+
+    When on, praxis may merge its own PRs after a green audit. When off (default),
+    it opens the PR and stops for a human to review and merge.
+    """
+    if os.environ.get("PRAXIS_AUTO_MERGE", "").lower() in ("on", "1", "true"):
+        return True
+    if (state_dir(root) / "auto-merge").exists():
+        return True
+    return bool(read_config(root).get("git.auto_merge", False))
+
+
 _CONFIG_DEFAULTS = {
     "gate.enabled": True,        # master switch for the Stop gate
     "gate.require_tests": True,  # require passing test evidence in the green report
     "autopilot.default": False,  # start sessions in auto-pilot
     "audit.depth": "high",       # informational hint for the auditors
+    "git.auto_merge": False,     # auto-review and merge PRs; off = PR only, human merges
+    "git.default_branch": "",    # PR base branch ("" = auto-detect)
 }
 
 
