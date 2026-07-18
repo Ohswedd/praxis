@@ -25,8 +25,9 @@ agents:
 
 - `@praxis:doc-reference-finder` — confirm the change follows authoritative
   docs and existing in-repo patterns; flag any reinvented wheel.
-- `@praxis:duplication-scanner` — find duplicated or near-duplicated logic and
-  existing utilities that should have been reused.
+- `@praxis:duplication-scanner` — find duplicated or near-duplicated logic,
+  existing utilities that should have been reused, and over-engineering the change
+  doesn't need (speculative abstractions, unused surface, needless indirection).
 - `@praxis:regression-sentinel` — find behaviours/contracts/tests the change
   may have broken.
 - `@praxis:adversarial-auditor` — try to break it: security, abuse, unsafe

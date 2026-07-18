@@ -65,6 +65,7 @@ automatically — for large multi-step tasks it even proposes a ready-to-run
 | **Always-on, no keywords** | the workflow is carried by an always-injected SessionStart directive + output style, and enforced by change-based gates — it applies however you phrase the request, deterministically |
 | **Best-practices, by need** | `best-practices` skill selects and applies the minimal relevant families (SOLID, DDD, REST, ACID/CAP, OWASP, testing, clean code, performance…) for the change's domains, from a curated catalog |
 | **Living knowledge** | maintains the project's `/docs`, `CHANGELOG.md`, and ADRs — read/searched/updated/created for every change, no regression, always current |
+| **Git/GitHub delivery** | `git-delivery` skill: Conventional Commit → branch → push → PR. Human-in-the-loop merge by default; opt-in `git.auto_merge` reviews and merges autonomously (never without a green audit) |
 | **Auto-pilot** | zero questions: praxis does its own QA, resolves every design decision by the best-practice that fits, and logs each under "Decisions taken autonomously" (safety guards stay active) |
 | **Plan-first** | output style + orchestrator require a plan (plan mode) before any file is edited |
 | **Professional code-craft** | `code-craft` skill: comments that explain *why*, self-documenting names, no debug/dead code |
@@ -87,6 +88,7 @@ automatically — for large multi-step tasks it even proposes a ready-to-run
 - `/praxis:audit` — run the full quality rubric on the current change
 - `/praxis:sync` — update the CLAUDE.md hierarchy, regression-verified
 - `/praxis:docs` — update the living knowledge (/docs, CHANGELOG, ADRs)
+- `/praxis:ship` — deliver the change: Conventional Commit, push, open a PR (merge only if auto-merge is on)
 - `/praxis:release` — cut a release (SemVer bump + changelog finalize)
 - `/praxis:discover` — find or create a missing capability
 - `/praxis:autopilot [on|off]` — toggle no-questions auto-pilot mode
@@ -148,7 +150,8 @@ The [`docs/`](docs/) index lists everything.
 Installing any plugin runs its code on your machine (hooks, scripts). praxis is
 deliberately conservative:
 
-- **Read-only auditors.** The six vertical subagents have `Read, Grep, Glob` only.
+- **Read-only auditors.** The seven vertical subagents are restricted to read-only
+  tools (`Read, Grep, Glob`; doc-reference also has `WebSearch`/`WebFetch`).
 - **Propose, don't overwrite.** Bootstrap and CLAUDE.md changes are shown as diffs
   and confirmed; valid instructions are never silently dropped.
 - **Fail-open hooks.** If a hook script errors, the session continues.

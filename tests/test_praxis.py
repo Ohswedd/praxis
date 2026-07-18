@@ -9,6 +9,7 @@ Covers the deterministic core so the plugin can't silently regress:
   * quality_gate task-loop + per-change state machine
   * task_state / changelog / adr helpers
   * claudemd_check regression detection
+  * git-delivery config, auto-merge toggle, default-branch detection
 
 Run: python -m unittest discover -s tests   (or: python tests/test_praxis.py)
 """
@@ -48,7 +49,7 @@ class GitRepoCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.root = Path(self.tmp)
-        sh(["git", "init", "-q"], cwd=self.tmp)
+        sh(["git", "init", "-q", "-b", "main"], cwd=self.tmp)
         sh(["git", "config", "user.email", "t@t.t"], cwd=self.tmp)
         sh(["git", "config", "user.name", "t"], cwd=self.tmp)
         (self.root / "a.py").write_text("x = 1\n")
@@ -291,6 +292,43 @@ class TestGuardExtra(GitRepoCase):
     def test_normal_grep_allowed(self):
         self.assertEqual(self.block("grep foo src/app.js"), 0)
 
+    def test_gh_admin_merge_blocked(self):
+        self.assertEqual(self.block("gh pr merge 12 --squash --admin"), 2)
+
+    def test_gh_normal_merge_allowed(self):
+        self.assertEqual(self.block("gh pr merge 12 --squash --delete-branch"), 0)
+
+    def test_force_push_blocked_all_forms(self):
+        for cmd in [
+            "git push --force origin feature",
+            "git push -f origin feature",
+            "git push --force-with-lease origin feature",  # lease is still a force-push
+            "git push origin main --force-with-lease",     # branch before the flag
+            "git push -fu origin main",                    # bundled short flag
+            "git push origin +main",                       # +refspec force syntax
+            "git -C /repo push --force origin main",       # interposed global option
+            "git -c k=v push --force origin main",
+            'git push "--force" origin main',              # quoted flag
+            "git push origin '+main'",                     # quoted refspec
+        ]:
+            self.assertEqual(self.block(cmd), 2, cmd)
+
+    def test_normal_push_allowed(self):
+        for cmd in [
+            "git push origin feature",
+            "git push -u origin feature",
+            "git push --set-upstream origin feature",
+        ]:
+            self.assertEqual(self.block(cmd), 0, cmd)
+
+    def test_force_mention_in_comment_or_message_not_blocked(self):
+        for cmd in [
+            'git commit -m "push --force to prod later"',  # force in a commit message
+            "git push origin main # do not --force here",  # force in a trailing comment
+            "git push origin main # rebase then +main",
+        ]:
+            self.assertEqual(self.block(cmd), 0, cmd)
+
 
 class TestAdoption(unittest.TestCase):
     def test_adopts(self):
@@ -320,6 +358,56 @@ class TestHelpersExtra(GitRepoCase):
            env=self.env())
         r = sh([sys.executable, str(SCRIPTS / "adr.py"), "list"], env=self.env())
         self.assertIn("Pick X", r.stdout)
+
+    def test_changelog_unreleased_below_title(self):
+        cl = self.root / "CHANGELOG.md"
+        cl.write_text("# Changelog\n\nIntro.\n\n## [1.0.0] - 2020-01-01\n### Added\n- old\n")
+        sh([sys.executable, str(SCRIPTS / "changelog.py"), "add", "--type", "fixed", "a bug"],
+           env=self.env())
+        lines = cl.read_text().splitlines()
+        self.assertTrue(lines[0].startswith("# Changelog"))
+        self.assertLess(lines.index("## [Unreleased]"), lines.index("## [1.0.0] - 2020-01-01"))
+        self.assertIn("a bug", cl.read_text())
+
+    def test_changelog_canonical_subsection_order(self):
+        for ctype, msg in [("fixed", "f"), ("added", "a"), ("security", "s"), ("changed", "c")]:
+            sh([sys.executable, str(SCRIPTS / "changelog.py"), "add", "--type", ctype, msg],
+               env=self.env())
+        text = (self.root / "CHANGELOG.md").read_text()
+        order = [text.index(f"### {t}") for t in ("Added", "Changed", "Fixed", "Security")]
+        self.assertEqual(order, sorted(order), "subsections must follow Keep-a-Changelog order")
+
+
+class TestGitDelivery(GitRepoCase):
+    def env(self):
+        return {**os.environ, "CLAUDE_PROJECT_DIR": str(self.root)}
+
+    def test_auto_merge_default_off(self):
+        self.assertFalse(common.auto_merge_on(self.root))
+        self.assertFalse(common.read_config(self.root)["git.auto_merge"])
+
+    def test_auto_merge_via_config(self):
+        (self.root / ".praxis.toml").write_text("[git]\nauto_merge = true\n")
+        self.assertTrue(common.read_config(self.root)["git.auto_merge"])
+        self.assertTrue(common.auto_merge_on(self.root))
+
+    def test_auto_merge_via_env(self):
+        os.environ["PRAXIS_AUTO_MERGE"] = "on"
+        try:
+            self.assertTrue(common.auto_merge_on(self.root))
+        finally:
+            del os.environ["PRAXIS_AUTO_MERGE"]
+
+    def test_toggle_cli(self):
+        sh([sys.executable, str(SCRIPTS / "git_delivery.py"), "on"], env=self.env())
+        self.assertTrue(common.auto_merge_on(self.root))
+        sh([sys.executable, str(SCRIPTS / "git_delivery.py"), "off"], env=self.env())
+        self.assertFalse(common.auto_merge_on(self.root))
+
+    def test_default_branch(self):
+        self.assertEqual(common.git_default_branch(self.root), "main")
+        (self.root / ".praxis.toml").write_text('[git]\ndefault_branch = "develop"\n')
+        self.assertEqual(common.git_default_branch(self.root), "develop")
 
 
 if __name__ == "__main__":

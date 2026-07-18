@@ -62,8 +62,10 @@ if something fails, and how each acceptance criterion will be met.
 - Apply **code-craft** standards: self-documenting names, comments that explain
   *why* (not *what*), no debug leftovers, no commented-out code, consistent style
   with the surrounding file.
-- Reuse existing utilities (no reinvention/duplication). Handle the edge cases and
-  errors that are in scope — do not stub them.
+- Reuse existing utilities (no reinvention/duplication), and add only what this
+  change needs — no speculative abstractions, parameters, config, or unused
+  surface (KISS/YAGNI). Handle the edge cases and errors that are in scope — do not
+  stub them.
 - Add or update tests alongside the change.
 
 ## Phase 5 — Audit (prove it's done)
@@ -138,6 +140,16 @@ End with the canonical praxis report. Keep it scannable and complete:
 
 If any item could not be completed, it goes under **Out of scope / follow-ups**
 with the reason — explicitly, never as a hidden gap.
+
+## Phase 7 — Deliver (optional, only when needed)
+Delivery is a separate, explicit step — praxis does not commit or push on every
+edit. When the change is complete and its audit is green, use the `git-delivery`
+skill (or `/praxis:ship`) to turn it into a Conventional Commit and a pull request.
+By default the merge is **human-in-the-loop**: praxis opens the PR and hands it
+back. Only when auto-merge is enabled (`.praxis.toml [git] auto_merge`, env
+`PRAXIS_AUTO_MERGE`, or `git_delivery.py on`) does praxis review and merge its own
+PR — and never without a green audit and passing checks, never by force-pushing
+the base branch.
 
 ---
 
