@@ -13,6 +13,7 @@ All notable changes to praxis are documented here. The format follows
 - Compacted and unified every command body; sharpened the `code-craft` comment standard to forbid step-narration and doc-pointer scaffolding.
 - Delivery no longer adds AI authorship attribution to commits or PR bodies; the git-delivery skill and CONTRIBUTING.md codify the rule.
 - Strengthened simplicity/reuse enforcement: code-craft gains a build-only-what-is-needed section, the duplication auditor now also flags over-engineering (YAGNI), and the orchestrator reinforces it.
+- Refreshed the README (delivery, configuration, updated capability/safety sections) and cleaned the architecture diagram's skills list (deduplicated, added git-delivery); plugin/marketplace descriptions mention delivery.
 
 ### Fixed
 - `changelog.py add` now inserts a new `[Unreleased]` section below the document title and keeps subsections in Keep-a-Changelog order. Removed a dead no-op (`emit_context("")`) in `post_edit.py` and step-narration comments in `changelog.py`.

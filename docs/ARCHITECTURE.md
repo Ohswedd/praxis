@@ -10,22 +10,23 @@ layers that fire automatically.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│ 1. OUTPUT STYLE  (praxis-quality)                                      │
-│    Modifies the system prompt every turn → mindset always on:         │
-│    plan-first, doc-first, complete, structured reporting.             │
+│ 1. OUTPUT STYLE  (praxis-quality)                                   │
+│    Modifies the system prompt every turn → mindset always on:       │
+│    plan-first, doc-first, complete, structured reporting.           │
 ├─────────────────────────────────────────────────────────────────────┤
-│ 2. SKILLS  (task-orchestrator, prompt-architect, code-craft,          │
-│    prompt-architect, best-practices, code-craft, bootstrap, quality-rubric,
-│    claudemd-living, docs-living, capability-discovery, task-orchestrator)  │
-│    Reasoning workflows, auto-invoked when their description matches.   │
+│ 2. SKILLS                                                           │
+│    task-orchestrator, prompt-architect, best-practices, code-craft, │
+│    bootstrap, quality-rubric, claudemd-living, docs-living,         │
+│    capability-discovery, git-delivery                               │
+│    Reasoning workflows, auto-invoked when their description matches.│
 ├─────────────────────────────────────────────────────────────────────┤
-│ 3. SUBAGENTS  (seven read-only vertical auditors, Opus)               │
-│    Deep, verbose analysis in isolated context — one concern each.     │
+│ 3. SUBAGENTS  (seven read-only vertical auditors, Opus)             │
+│    Deep, verbose analysis in isolated context — one concern each.   │
 ├─────────────────────────────────────────────────────────────────────┤
-│ 4. HOOKS  (SessionStart, PreToolUse, PostToolUse, Stop)               │
-│    Deterministic gates. SessionStart injects the standing directive;   │
-│    the Stop gate runs the task-completion loop + per-change quality    │
-│    gate. The only layer that can block.                                │
+│ 4. HOOKS  (SessionStart, PreToolUse, PostToolUse, Stop)             │
+│    Deterministic gates. SessionStart injects the standing directive;│
+│    the Stop gate runs the task-completion loop + per-change quality │
+│    gate. The only layer that can block.                             │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
