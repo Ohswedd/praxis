@@ -1,0 +1,6 @@
+# Default owners for everything in the repo.
+* @Ohswedd
+
+# Scripts and hooks are the safety-critical core.
+/plugins/praxis/scripts/ @Ohswedd
+/plugins/praxis/hooks/   @Ohswedd

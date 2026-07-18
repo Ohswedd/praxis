@@ -1,0 +1,27 @@
+{
+  "//": "praxis suggested project settings. Tune allow/ask/deny to the detected stack. Commit this file; keep machine-specific overrides in .claude/settings.local.json.",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Grep",
+      "Glob",
+      "Bash(<build-command>)",
+      "Bash(<test-command>)",
+      "Bash(<lint-command>)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ],
+    "ask": [
+      "Bash(git push:*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/*.pem)",
+      "Read(./**/id_rsa)",
+      "Bash(rm -rf:*)"
+    ]
+  }
+}

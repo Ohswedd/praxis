@@ -1,0 +1,17 @@
+{
+  "//": "praxis suggested MCP wiring. Copy the servers you actually need into your project's MCP config. NEVER hard-code secrets: reference environment variables. Paths inside a plugin resolve via ${CLAUDE_PLUGIN_ROOT}.",
+  "mcpServers": {
+    "github": {
+      "//": "Example: enable only if the project uses GitHub and you want issue/PR access.",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": { "GITHUB_TOKEN": "${GITHUB_TOKEN}" }
+    },
+    "postgres": {
+      "//": "Example: enable only if a database URL was detected.",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-postgres"],
+      "env": { "DATABASE_URL": "${DATABASE_URL}" }
+    }
+  }
+}

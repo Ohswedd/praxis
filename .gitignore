@@ -1,0 +1,12 @@
+# praxis local state (per-project, never committed)
+.claude/.praxis/
+.claude/settings.local.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+
+# Python
+__pycache__/
+*.pyc

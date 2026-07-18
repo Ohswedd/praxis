@@ -1,0 +1,119 @@
+name: validate-and-release
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate JSON manifests
+        run: |
+          python - <<'PY'
+          import json, sys, pathlib
+          errors = []
+          for p in pathlib.Path(".").rglob("*.json"):
+              if "node_modules" in str(p):
+                  continue
+              try:
+                  json.loads(p.read_text(encoding="utf-8"))
+              except Exception as e:
+                  errors.append(f"{p}: {e}")
+          # required manifests must exist
+          for req in [".claude-plugin/marketplace.json",
+                      "plugins/praxis/.claude-plugin/plugin.json",
+                      "plugins/praxis/hooks/hooks.json"]:
+              if not pathlib.Path(req).exists():
+                  errors.append(f"missing required file: {req}")
+          if errors:
+              print("\n".join(errors)); sys.exit(1)
+          print("All JSON manifests valid.")
+          PY
+
+      - name: Byte-compile hook scripts
+        run: python -m compileall plugins/praxis/scripts
+
+      - name: Plugin self-integrity check
+        run: python plugins/praxis/scripts/selfcheck.py
+
+      - name: Run test suite
+        run: python -m unittest discover -s tests -v
+
+      - name: Check plugin/marketplace versions agree
+        run: |
+          python - <<'PY'
+          import json, sys
+          pv = json.load(open("plugins/praxis/.claude-plugin/plugin.json"))["version"]
+          mv = json.load(open(".claude-plugin/marketplace.json"))["metadata"]["version"]
+          if pv != mv:
+              print(f"version mismatch: plugin={pv} marketplace={mv}"); sys.exit(1)
+          print(f"versions agree: {pv}")
+          PY
+
+  release:
+    needs: validate
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Derive next version from conventional commits
+        id: bump
+        run: |
+          # feat: -> minor, fix:/perf:/refactor: -> patch, BREAKING CHANGE/!: -> major
+          last_tag=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          range="${last_tag}..HEAD"
+          [ "$last_tag" = "v0.0.0" ] && range="HEAD"
+          log=$(git log --pretty=%s%n%b "$range")
+          major=0; minor=0; patch=0
+          echo "$log" | grep -qiE '(^|\n)(feat|fix|refactor|perf)(\(.+\))?!:' && major=1
+          echo "$log" | grep -qi 'BREAKING CHANGE' && major=1
+          echo "$log" | grep -qiE '(^|\n)feat(\(.+\))?:' && minor=1
+          echo "$log" | grep -qiE '(^|\n)(fix|perf|refactor)(\(.+\))?:' && patch=1
+          cur=${last_tag#v}; IFS='.' read -r a b c <<EOF
+          $cur
+          EOF
+          a=${a:-0}; b=${b:-0}; c=${c:-0}
+          if [ "$major" = 1 ]; then a=$((a+1)); b=0; c=0;
+          elif [ "$minor" = 1 ]; then b=$((b+1)); c=0;
+          elif [ "$patch" = 1 ]; then c=$((c+1));
+          else echo "no release-worthy commits"; echo "release=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          echo "version=$a.$b.$c" >> "$GITHUB_OUTPUT"
+          echo "release=true" >> "$GITHUB_OUTPUT"
+
+      - name: Stamp version into manifests and tag
+        if: steps.bump.outputs.release == 'true'
+        run: |
+          v="${{ steps.bump.outputs.version }}"
+          python - "$v" <<'PY'
+          import json, sys
+          v = sys.argv[1]
+          for path, keypath in [
+              ("plugins/praxis/.claude-plugin/plugin.json", ["version"]),
+              (".claude-plugin/marketplace.json", ["metadata", "version"]),
+          ]:
+              d = json.load(open(path)); node = d
+              for k in keypath[:-1]: node = node[k]
+              node[keypath[-1]] = v
+              json.dump(d, open(path, "w"), indent=2); open(path,"a").write("\n")
+          PY
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git commit -am "chore(release): v$v" || true
+          git tag "v$v"
+          git push origin HEAD --tags
