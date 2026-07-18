@@ -1,7 +1,9 @@
 # Install
 
 ## Requirements
-- Claude Code (a recent version; `claude --version`).
+- Claude Code **v2.1.139+** (`claude --version`); the auto-enabled output style
+  relies on the current output-style mechanism (the old `/output-style` command
+  was removed in v2.1.91).
 - Python 3.8+ available as `python3` on `PATH` (hooks are stdlib-only — no pip
   installs). On Windows, ensure `python3` resolves, or adjust the hook commands
   in `hooks/hooks.json` to `python`.
@@ -48,11 +50,19 @@ claude --plugin-dir ./plugins/praxis
 After editing a skill's SKILL.md it applies immediately; after editing hooks,
 agents, MCP, or output styles run `/reload-plugins` or restart the session.
 
-## Turn on the mindset
+## The quality mindset (automatic)
 
-```
-/output-style praxis-quality
-```
+The `praxis-quality` output style activates automatically when the plugin is
+enabled (via its `force-for-plugin` frontmatter), so the doctrine is on from the
+first turn — no command to run. It sets `keep-coding-instructions`, so it layers
+on top of Claude Code's built-in engineering instructions rather than replacing
+them, and it overrides your `outputStyle` while Praxis is enabled — disable the
+plugin to opt out.
+
+> The standalone `/output-style` command was removed in Claude Code v2.1.91.
+> Output styles are now managed through `/config` (Output style) or the
+> `outputStyle` key in a settings file; `force-for-plugin` makes the manual step
+> unnecessary here.
 
 ## Verify
 

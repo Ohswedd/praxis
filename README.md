@@ -13,14 +13,16 @@ Every push is CI-verified: JSON manifests, plugin self-check, and the full test 
 
 ```
 /plugin marketplace add Ohswedd/praxis     # or a local path
-/plugin install praxis@praxis
-/output-style praxis-quality               # turn on the mindset
+/plugin install praxis@praxis              # the praxis-quality mindset turns on automatically
 /praxis:bootstrap                          # set up the repo (CLAUDE.md, /docs, guardrails)
 ```
 
 Then just describe what you want — *"fix the pagination bug"*, *"integrate Stripe"* —
 and pick your effort (`/effort high` or `ultracode`). Optional: `/praxis:autopilot on`
 for a hands-off run, and `/praxis:ship` to open a reviewable PR when the change is done.
+
+The `praxis-quality` output style activates automatically once the plugin is enabled,
+so the doctrine is on from the first turn — no command to remember.
 
 Praxis turns a batch of engineering checks you would otherwise retype into every
 prompt — *documentation-first, no reinvention, no over-engineering, adversarial audit,
@@ -74,7 +76,7 @@ habitual `/effort high` or `/effort ultracode`. See [`docs/MODES.md`](docs/MODES
 | **Auto-pilot** | zero questions: Praxis does its own QA, resolves every design decision by the best-practice that fits, and logs each under "Decisions taken autonomously" (safety guards stay active) |
 | **Plan-first** | output style + orchestrator require a plan (plan mode) before any file is edited |
 | **Completeness enforcement** | `completeness-auditor` subagent + `scan_placeholders.py`: no TODOs/stubs/placeholders, no silently narrowed scope |
-| **Always-on quality mindset** | `praxis-quality` output style modifies the system prompt every turn |
+| **Always-on quality mindset** | `praxis-quality` output style modifies the system prompt every turn — auto-enabled with the plugin, layered on top of Claude Code's built-in engineering instructions |
 | **Universal bootstrap** | `bootstrap` skill classifies repo state and sets up / migrates CLAUDE.md + guardrails |
 | **Living CLAUDE.md** | `claudemd-living` skill updates root + nested files, regression-verified, never overwriting valid instructions |
 | **Auto-discovery of capabilities** | `capability-discovery` skill finds an existing MCP/skill/plugin before scaffolding a new one |
@@ -133,12 +135,16 @@ and `touch .claude/.praxis/skip-gate`. The full stable surface is in
 # 1. Register the marketplace (from GitHub, or a local path)
 /plugin marketplace add Ohswedd/praxis      # or:  /plugin marketplace add ./praxis
 
-# 2. Install the plugin
+# 2. Install the plugin — the praxis-quality output style turns on automatically
 /plugin install praxis@praxis
-
-# 3. (recommended) enable the always-on quality mindset
-/output-style praxis-quality
 ```
+
+The `praxis-quality` output style auto-enables with the plugin (`force-for-plugin`)
+and layers its doctrine on top of Claude Code's built-in engineering instructions
+(`keep-coding-instructions`). It overrides your `outputStyle` while Praxis is
+enabled; disable the plugin to opt out. (The `/output-style` command was removed in
+Claude Code v2.1.91; output styles are now set via `/config` or the `outputStyle`
+setting.)
 
 For auto-update, add the marketplace to your settings with `autoUpdate: true`
 (see [`docs/INSTALL.md`](docs/INSTALL.md)).
