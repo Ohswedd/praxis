@@ -1,6 +1,6 @@
 {
   "name": "praxis",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Praxis \u2014 the disciplined practice of engineering, applied automatically in Claude Code. Turns a terse prompt into a full pipeline: restructure into a spec, investigate, plan, implement to production standard with professional code-craft and the right best-practices, then run an adversarial vertical+horizontal audit (incl. completeness/no-regression) and update the project's living knowledge (/docs, CHANGELOG, ADRs). Bootstraps any repo, keeps CLAUDE.md and docs regression-free, and can run fully autonomous (auto-pilot) \u2014 all enforced via hooks and read-only subagents.",
   "author": {
     "name": "praxis maintainers"

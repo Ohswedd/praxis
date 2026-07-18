@@ -1,6 +1,6 @@
 ---
 name: repo-cartographer
-description: Read-only codebase mapper. Invoke during bootstrap/onboarding to understand an unfamiliar repo: its purpose, architecture, real build/test/run commands, conventions, subsystem boundaries, and integration points. Produces the map that CLAUDE.md generation is built from.
+description: "Read-only codebase mapper. Invoke during bootstrap/onboarding to understand an unfamiliar repo: its purpose, architecture, real build/test/run commands, conventions, subsystem boundaries, and integration points. Produces the map that CLAUDE.md generation is built from."
 model: opus
 effort: high
 tools: Read, Grep, Glob

@@ -6,7 +6,8 @@ Verifies the things that would silently break the plugin at load time:
   * all JSON manifests parse; plugin/marketplace versions agree
   * hooks.json references scripts that actually exist
   * every agent, skill (SKILL.md), command, and the output style has YAML
-    frontmatter with the required keys
+    frontmatter with the required keys — and frontmatter that actually parses
+    (unquoted scalars containing ': ' are rejected: YAML silently drops them)
   * every Python script byte-compiles
 
 Exit code 0 if healthy, 1 if any problem — so it can gate CI. Run it directly, or
@@ -26,6 +27,15 @@ ROOT = PLUGIN.parent.parent                        # repo root
 
 
 def _frontmatter_keys(md: Path):
+    """Top-level frontmatter keys, or None if the file has no frontmatter or
+    frontmatter that YAML would fail to parse.
+
+    A silent, high-impact failure mode: an unquoted plain scalar value containing
+    ': ' (colon-space), e.g. `description: understand a repo: its purpose ...`.
+    A YAML loader rejects that line, drops the *entire* frontmatter, and the
+    agent/skill then loads with empty metadata (name, tools, model all lost). We
+    treat it as invalid here so `make check`/CI catch it before publish, instead
+    of only `claude plugin validate` catching it after."""
     try:
         text = md.read_text(encoding="utf-8")
     except Exception:
@@ -35,9 +45,13 @@ def _frontmatter_keys(md: Path):
         return None
     keys = set()
     for line in m.group(1).splitlines():
-        mm = re.match(r"^([A-Za-z0-9_-]+):", line)
-        if mm:
-            keys.add(mm.group(1))
+        mm = re.match(r"^([A-Za-z0-9_-]+):(.*)$", line)
+        if not mm:
+            continue
+        keys.add(mm.group(1))
+        value = mm.group(2).strip()
+        if value[:1] not in ("", '"', "'") and ": " in value:
+            return None  # unquoted scalar with ': ' — YAML would drop the frontmatter
     return keys
 
 

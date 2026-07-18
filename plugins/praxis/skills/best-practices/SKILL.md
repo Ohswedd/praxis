@@ -1,6 +1,6 @@
 ---
 name: best-practices
-description: Select and apply the software-engineering best-practices and guidelines relevant to the task at hand — and, in auto-pilot, resolve design decisions autonomously by picking the best-practice that fits. Use during planning, implementation, review, or any time an approach/design decision is being made: choosing an architecture, designing an API or schema, handling auth, structuring code, writing tests, addressing performance or security. Pulls from a curated catalog (SOLID, DDD, REST, ACID/CAP, OWASP, testing, clean code, performance, concurrency, functional) and applies only what the situation needs — never cargo-culting.
+description: "Select and apply the software-engineering best-practices and guidelines relevant to the task at hand — and, in auto-pilot, resolve design decisions autonomously by picking the best-practice that fits. Use during planning, implementation, review, or any time an approach/design decision is being made: choosing an architecture, designing an API or schema, handling auth, structuring code, writing tests, addressing performance or security. Pulls from a curated catalog (SOLID, DDD, REST, ACID/CAP, OWASP, testing, clean code, performance, concurrency, functional) and applies only what the situation needs — never cargo-culting."
 ---
 
 # Best Practices

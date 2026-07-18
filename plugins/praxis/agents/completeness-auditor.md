@@ -1,6 +1,6 @@
 ---
 name: completeness-auditor
-description: Completeness and scope-fidelity auditor. Invoke during review to prove the change is actually finished: no placeholders/TODOs/stubs, no NotImplemented, no debug leftovers, no dead/commented-out code, and — critically — nothing silently dropped or narrowed relative to the agreed spec. Confirms every acceptance criterion is met. Read-only.
+description: "Completeness and scope-fidelity auditor. Invoke during review to prove the change is actually finished: no placeholders/TODOs/stubs, no NotImplemented, no debug leftovers, no dead/commented-out code, and — critically — nothing silently dropped or narrowed relative to the agreed spec. Confirms every acceptance criterion is met. Read-only."
 model: opus
 effort: high
 tools: Read, Grep, Glob

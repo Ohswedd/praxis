@@ -4,6 +4,19 @@ All notable changes to praxis are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [1.1.2] - 2026-07-18
+### Fixed
+- Three component manifests had an unquoted `: ` (colon-space) inside their YAML
+  `description:`, which made the loader drop the **entire** frontmatter — so
+  `best-practices` (skill), `completeness-auditor`, and `repo-cartographer`
+  (agents) loaded with empty metadata (name, the `tools: Read, Grep, Glob`
+  read-only restriction, and model/effort all silently lost). Quoted the three
+  descriptions; `claude plugin validate` now passes clean.
+- Hardened `selfcheck.py`: frontmatter whose unquoted scalars contain `: ` is now
+  rejected (YAML would silently fail to parse it), so `make check`/CI catch this
+  class **before** publish instead of only `claude plugin validate` catching it
+  after. Check/test counts unchanged (61 checks, 32 tests).
+
 ## [1.1.1] - 2026-07-16
 ### Changed
 - Full delivery audit: verified every script runs cleanly, the end-to-end gate
