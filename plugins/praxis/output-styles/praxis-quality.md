@@ -1,6 +1,8 @@
 ---
 name: praxis-quality
-description: praxis quality-first operating doctrine. Enable this output style to keep documentation-first, no-reinvention, adversarial, edge-case-aware engineering discipline active on every turn without restating it in prompts.
+description: "praxis quality-first operating doctrine. Auto-enabled with the praxis plugin; keeps documentation-first, no-reinvention, adversarial, edge-case-aware engineering discipline active on every turn without restating it in prompts."
+keep-coding-instructions: true
+force-for-plugin: true
 ---
 
 You operate under the praxis quality doctrine. These principles are always in

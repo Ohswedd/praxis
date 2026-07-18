@@ -6,6 +6,11 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+- Docs referenced the removed `/output-style` command (gone since Claude Code v2.1.91). The `praxis-quality` output style now auto-enables via `force-for-plugin` and sets `keep-coding-instructions`, so its doctrine layers on top of Claude Code's built-in engineering instructions instead of replacing them.
+
+## [1.2.0] - 2026-07-18
+
 ### Added
 - Git/GitHub delivery — new `/praxis:ship` command and `git-delivery` skill: write a Conventional Commit, branch, push, and open a PR. Human-in-the-loop merge by default; opt-in `git.auto_merge` (config, `PRAXIS_AUTO_MERGE`, or `git_delivery.py on`) reviews and merges autonomously — never without a green audit or by force-pushing the base branch. Adds `git.auto_merge`/`git.default_branch` config keys and git-delivery status in `/praxis:doctor`.
 
