@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Praxis \u2014 an enterprise-grade quality harness and autonomous task engine for Claude Code. Restructure any prompt into a spec, plan, implement to production standard with the right engineering best-practices, audit (adversarial/regression/duplication/performance/edge-case/completeness/doc-first), and keep the project's living knowledge (/docs, CHANGELOG, ADRs) current with no regression.",
-    "version": "1.1.2"
+    "version": "1.2.0"
   },
   "plugins": [
     {
