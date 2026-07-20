@@ -197,6 +197,10 @@ def build_report(root: Path) -> str:
     lines.append("- Apply the best-practices relevant to the change (use the `best-practices` "
                  "skill: SOLID/DDD/REST/OWASP/ACID-CAP/testing as the domains require) — the "
                  "minimal fitting set, matched to repo conventions; don't cargo-cult.")
+    lines.append("- Front-end/UI work runs the `frontend-pipeline` skill, proportional to the "
+                 "task: business research → story-first wireframes → design system → "
+                 "development → optimization. UI-touching changes are audited on the "
+                 "accessibility and design-consistency verticals in addition to the seven.")
     if common.autopilot_on(root):
         lines.append("- **AUTO-PILOT IS ON:** do not ask the user design/approach questions. "
                      "Do your own QA and decide by the best-practice that fits, recording "

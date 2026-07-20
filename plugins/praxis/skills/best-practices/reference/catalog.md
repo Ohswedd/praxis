@@ -155,6 +155,34 @@ Pure functions, referential transparency, immutability, higher-order & first-cla
 functions, currying, partial application, function composition, monads/functors,
 lazy evaluation. Reach for to reduce side effects and improve testability.
 
+## 21. Front-end & UX
+- **Semantic HTML** — native elements before ARIA; landmarks, heading order,
+  buttons vs links. The foundation of accessibility and SEO; always on UI work.
+- **Accessibility (WCAG 2.2 AA)** — keyboard operability, visible focus,
+  contrast (4.5:1 text / 3:1 UI), labels, announced dynamic content,
+  reduced-motion. Correctness, not polish; any user-facing surface.
+- **Design tokens & design system** — colors/type/spacing/radii as a single
+  source of truth; components with variants *and states*; extend the system,
+  never fork it. Reach for whenever styling anything.
+- **Typography & spacing scales** — a modular type scale and one spacing scale;
+  off-scale values are drift.
+- **Responsive & mobile-first** — content-driven breakpoints, fluid layout,
+  reflow without horizontal scroll; test what you claim.
+- **State completeness** — loading, empty, error, disabled, focus, hover ship
+  with the component, not as follow-ups.
+- **Core Web Vitals & performance budget** — LCP/CLS/INP targets, asset weight,
+  image/font strategy, minimal shipped JS. Any page users wait for.
+- **Forms & validation UX** — visible labels, inline errors that help recovery,
+  no placeholder-as-label, sensible defaults.
+- **Story-first structure** — every page has one goal; sections carry
+  message/feel/evidence/action; hierarchy scannable from headings alone.
+  Reach for on marketing/landing/storefront pages especially.
+- **SEO fundamentals** — unique titles/descriptions, canonical, Open Graph,
+  structured data where genuine. Public pages only.
+- **UI architecture** — MVC/MVVM/Flux per the stack's idiom (§2); component
+  composition over inheritance; container/presentational separation only when
+  it earns its keep.
+
 ---
 
 ## The "must-know" core (weight these highest)
@@ -162,4 +190,5 @@ SOLID · DRY · KISS · YAGNI · Separation of Concerns · High Cohesion/Low Cou
 Clean Architecture · GoF patterns · DDD basics · ACID/BASE/CAP · REST & API design
 · Git & branching strategy · CI/CD · Testing (TDD, unit/integration/E2E) · Clean
 Code & Refactoring · Big O & data structures · Concurrency & async · Security
-(OWASP Top 10) · Docker/Kubernetes concepts · Observability.
+(OWASP Top 10) · Docker/Kubernetes concepts · Observability · Front-end & UX
+(semantic HTML, WCAG, design tokens, Core Web Vitals) on any user-facing work.

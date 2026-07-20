@@ -26,6 +26,10 @@ you by a repo-wide scan):
    points?
 6. **Caching & laziness.** Opportunities to cache, batch, paginate, or defer —
    and correctness risks those introduce.
+7. **Front-end delivery (when the scope is UI).** Shipped JS/CSS weight,
+   render-blocking resources, image sizing/formats and lazy loading, font
+   loading strategy, layout thrash and main-thread work — Core Web Vitals
+   (LCP, CLS, INP) risk as the page and data grow.
 
 Quantify where you can (Big-O, expected call counts). Distinguish premature
 optimization from real risk; do not recommend complexity that the workload does

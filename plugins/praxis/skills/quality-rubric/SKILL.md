@@ -1,6 +1,6 @@
 ---
 name: quality-rubric
-description: Run praxis's full quality review on a code change. Use this whenever you finish a non-trivial edit, before declaring work done, when the Stop gate reports an unreviewed change, or when the user asks for a review, audit, or quality check. Dispatches the vertical auditors (adversarial, regression, duplication, performance, edge-case, doc-reference) and a horizontal consistency pass, then records a green report so the quality gate can pass. Always use this before finishing coding work.
+description: Run praxis's full quality review on a code change. Use this whenever you finish a non-trivial edit, before declaring work done, when the Stop gate reports an unreviewed change, or when the user asks for a review, audit, or quality check. Dispatches the vertical auditors (adversarial, regression, duplication, performance, edge-case, doc-reference, completeness — plus accessibility and design-consistency on UI changes) and a horizontal consistency pass, then records a green report so the quality gate can pass. Always use this before finishing coding work.
 ---
 
 # Quality Rubric
@@ -39,6 +39,16 @@ agents:
   dead code, and no scope silently dropped relative to the spec; every acceptance
   criterion met. Back it with the deterministic scan:
   `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/scan_placeholders.py --json`.
+
+**UI-touching changes** (markup/templates, components, styles, client-side
+view logic) additionally dispatch the two UI verticals — as mandatory for UI
+surface as the seven above:
+
+- `@praxis:accessibility-auditor` — WCAG: semantics, keyboard, focus,
+  contrast, forms, ARIA, media, motion.
+- `@praxis:design-consistency-auditor` — design-token adherence (no magic
+  values), scale discipline, component reuse, state completeness, responsive
+  coverage, story fidelity per `docs/design/`.
 
 Each auditor returns `PASS`, `PASS WITH NOTES`, or `FAIL` plus specifics. If an
 auditor is not available as a subagent in the current surface, perform its pass
@@ -80,6 +90,10 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/report.py" record \
   --verticals "doc-reference=pass,duplication=pass,regression=pass,adversarial=pass,edge-case=pass,performance=pass,completeness=pass"
 ```
 
+When the UI verticals ran, extend the string with
+`,accessibility=pass,design-consistency=pass` — a UI change's report is not
+green without them.
+
 If the repo has a test command, the gate will **not** accept the report unless it
 records a passing run (`--tests-exit 0`) — so green is backed by a real result,
 not a promise. If the repo genuinely has no tests, omit `--tests`; the report is
@@ -87,7 +101,8 @@ recorded without a test requirement (and you should note the missing coverage).
 
 ## Output to the user
 Give a compact verdict table with one row per vertical (doc-reference,
-duplication, regression, adversarial, edge-case, performance, completeness), the
+duplication, regression, adversarial, edge-case, performance, completeness —
+plus accessibility and design-consistency when the change touched UI), the
 horizontal summary, the fixes applied, and any accepted notes. Keep it scannable.
 When this rubric runs as part of a full task, fold the table into the
 task-orchestrator's canonical report rather than duplicating it.

@@ -6,6 +6,11 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-20
+
+### Added
+- /praxis:frontend — front-end pipeline (frontend-pipeline skill + reference playbook, accessibility-auditor + design-consistency-auditor agents): business research (client call → goals → audience → competitors → positioning → messaging) → story-first wireframes → design system → development → optimization → ship, for any UI niche, proportional to task size (full/feature/patch routing); design artifacts (docs/design/) kept as living knowledge; quality-rubric, best-practices catalog (new Front-end & UX family), perf auditor (Core Web Vitals), output style, and session directives extended for UI work
+
 ## [1.3.0] - 2026-07-20
 
 ### Added

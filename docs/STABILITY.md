@@ -4,10 +4,10 @@ From v1.0, the following surface is **stable** and changes to it follow Semantic
 Versioning (breaking changes → a new MAJOR).
 
 ## Stable
-- **Commands:** `/praxis:task`, `/praxis:spec`, `/praxis:bootstrap`,
-  `/praxis:audit`, `/praxis:scan`, `/praxis:sync`, `/praxis:docs`,
-  `/praxis:discover`, `/praxis:autopilot`, `/praxis:ship`, `/praxis:release`,
-  `/praxis:doctor`.
+- **Commands:** `/praxis:task`, `/praxis:frontend`, `/praxis:spec`,
+  `/praxis:bootstrap`, `/praxis:audit`, `/praxis:scan`, `/praxis:sync`,
+  `/praxis:docs`, `/praxis:discover`, `/praxis:autopilot`, `/praxis:ship`,
+  `/praxis:release`, `/praxis:doctor`.
 - **Config file:** `.praxis.toml` — keys `gate.enabled`, `gate.require_tests`,
   `autopilot.default`, `audit.depth`, `git.auto_merge`, `git.default_branch`.
 - **Environment variables:** `PRAXIS_GATE` (`off` disables the Stop gate),

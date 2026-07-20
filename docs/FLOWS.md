@@ -15,7 +15,7 @@ flowchart TB
     U["User prompt"] --> H1["Layer 4 · Hooks<br/>deterministic, can block"]
     H1 --> OS["Layer 1 · Output style<br/>praxis-quality: always-on doctrine"]
     OS --> SK["Layer 2 · Skills<br/>orchestrator, prompt-architect, code-craft,<br/>bootstrap, quality-rubric, claudemd-living, discovery"]
-    SK --> AG["Layer 3 · Subagents · read-only, Opus<br/>7 vertical auditors + cartographer + claudemd-verifier"]
+    SK --> AG["Layer 3 · Subagents · read-only, Opus<br/>9 vertical auditors + cartographer + claudemd-verifier"]
     AG --> OUT["Structured report back to user"]
 
     classDef det fill:#1f2937,color:#fff;
@@ -51,7 +51,7 @@ flowchart TD
     J --> K{"Plan approved?"}
     K -->|No| J
     K -->|Yes| L["Phase 4 · Implement to plan<br/>code-craft standards"]
-    L --> M["Phase 5 · Quality rubric<br/>7 verticals + horizontal pass"]
+    L --> M["Phase 5 · Quality rubric<br/>7 verticals (+2 on UI changes) + horizontal pass"]
     M --> N{"All PASS?"}
     N -->|No| O["Fix findings, re-run auditor"]
     O --> M
@@ -239,7 +239,8 @@ Your stated goals mapped to what implements them:
 | Keep working until the task is done | `quality_gate.py` task loop + `task.json` (no `/goal` needed) | **Deterministic** |
 | Invoke the right agents/skills | `quality-rubric` orchestration + skill descriptions | Guided |
 | Professional comments | `code-craft` skill | Guided |
-| Redo all audits, no regression | `quality-rubric` + 7 vertical subagents | Guided, gated by report |
+| Redo all audits, no regression | `quality-rubric` + 7 vertical subagents (+ accessibility & design-consistency on UI changes) | Guided, gated by report |
+| Professional front-end for any niche | `frontend-pipeline` skill + design artifacts (`docs/design/`) + a11y/design-consistency verticals | Guided, gated by report |
 | No placeholders / nothing missing | `completeness-auditor` + `scan_placeholders.py` | **Deterministic scan + gate** |
 | Nothing silently out of scope | prompt-architect (declare) + completeness-auditor (verify) + report | Guided + checked |
 | Don't finish unreviewed work | `quality_gate.py` (Stop hook) | **Deterministic block** |
