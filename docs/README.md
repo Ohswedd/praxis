@@ -6,6 +6,7 @@ sets up in the repositories it manages.
 - [ARCHITECTURE.md](ARCHITECTURE.md) — the four-layer design and the pipeline.
 - [FLOWS.md](FLOWS.md) — diagrams, worked examples, edge cases, traceability.
 - [MODES.md](MODES.md) — effort, auto-pilot, `/goal`, and how autonomy works.
+- [FRONTEND.md](FRONTEND.md) — the front-end pipeline (`/praxis:frontend`): research → wireframes → design system → build → optimize.
 - [DELIVERY.md](DELIVERY.md) — Git/GitHub delivery: commits, PRs, and the merge policy.
 - [KNOWLEDGE.md](KNOWLEDGE.md) — the living-knowledge model (/docs, CHANGELOG, ADRs).
 - [AUDIT.md](AUDIT.md) — the project's self-audit and resolutions.

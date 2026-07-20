@@ -16,11 +16,11 @@ layers that fire automatically.
 ├─────────────────────────────────────────────────────────────────────┤
 │ 2. SKILLS                                                           │
 │    task-orchestrator, prompt-architect, best-practices, code-craft, │
-│    bootstrap, quality-rubric, repo-audit, claudemd-living,          │
-│    docs-living, capability-discovery, git-delivery                  │
+│    frontend-pipeline, bootstrap, quality-rubric, repo-audit,        │
+│    claudemd-living, docs-living, capability-discovery, git-delivery │
 │    Reasoning workflows, auto-invoked when their description matches.│
 ├─────────────────────────────────────────────────────────────────────┤
-│ 3. SUBAGENTS  (read-only, Opus: 7 vertical auditors + verifiers)    │
+│ 3. SUBAGENTS  (read-only, Opus: 9 vertical auditors + verifiers)    │
 │    Deep, verbose analysis in isolated context — one concern each.   │
 ├─────────────────────────────────────────────────────────────────────┤
 │ 4. HOOKS  (SessionStart, PreToolUse, PostToolUse, Stop)             │
@@ -59,6 +59,7 @@ user: "fix the pagination bug" + chosen effort
   Phase 3  Plan          plan mode; no edits until the plan is set
   Phase 4  Implement     to the plan, code-craft standards, reuse over reinvent
   Phase 5  Audit         quality-rubric: 7 verticals (incl. completeness) +
+                         accessibility & design-consistency on UI changes +
                          horizontal pass; fix every finding; tests green
   Phase 6  Report        canonical structured report; record green report; task done
         │
@@ -109,11 +110,26 @@ subagent reverse-audits each finding before anything is fixed. Coverage claims
 come from recorded state — an unaudited shard makes the final report print
 INCOMPLETE. See `docs/SCAN.md`.
 
+## Front-end pipeline (`/praxis:frontend`)
+
+The same doctrine extends to design work via the `frontend-pipeline` skill:
+business research (client call → goals → audience → competitors → positioning
+→ messaging) → story-first wireframes → design system → development through
+the task-orchestrator → optimization → ship, proportional to task size (full /
+feature / patch routing). The design artifacts (`docs/design/BRIEF.md`,
+`WIREFRAMES.md`, `DESIGN-SYSTEM.md`) live in the target repo under the
+docs-living contract, and UI-touching changes add two vertical auditors —
+`accessibility-auditor` (WCAG 2.2 AA) and `design-consistency-auditor`
+(tokens, scales, component reuse, states, responsiveness, story fidelity) —
+to the rubric and the recorded report. See `docs/FRONTEND.md`.
+
 ## Vertical vs horizontal
 
 - **Vertical analysis** = one subagent per concern, deep and isolated:
   `adversarial`, `regression`, `duplication`, `performance`, `edge-case`,
-  `doc-reference`, `completeness`. Each returns `PASS / PASS WITH NOTES / FAIL`.
+  `doc-reference`, `completeness` — plus `accessibility` and
+  `design-consistency` when the change touches UI surface. Each returns
+  `PASS / PASS WITH NOTES / FAIL`.
 - **Horizontal analysis** = the `quality-rubric` skill's cross-cutting pass over
   the whole change for consistency, use-case coverage, and guideline compliance,
   looping until every vertical is green.
@@ -178,9 +194,9 @@ plugins/praxis/
   .claude-plugin/plugin.json         plugin manifest
   output-styles/praxis-quality.md     always-on doctrine
   skills/*/SKILL.md                  task-orchestrator, prompt-architect, code-craft,
-                                     bootstrap, quality-rubric, claudemd-living,
-                                     capability-discovery
-  agents/*.md                        ten read-only subagents (7 verticals +
+                                     frontend-pipeline, bootstrap, quality-rubric,
+                                     claudemd-living, capability-discovery
+  agents/*.md                        twelve read-only subagents (9 verticals +
                                      finding-verifier + repo-cartographer +
                                      claudemd-verifier)
   hooks/hooks.json                   lifecycle wiring (command hooks)

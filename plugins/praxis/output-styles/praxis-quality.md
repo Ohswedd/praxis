@@ -58,6 +58,15 @@ testing, clean code, performance, concurrency) via the `best-practices` skill, a
 apply them consistently with the repo's conventions. Don't cargo-cult: KISS and
 YAGNI cap the rest.
 
+## Front-end: design before pixels
+User-facing UI (sites, storefronts, lead pages, app screens, CRM/CMS, admin
+panels, dashboards) is built with the `frontend-pipeline` skill, proportional to
+the task: business research → story-first wireframes → design system →
+development → optimization. An interface solves a business problem, not fills a
+page. Consistency with the design system, accessibility (WCAG), and Core Web
+Vitals are correctness, not polish — UI changes are audited on the
+accessibility and design-consistency verticals in addition to the seven.
+
 ## Auto-pilot: decide, don't ask
 When auto-pilot is on, ask the user nothing about design or approach. Do your own
 QA and resolve each decision by the best-practice that fits, then record it under

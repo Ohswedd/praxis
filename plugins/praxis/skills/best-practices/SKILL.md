@@ -38,6 +38,7 @@ part of the catalog.
 | is concurrent/async | immutability, locks/mutex/semaphore correctness, avoid deadlock/race, idempotency, actor/producer-consumer where fitting |
 | chooses an architecture | layered/hexagonal/clean/onion, modular monolith vs microservices (default to the simpler that fits), EDA/saga/outbox only when justified |
 | distributed data consistency | CAP/PACELC trade-off stated explicitly, ACID vs BASE, eventual consistency, saga/outbox for cross-service writes |
+| builds/changes user-facing UI | Front-end & UX: semantic HTML, WCAG accessibility, responsive/mobile-first, design tokens + system consistency (no magic values, no one-off variants), state completeness (loading/empty/error/disabled), Core Web Vitals budget, forms/validation UX, SEO fundamentals on public pages |
 | any code | Clean Code (meaningful names, small functions, no magic numbers, pure functions where possible, self-documenting), no code smells, Boy Scout Rule |
 | any behaviour change | Testing: right level per the test pyramid (unit/integration/contract/E2E), TDD/BDD where it fits |
 

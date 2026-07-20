@@ -30,6 +30,13 @@ Use the **prompt-architect** skill to convert the request into an explicit spec:
 Keep the spec tight. Show it to the user when the request was ambiguous or large;
 for small unambiguous asks, state the spec briefly and proceed.
 
+**User-facing UI work** (site, storefront, lead page, app screens, CRM/CMS,
+admin panel, dashboard): run the **frontend-pipeline** skill — business
+research → story-first wireframes → design system, proportional to the task —
+around these phases. Its artifacts (`docs/design/BRIEF.md`, `WIREFRAMES.md`,
+`DESIGN-SYSTEM.md`) become part of the spec, and the audit gains the
+accessibility and design-consistency verticals.
+
 ## Phase 2 — Investigate (read before you write)
 - Confirm the **CLAUDE.md** hierarchy exists and is accurate. If the session
   audit flagged `new/uninitialised/legacy`, run **bootstrap** first. If memory is

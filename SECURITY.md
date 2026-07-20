@@ -5,7 +5,7 @@
 Praxis is a Claude Code plugin: installing it means its hooks and scripts run on
 your machine during sessions. It is designed to be safe by construction.
 
-- **Read-only auditors.** The nine vertical/analysis subagents are restricted to
+- **Read-only auditors.** The twelve vertical/analysis subagents are restricted to
   `Read, Grep, Glob` (the doc-reference-finder additionally to web search). An
   audit can never modify code.
 - **Fail-open hooks.** Every hook script catches its own exceptions and exits 0 on

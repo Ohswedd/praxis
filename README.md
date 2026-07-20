@@ -80,7 +80,8 @@ habitual `/effort high` or `/effort ultracode`. See [`docs/MODES.md`](docs/MODES
 | **Universal bootstrap** | `bootstrap` skill classifies repo state and sets up / migrates CLAUDE.md + guardrails |
 | **Living CLAUDE.md** | `claudemd-living` skill updates root + nested files, regression-verified, never overwriting valid instructions |
 | **Auto-discovery of capabilities** | `capability-discovery` skill finds an existing MCP/skill/plugin before scaffolding a new one |
-| **Vertical review** | seven read-only Opus subagents: adversarial, regression, duplication (incl. over-engineering), performance, edge-case, doc-reference, completeness |
+| **Vertical review** | nine read-only Opus subagents: adversarial, regression, duplication (incl. over-engineering), performance, edge-case, doc-reference, completeness — plus accessibility and design-consistency for UI-touching changes |
+| **Front-end pipeline** | `frontend-pipeline` skill (`/praxis:frontend`): business research (client call → goals → audience → competitors → positioning → messaging) → story-first wireframes → design system → development → optimization → ship, for any UI niche (sites, storefronts, lead pages, SaaS UI, CRM/CMS, admin panels, dashboards) — proportional to task size, with design artifacts kept as living knowledge (`docs/design/`) |
 | **Repo-wide scanner** | `repo-audit` skill (`/praxis:scan`): shard-ledger inventory of the whole codebase, every vertical auditor over every shard, adversarial reverse-audit of each finding (`finding-verifier`), fixes in audited change-sets — coverage-honest starting & final reports, resumable on large repos |
 | **Horizontal review + orchestration** | `quality-rubric` skill runs the cross-cutting pass and loops until green |
 | **Deterministic gates** | hooks: a secret/destructive-command guard (blocks force-pushes, destructive resets, and secret exfiltration — even under `--dangerously-skip-permissions`), auto-format on edit, and a **Stop gate** that won't let a turn finish while code is unreviewed |
@@ -90,6 +91,7 @@ habitual `/effort high` or `/effort ultracode`. See [`docs/MODES.md`](docs/MODES
 ## Commands
 
 - `/praxis:task <request>` — run the full pipeline end-to-end on a request
+- `/praxis:frontend <request>` — run the front-end pipeline: research → story wireframes → design system → build → optimize → ship
 - `/praxis:spec <request>` — restructure a request into an explicit spec
 - `/praxis:bootstrap` — set up / migrate this repo
 - `/praxis:audit` — run the full quality rubric on the current change
@@ -170,8 +172,8 @@ See [`SECURITY.md`](SECURITY.md) for the security posture and
 ```
 output style ──▶ mindset on every turn (plan-first, doc-first, complete, structured)
 skills ────────▶ task-orchestrator + prompt-architect + best-practices + code-craft +
-                 bootstrap + quality-rubric + repo-audit + claudemd-living +
-                 docs-living + capability-discovery + git-delivery
+                 frontend-pipeline + bootstrap + quality-rubric + repo-audit +
+                 claudemd-living + docs-living + capability-discovery + git-delivery
 subagents ─────▶ deep vertical audits in isolated context (read-only, Opus)
 hooks ─────────▶ SessionStart directive + PreToolUse guard + PostToolUse format +
                  Stop task/quality gate
@@ -195,7 +197,7 @@ deliberately conservative:
   force-pushes, destructive resets, `rm -rf` on broad paths, and secret
   exfiltration — and holds even under `--dangerously-skip-permissions`. It is a
   best-effort backstop; your permission settings remain the primary control.
-- **Read-only auditors.** The seven vertical subagents are restricted to read-only
+- **Read-only auditors.** The nine vertical subagents are restricted to read-only
   tools (`Read, Grep, Glob`; doc-reference also has `WebSearch`/`WebFetch`).
 - **Propose, don't overwrite.** Bootstrap and CLAUDE.md changes are shown as diffs
   and confirmed; valid instructions are never silently dropped.
