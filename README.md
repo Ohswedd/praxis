@@ -81,6 +81,7 @@ habitual `/effort high` or `/effort ultracode`. See [`docs/MODES.md`](docs/MODES
 | **Living CLAUDE.md** | `claudemd-living` skill updates root + nested files, regression-verified, never overwriting valid instructions |
 | **Auto-discovery of capabilities** | `capability-discovery` skill finds an existing MCP/skill/plugin before scaffolding a new one |
 | **Vertical review** | seven read-only Opus subagents: adversarial, regression, duplication (incl. over-engineering), performance, edge-case, doc-reference, completeness |
+| **Repo-wide scanner** | `repo-audit` skill (`/praxis:scan`): shard-ledger inventory of the whole codebase, every vertical auditor over every shard, adversarial reverse-audit of each finding (`finding-verifier`), fixes in audited change-sets — coverage-honest starting & final reports, resumable on large repos |
 | **Horizontal review + orchestration** | `quality-rubric` skill runs the cross-cutting pass and loops until green |
 | **Deterministic gates** | hooks: a secret/destructive-command guard (blocks force-pushes, destructive resets, and secret exfiltration — even under `--dangerously-skip-permissions`), auto-format on edit, and a **Stop gate** that won't let a turn finish while code is unreviewed |
 | **Structured reporting** | canonical report: what changed, criteria met, audit table, tests, out-of-scope, assumptions |
@@ -92,6 +93,7 @@ habitual `/effort high` or `/effort ultracode`. See [`docs/MODES.md`](docs/MODES
 - `/praxis:spec <request>` — restructure a request into an explicit spec
 - `/praxis:bootstrap` — set up / migrate this repo
 - `/praxis:audit` — run the full quality rubric on the current change
+- `/praxis:scan [path] [--report-only]` — audit, reverse-audit, and fix the entire repo (coverage-honest, resumable)
 - `/praxis:sync` — update the CLAUDE.md hierarchy, regression-verified
 - `/praxis:docs` — update the living knowledge (/docs, CHANGELOG, ADRs)
 - `/praxis:ship` — deliver the change: Conventional Commit, push, open a PR (merge only if auto-merge is on)
@@ -168,8 +170,8 @@ See [`SECURITY.md`](SECURITY.md) for the security posture and
 ```
 output style ──▶ mindset on every turn (plan-first, doc-first, complete, structured)
 skills ────────▶ task-orchestrator + prompt-architect + best-practices + code-craft +
-                 bootstrap + quality-rubric + claudemd-living + docs-living +
-                 capability-discovery + git-delivery
+                 bootstrap + quality-rubric + repo-audit + claudemd-living +
+                 docs-living + capability-discovery + git-delivery
 subagents ─────▶ deep vertical audits in isolated context (read-only, Opus)
 hooks ─────────▶ SessionStart directive + PreToolUse guard + PostToolUse format +
                  Stop task/quality gate

@@ -18,6 +18,12 @@
   to run `/praxis:audit`, which dispatches the vertical auditors — including the
   completeness auditor that guarantees no placeholders/stubs and no silently
   dropped scope — loops until green, then records the pass.
+- **Audit a whole repo.** `/praxis:scan` runs the repo-wide scanner on an
+  existing codebase: a shard ledger inventories every file, every vertical
+  dimension runs on every shard, each finding is adversarially reverse-audited,
+  and confirmed findings are fixed (or deferred with a plan). Coverage-honest
+  reports, resumable across sessions; `--report-only` to skip fixes. See
+  [`SCAN.md`](SCAN.md).
 - **Memory upkeep.** After conventions change, `/praxis:sync` updates the
   CLAUDE.md hierarchy with regression verification.
 - **Missing a tool.** `/praxis:discover` finds or creates the capability,

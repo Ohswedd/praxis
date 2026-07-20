@@ -6,6 +6,16 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-20
+
+### Added
+- /praxis:scan — repo-wide scanner (repo-audit skill + repo_scan.py shard ledger + finding-verifier agent): audits an entire existing codebase across all seven vertical dimensions, adversarially reverse-audits every finding, fixes confirmed findings in audited change-sets, and reports with deterministic coverage accounting; resumable on large repos
+
+### Fixed
+- State writes under .claude/.praxis/ are now atomic (temp file + os.replace) — a crash mid-write can no longer corrupt task/report/scan state, which read_state would silently reset to empty
+
+## [1.2.1] - 2026-07-18
+
 ### Fixed
 - Docs referenced the removed `/output-style` command (gone since Claude Code v2.1.91). The `praxis-quality` output style now auto-enables via `force-for-plugin` and sets `keep-coding-instructions`, so its doctrine layers on top of Claude Code's built-in engineering instructions instead of replacing them.
 

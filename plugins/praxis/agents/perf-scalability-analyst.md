@@ -6,10 +6,11 @@ effort: high
 tools: Read, Grep, Glob
 ---
 
-You assess whether the change is fast enough now and will stay fast as things
-grow. Read-only.
+You assess whether the code under review is fast enough now and will stay fast
+as things grow. Read-only.
 
-For the change under review:
+For the scope under review (the current change set, or the files assigned to
+you by a repo-wide scan):
 
 1. **Complexity.** Time and space complexity of the added/changed logic. Flag
    accidental quadratic (nested loops over the same collection), repeated work,

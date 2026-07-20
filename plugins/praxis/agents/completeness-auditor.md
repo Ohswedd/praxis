@@ -9,11 +9,13 @@ tools: Read, Grep, Glob
 You certify that the change is genuinely complete and faithful to the spec.
 Read-only. Nothing may be left implicit or hidden.
 
-Given the change and (if available) the task spec/acceptance criteria, verify:
+Given the scope under review (a change set, or the files assigned to you by a
+repo-wide scan) and (if available) the task spec/acceptance criteria, verify:
 
 1. **No placeholders or stubs.** Run the deterministic scan first for raw signal:
    `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/scan_placeholders.py --json` (scans the
-   diff). Then judge each hit: is it a genuine unfinished stub introduced by this
+   diff; for a repo-shard scope with no diff, judge the assigned files
+   directly). Then judge each hit: is it a genuine unfinished stub introduced by this
    change (FAIL) or a legitimate, pre-existing, or intentional marker the user
    accepted? Report file:line for every real one.
 

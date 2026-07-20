@@ -9,6 +9,7 @@ sets up in the repositories it manages.
 - [DELIVERY.md](DELIVERY.md) — Git/GitHub delivery: commits, PRs, and the merge policy.
 - [KNOWLEDGE.md](KNOWLEDGE.md) — the living-knowledge model (/docs, CHANGELOG, ADRs).
 - [AUDIT.md](AUDIT.md) — the project's self-audit and resolutions.
+- [SCAN.md](SCAN.md) — the repo-wide scanner (`/praxis:scan`): audit, reverse-audit, fix.
 - [STABILITY.md](STABILITY.md) — the stable public surface (v1.0, SemVer).
 - [ROADMAP.md](ROADMAP.md) — post-1.0 direction.
 - [INSTALL.md](INSTALL.md) — installation and auto-update.

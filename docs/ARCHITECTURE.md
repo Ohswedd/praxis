@@ -16,11 +16,11 @@ layers that fire automatically.
 ├─────────────────────────────────────────────────────────────────────┤
 │ 2. SKILLS                                                           │
 │    task-orchestrator, prompt-architect, best-practices, code-craft, │
-│    bootstrap, quality-rubric, claudemd-living, docs-living,         │
-│    capability-discovery, git-delivery                               │
+│    bootstrap, quality-rubric, repo-audit, claudemd-living,          │
+│    docs-living, capability-discovery, git-delivery                  │
 │    Reasoning workflows, auto-invoked when their description matches.│
 ├─────────────────────────────────────────────────────────────────────┤
-│ 3. SUBAGENTS  (seven read-only vertical auditors, Opus)             │
+│ 3. SUBAGENTS  (read-only, Opus: 7 vertical auditors + verifiers)    │
 │    Deep, verbose analysis in isolated context — one concern each.   │
 ├─────────────────────────────────────────────────────────────────────┤
 │ 4. HOOKS  (SessionStart, PreToolUse, PostToolUse, Stop)             │
@@ -99,6 +99,16 @@ Praxis keeps a project's knowledge current with every change, enforced as part o
 
 See `docs/KNOWLEDGE.md` for the full model.
 
+## Repo-wide scan (`/praxis:scan`)
+
+The change-audit machinery generalises to whole repositories via the
+`repo-audit` skill: `repo_scan.py` builds a deterministic shard ledger
+(inventory → shards → per-shard × dimension tracking → finding lifecycle), the
+seven vertical auditors run over every shard, and the `finding-verifier`
+subagent reverse-audits each finding before anything is fixed. Coverage claims
+come from recorded state — an unaudited shard makes the final report print
+INCOMPLETE. See `docs/SCAN.md`.
+
 ## Vertical vs horizontal
 
 - **Vertical analysis** = one subagent per concern, deep and isolated:
@@ -170,8 +180,9 @@ plugins/praxis/
   skills/*/SKILL.md                  task-orchestrator, prompt-architect, code-craft,
                                      bootstrap, quality-rubric, claudemd-living,
                                      capability-discovery
-  agents/*.md                        nine read-only subagents (7 verticals +
-                                     repo-cartographer + claudemd-verifier)
+  agents/*.md                        ten read-only subagents (7 verticals +
+                                     finding-verifier + repo-cartographer +
+                                     claudemd-verifier)
   hooks/hooks.json                   lifecycle wiring (command hooks)
   scripts/*.py                       hook implementations + utilities (stdlib only)
   scripts/lib/common.py              shared, defensive helpers

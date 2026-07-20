@@ -245,6 +245,7 @@ Your stated goals mapped to what implements them:
 | Don't finish unreviewed work | `quality_gate.py` (Stop hook) | **Deterministic block** |
 | Secrets / destructive safety | `guard_paths.py` (PreToolUse) | **Deterministic block** |
 | Precise structured output | output-style + orchestrator report template | Guided |
+| Audit/fix an entire existing repo | `repo-audit` skill + `repo_scan.py` ledger + `finding-verifier` reverse audit | Guided, **coverage tracked deterministically** |
 
 ---
 
