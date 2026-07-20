@@ -24,6 +24,12 @@
   and confirmed findings are fixed (or deferred with a plan). Coverage-honest
   reports, resumable across sessions; `--report-only` to skip fixes. See
   [`SCAN.md`](SCAN.md).
+- **Build a front-end.** `/praxis:frontend <request>` (or just ask — the skill
+  auto-invokes on UI work) runs the front-end pipeline for any niche: business
+  research → story-first wireframes → design system → development →
+  optimization, proportional to the task, with the design artifacts kept in
+  `docs/design/` and UI changes audited on the accessibility and
+  design-consistency verticals. See [`FRONTEND.md`](FRONTEND.md).
 - **Memory upkeep.** After conventions change, `/praxis:sync` updates the
   CLAUDE.md hierarchy with regression verification.
 - **Missing a tool.** `/praxis:discover` finds or creates the capability,
