@@ -15,6 +15,7 @@
     "claude-md",
     "regression",
     "adversarial",
+    "repo-scan",
     "harness",
     "orchestrator",
     "plan-mode",

@@ -44,12 +44,9 @@ def parse_verticals(s: str):
 
 
 def record(root, args) -> None:
-    def opt(name, default=None):
-        return args[args.index(name) + 1] if name in args and args.index(name) + 1 < len(args) else default
-
-    tests = opt("--tests", common.detect_test_command(root))
-    tests_exit_raw = opt("--tests-exit", None)
-    verticals = parse_verticals(opt("--verticals", ""))
+    tests = common.cli_opt(args, "--tests", common.detect_test_command(root))
+    tests_exit_raw = common.cli_opt(args, "--tests-exit", None)
+    verticals = parse_verticals(common.cli_opt(args, "--verticals", ""))
 
     tests_exit = None
     if tests_exit_raw is not None:

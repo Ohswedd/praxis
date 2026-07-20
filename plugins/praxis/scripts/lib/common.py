@@ -144,8 +144,11 @@ def working_tree_dirty(root: Path) -> bool:
     return len(git_status_porcelain(root)) > 0
 
 
-def tracked_files(root: Path, limit: int = 5000) -> List[str]:
-    out = _run(["git", "ls-files"], cwd=root)
+def tracked_files(root: Path, limit: int = 5000, pathspec: str = "") -> List[str]:
+    cmd = ["git", "ls-files"]
+    if pathspec:
+        cmd += ["--", pathspec]
+    out = _run(cmd, cwd=root)
     files = [f for f in out.splitlines() if f.strip()]
     return files[:limit]
 
@@ -276,6 +279,36 @@ def find_files(root: Path, name: str, limit: int = 500, max_dirs: int = 20000) -
     return found
 
 
+def walk_files(root: Path, limit: int = 20000, max_dirs: int = 20000):
+    """(relative sorted file paths, dir_cap_hit) under `root`, pruning noise dirs.
+
+    The non-git counterpart of `git ls-files`, used by the repo-scan inventory.
+    The boolean reports whether the walk stopped at `max_dirs` — a caller that
+    claims coverage (the scan ledger) must treat that as truncation, never as a
+    complete listing.
+    """
+    found: List[str] = []
+    visited = 0
+    for dirpath, dirnames, filenames in os.walk(root):
+        visited += 1
+        if visited > max_dirs:
+            return sorted(found), True
+        dirnames[:] = [d for d in dirnames if d not in PRUNE_DIRS and not d.startswith(".praxis")]
+        for name in filenames:
+            try:
+                found.append(os.path.relpath(os.path.join(dirpath, name), root))
+            except Exception:
+                continue
+            if len(found) >= limit:
+                return sorted(found), False
+    return sorted(found), False
+
+
+def list_files(root: Path, limit: int = 20000, max_dirs: int = 20000) -> List[str]:
+    """walk_files for callers that don't need the truncation signal."""
+    return walk_files(root, limit, max_dirs)[0]
+
+
 def find_files_multi(root: Path, names: set, limit: int = 500,
                      max_dirs: int = 20000) -> Dict[str, List[Path]]:
     """Like find_files but collects several filenames in a single pruned walk."""
@@ -305,19 +338,58 @@ def state_dir(root: Path) -> Path:
 
 
 def read_state(root: Path, name: str) -> Dict[str, Any]:
-    f = state_dir(root) / name
     try:
-        return json.loads(f.read_text(encoding="utf-8"))
+        return read_state_strict(root, name)
     except Exception:
         return {}
 
 
-def write_state(root: Path, name: str, data: Dict[str, Any]) -> None:
+def read_state_strict(root: Path, name: str) -> Dict[str, Any]:
+    """Like read_state, but distinguishes 'missing' ({}) from 'corrupt' (raises).
+
+    Hooks want the forgiving variant; the scan ledger must not mistake a
+    damaged file for an empty one (init would then clobber a real scan).
+    """
     f = state_dir(root) / name
+    if not f.exists():
+        return {}
+    data = json.loads(f.read_text(encoding="utf-8"))
+    return data if isinstance(data, dict) else {}
+
+
+def write_state(root: Path, name: str, data: Dict[str, Any]) -> None:
     try:
-        f.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        write_state_strict(root, name, data)
     except Exception:
         pass
+
+
+def write_state_strict(root: Path, name: str, data: Dict[str, Any]) -> None:
+    """Atomic state write (temp file + os.replace) that propagates failure.
+
+    Atomic so a crash mid-write can never corrupt existing state; strict so a
+    caller that must not lie about persistence (the scan ledger) fails loudly
+    instead of reporting success with nothing on disk. Hook callers use the
+    fail-open write_state wrapper instead.
+    """
+    f = state_dir(root) / name
+    tmp = f.with_name(f.name + ".tmp")
+    try:
+        tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        os.replace(tmp, f)
+    except Exception:
+        try:
+            tmp.unlink()
+        except Exception:
+            pass
+        raise
+
+
+def cli_opt(args: List[str], name: str, default=None):
+    """Value following `name` in a hand-parsed argv list (praxis CLI idiom)."""
+    if name in args and args.index(name) + 1 < len(args):
+        return args[args.index(name) + 1]
+    return default
 
 
 def autopilot_on(root: Path) -> bool:
