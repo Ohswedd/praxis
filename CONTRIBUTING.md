@@ -27,6 +27,36 @@ python -m compileall plugins/praxis/scripts       # compiles
 - Update `CHANGELOG.md` `[Unreleased]` for user-visible changes.
 - Record significant design decisions as an ADR under `docs/adr/`.
 
+## Releases
+
+Releases are automatic. Merging to `main` runs `.github/workflows/release.yml`,
+which derives the next SemVer from the Conventional Commits since the last tag,
+stamps it into `plugin.json` and `marketplace.json`, commits
+`chore(release): vX.Y.Z`, tags, and publishes the GitHub release from the
+matching `CHANGELOG.md` section.
+
+Two things follow from that:
+
+- **Finalize the changelog in your PR.** Run
+  `python plugins/praxis/scripts/changelog.py release <version>` so the release
+  notes exist when the workflow looks for them. Predict the version from your
+  commit types — `feat:` → MINOR, `fix:`/`perf:`/`refactor:` → PATCH, `!:` or
+  `BREAKING CHANGE` → MAJOR. Prefixes outside that set (`docs:`, `ci:`,
+  `chore:`, `test:`) cut no release at all.
+- **Do not hand-bump the version** in the manifests; the workflow owns them, and
+  a manual bump will disagree with what it derives.
+
+### If you protect `main`
+
+The release job pushes the `chore(release)` commit and the tag directly to
+`main`, which a protected branch rejects for the default `GITHUB_TOKEN`. The
+workflow checks for this before it stamps anything and fails with instructions
+rather than leaving a half-finished release. To keep releases working, either:
+
+- add a `RELEASE_TOKEN` repository secret — a PAT or GitHub App token allowed to
+  bypass the rule (the workflow prefers it over the default token); or
+- permit `github-actions[bot]` to bypass the branch protection / ruleset.
+
 ## Project layout
 See `docs/ARCHITECTURE.md` (design), `docs/FLOWS.md` (behaviour), and
 `docs/KNOWLEDGE.md` (living-knowledge model).

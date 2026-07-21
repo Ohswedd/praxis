@@ -6,6 +6,10 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- CI: actions/checkout and actions/setup-python bumped to v7, which run natively on Node 24 and clear the Node 20 deprecation warning
+- CI: the release job survives a protected main — it accepts a RELEASE_TOKEN secret and verifies it can write to the branch before stamping anything, instead of failing mid-release with a half-applied version bump
+
 ## [1.5.1] - 2026-07-21
 
 ### Fixed
