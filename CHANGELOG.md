@@ -6,6 +6,11 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-07-22
+
+### Added
+- Marketplace entry now carries the discovery metadata Claude Code and the official plugin directory read — displayName, category, author, homepage, license and keywords — so Praxis presents properly in the /plugin UI and is submission-ready. Validated with 'claude plugin validate'
+
 ### Changed
 - CI: actions/checkout and actions/setup-python bumped to v7, which run natively on Node 24 and clear the Node 20 deprecation warning
 - CI: the release job survives a protected main — it accepts a RELEASE_TOKEN secret and verifies it can write to the branch before stamping anything, instead of failing mid-release with a half-applied version bump

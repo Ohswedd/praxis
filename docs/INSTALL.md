@@ -8,6 +8,13 @@
   installs). On Windows, ensure `python3` resolves, or adjust the hook commands
   in `hooks/hooks.json` to `python`.
 
+> **Why isn't Praxis in `/plugin > Discover`?** That browser lists only
+> `anthropics/claude-plugins-official`, Anthropic's curated directory. Praxis
+> hosts its own marketplace, so it is reached by adding this repository
+> explicitly — which is why every install below starts with
+> `/plugin marketplace add`. Listing in the official directory is a separate
+> submission, not a consequence of publishing.
+
 ## Option A — from GitHub (recommended, supports auto-update)
 
 1. Push this repository to GitHub (public, or private if your org allows).
