@@ -9,6 +9,7 @@ All notable changes to praxis are documented here. The format follows
 ### Changed
 - CI: actions/checkout and actions/setup-python bumped to v7, which run natively on Node 24 and clear the Node 20 deprecation warning
 - CI: the release job survives a protected main — it accepts a RELEASE_TOKEN secret and verifies it can write to the branch before stamping anything, instead of failing mid-release with a half-applied version bump
+- README rebuilt around its own craft rules: a visual identity (banner, pipeline and layer diagrams as accessible SVGs), a lead that states what praxis is for, and hierarchy in place of a flat 22-row capability table — plus badges, a contents nav, and repo topics/description for discoverability
 
 ## [1.5.1] - 2026-07-21
 

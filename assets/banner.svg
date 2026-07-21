@@ -1,0 +1,65 @@
+<svg width="880" height="220" viewBox="0 0 880 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bt bd">
+  <title id="bt">Praxis — the disciplined practice of engineering, applied automatically in Claude Code</title>
+  <desc id="bd">The Praxis wordmark beside a gate mark — a circle crossed by a threshold bar with a check above it — over the tagline and the pipeline stages: spec, investigate, plan, implement, audit, document, ship.</desc>
+
+  <defs>
+    <linearGradient id="paper" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0%" stop-color="#FAF8F4"/>
+      <stop offset="100%" stop-color="#EFEBE2"/>
+    </linearGradient>
+    <clipPath id="card">
+      <rect x="1" y="1" width="878" height="218" rx="16"/>
+    </clipPath>
+  </defs>
+
+  <rect x="1" y="1" width="878" height="218" rx="16" fill="url(#paper)" stroke="#D8D1C3" stroke-width="1.5"/>
+
+  <!-- drafting field: the measured grid the practice is done on -->
+  <g clip-path="url(#card)" stroke="#12161D" opacity="0.075">
+    <g stroke-width="1">
+      <path d="M620 0v220M660 0v220M700 0v220M740 0v220M780 0v220M820 0v220M860 0v220"/>
+      <path d="M600 30h280M600 70h280M600 110h280M600 150h280M600 190h280"/>
+    </g>
+    <g stroke-width="1.4" opacity="0.7">
+      <circle cx="760" cy="110" r="86" fill="none"/>
+      <circle cx="760" cy="110" r="54" fill="none"/>
+    </g>
+  </g>
+
+  <!-- mark: a gate you only pass once the work is verified -->
+  <g transform="translate(52 62)">
+    <circle cx="48" cy="48" r="46" fill="#12161D"/>
+    <circle cx="48" cy="48" r="46" fill="none" stroke="#167A5B" stroke-width="2.5"/>
+    <path d="M28 52.5 41.5 65 70 33.5" fill="none" stroke="#F5F2EC" stroke-width="7"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <rect x="24" y="76" width="48" height="4.5" rx="2.25" fill="#167A5B"/>
+  </g>
+
+  <text x="168" y="94" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="62" font-weight="700" letter-spacing="-2" fill="#12161D">praxis</text>
+
+  <text x="171" y="128" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="17.5" font-weight="500" fill="#4A5462">the disciplined practice of engineering,</text>
+  <text x="171" y="151" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="17.5" font-weight="500" fill="#4A5462">applied automatically inside Claude Code.</text>
+
+  <!-- the pipeline, as a measured rule along the base -->
+  <g transform="translate(171 180)">
+    <line x1="0" y1="0" x2="640" y2="0" stroke="#C9C2B4" stroke-width="1.5"/>
+    <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+       font-size="10.5" font-weight="600" letter-spacing="1.4" fill="#6B7482">
+      <g fill="#167A5B">
+        <circle cx="0" cy="0" r="3.5"/><circle cx="106" cy="0" r="3.5"/><circle cx="212" cy="0" r="3.5"/>
+        <circle cx="318" cy="0" r="3.5"/><circle cx="424" cy="0" r="3.5"/><circle cx="530" cy="0" r="3.5"/>
+        <circle cx="640" cy="0" r="3.5"/>
+      </g>
+      <text x="0" y="20">SPEC</text>
+      <text x="106" y="20">INVESTIGATE</text>
+      <text x="212" y="20">PLAN</text>
+      <text x="318" y="20">IMPLEMENT</text>
+      <text x="424" y="20">AUDIT</text>
+      <text x="530" y="20">DOCUMENT</text>
+      <text x="640" y="20">SHIP</text>
+    </g>
+  </g>
+</svg>
