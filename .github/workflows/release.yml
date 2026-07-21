@@ -13,10 +13,10 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -68,9 +68,14 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          # The release pushes a commit and a tag to `main`. A protected branch
+          # rejects pushes made with the default GITHUB_TOKEN, so allow a
+          # RELEASE_TOKEN (a PAT or GitHub App token permitted to bypass) to be
+          # supplied. Falls back to the default token when main is unprotected.
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
 
       - name: Derive next version from conventional commits
         id: bump
@@ -96,6 +101,34 @@ jobs:
           echo "version=$a.$b.$c" >> "$GITHUB_OUTPUT"
           echo "release=true" >> "$GITHUB_OUTPUT"
 
+      - name: Preflight — confirm this job may write to main
+        if: steps.bump.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HAS_RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN != '' }}
+        run: |
+          # Fail BEFORE anything is stamped or tagged. A push rejected halfway
+          # leaves manifests bumped locally, no tag on the remote, and a release
+          # step that then fails on --verify-tag — a confusing state to unpick.
+          # Only rules that actually block a direct push count; a repo can carry
+          # benign rulesets (tag rules, linear history) that this must not trip on.
+          blocking=$(gh api "repos/${GITHUB_REPOSITORY}/rules/branches/${GITHUB_REF_NAME}" \
+            --jq '[.[] | select(.type == "pull_request" or .type == "required_status_checks")] | length' \
+            2>/dev/null || echo 0)
+          if gh api "repos/${GITHUB_REPOSITORY}/branches/${GITHUB_REF_NAME}/protection" \
+               --jq '.required_pull_request_reviews' >/dev/null 2>&1; then
+            blocking=$((blocking + 1))
+          fi
+          if [ "$blocking" -gt 0 ] && [ "$HAS_RELEASE_TOKEN" != "true" ]; then
+            echo "::error::${GITHUB_REF_NAME} requires pull requests, but no RELEASE_TOKEN secret is set." \
+                 "This job must push the chore(release) commit and tag directly." \
+                 "Fix by either (a) adding a RELEASE_TOKEN secret — a PAT or GitHub App token" \
+                 "allowed to bypass the rule — or (b) permitting github-actions[bot] to bypass it." \
+                 "See CONTRIBUTING.md section Releases."
+            exit 1
+          fi
+          echo "Writable: blocking_rules=$blocking release_token=$HAS_RELEASE_TOKEN"
+
       - name: Stamp version into manifests and tag
         if: steps.bump.outputs.release == 'true'
         run: |
@@ -116,7 +149,14 @@ jobs:
           git config user.email "actions@github.com"
           git commit -am "chore(release): v$v" || true
           git tag "v$v"
-          git push origin HEAD --tags
+          if ! git push origin HEAD; then
+            echo "::error::Could not push the release commit to ${GITHUB_REF_NAME}." \
+                 "If the branch is protected, set a RELEASE_TOKEN secret that may bypass it" \
+                 "(see CONTRIBUTING.md § Releases). No tag was pushed, so re-running this" \
+                 "job after fixing the permission is safe."
+            exit 1
+          fi
+          git push origin "v$v"
 
       - name: Publish the GitHub release
         if: steps.bump.outputs.release == 'true'
