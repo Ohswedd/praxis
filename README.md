@@ -12,10 +12,16 @@ Every push is CI-verified: JSON manifests, plugin self-check, and the full test 
 ## Quickstart
 
 ```
-/plugin marketplace add Ohswedd/praxis     # or a local path
-/plugin install praxis@praxis              # the praxis-quality mindset turns on automatically
-/praxis:bootstrap                          # set up the repo (CLAUDE.md, /docs, guardrails)
+/plugin marketplace add Ohswedd/praxis      # or a local path
+/plugin install praxis@ohswedd-praxis       # the praxis-quality mindset turns on automatically
+/praxis:bootstrap                           # set up the repo (CLAUDE.md, /docs, guardrails)
 ```
+
+> **Installed before v1.5.1?** The marketplace was renamed `praxis` →
+> `ohswedd-praxis` (an unrelated project publishes one under the old name, and
+> Claude Code keeps only one marketplace per name). Run
+> `/plugin marketplace remove praxis`, then the two commands above. The plugin
+> and every `/praxis:*` command are unchanged.
 
 Then just describe what you want — *"fix the pagination bug"*, *"integrate Stripe"* —
 and pick your effort (`/effort high` or `ultracode`). Optional: `/praxis:autopilot on`
@@ -140,7 +146,7 @@ and `touch .claude/.praxis/skip-gate`. The full stable surface is in
 /plugin marketplace add Ohswedd/praxis      # or:  /plugin marketplace add ./praxis
 
 # 2. Install the plugin — the praxis-quality output style turns on automatically
-/plugin install praxis@praxis
+/plugin install praxis@ohswedd-praxis
 ```
 
 The `praxis-quality` output style auto-enables with the plugin (`force-for-plugin`)

@@ -1,17 +1,17 @@
 {
-  "name": "praxis",
+  "name": "ohswedd-praxis",
   "owner": {
     "name": "praxis maintainers"
   },
   "metadata": {
-    "description": "Praxis \u2014 an enterprise-grade quality harness and autonomous task engine for Claude Code. Routes every prompt (not just slash commands) into the full pipeline: restructure into a spec, plan, implement to production standard with the right engineering best-practices, then audit adversarially (regression/duplication/performance/edge-case/completeness/doc-first, plus accessibility and design-consistency on UI changes). Runs a front-end pipeline with real design craft (research \u2192 wireframes \u2192 design system \u2192 build \u2192 optimize) for any UI niche, and keeps the project's living knowledge (/docs, CHANGELOG, ADRs) current with no regression. Deterministic gates block unfinished work and verify the tests actually passed.",
+    "description": "Praxis — an enterprise-grade quality harness and autonomous task engine for Claude Code. Routes every prompt (not just slash commands) into the full pipeline: restructure into a spec, plan, implement to production standard with the right engineering best-practices, then audit adversarially (regression/duplication/performance/edge-case/completeness/doc-first, plus accessibility and design-consistency on UI changes). Runs a front-end pipeline with real design craft (research → wireframes → design system → build → optimize) for any UI niche, and keeps the project's living knowledge (/docs, CHANGELOG, ADRs) current with no regression. Deterministic gates block unfinished work and verify the tests actually passed.",
     "version": "1.5.0"
   },
   "plugins": [
     {
       "name": "praxis",
       "source": "./plugins/praxis",
-      "description": "Turn any prompt \u2014 command or not \u2014 into a complete, production-ready change with living documentation: restructure \u2192 investigate \u2192 plan \u2192 implement (code-craft + best-practices) \u2192 full audit \u2192 update /docs, CHANGELOG and ADRs \u2192 structured report, then an optional reviewable PR. Bootstraps any repo, keeps CLAUDE.md and docs regression-free, runs fully autonomous in auto-pilot, and gates every change so nothing is placeholdered, deferred, undocumented, or silently out of scope."
+      "description": "Turn any prompt — command or not — into a complete, production-ready change with living documentation: restructure → investigate → plan → implement (code-craft + best-practices) → full audit → update /docs, CHANGELOG and ADRs → structured report, then an optional reviewable PR. Bootstraps any repo, keeps CLAUDE.md and docs regression-free, runs fully autonomous in auto-pilot, and gates every change so nothing is placeholdered, deferred, undocumented, or silently out of scope."
     }
   ]
 }

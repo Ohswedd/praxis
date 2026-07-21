@@ -75,7 +75,7 @@ disableable via those switches — remove or edit `hooks/hooks.json` if you must
 
 ## Uninstall & cleanup
 
-- Remove the plugin: `/plugin uninstall praxis@praxis` (and
+- Remove the plugin: `/plugin uninstall praxis@ohswedd-praxis` (and
   `/plugin marketplace remove praxis` if you added it locally).
 - Per-repo state lives in `.claude/.praxis/` (git-ignored); delete it to reset
   Praxis's memory for that repo. Your `/docs`, `CHANGELOG.md`, ADRs, and

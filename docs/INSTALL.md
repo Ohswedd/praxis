@@ -15,7 +15,7 @@
 
    ```
    /plugin marketplace add Ohswedd/praxis
-   /plugin install praxis@praxis
+   /plugin install praxis@ohswedd-praxis
    ```
 
 3. Enable auto-update by adding the marketplace to your settings
@@ -38,7 +38,7 @@ From the repo root:
 
 ```
 /plugin marketplace add ./          # registers the marketplace in this folder
-/plugin install praxis@praxis
+/plugin install praxis@ohswedd-praxis
 ```
 
 Or load without installing, for a single session:
@@ -49,6 +49,23 @@ claude --plugin-dir ./plugins/praxis
 
 After editing a skill's SKILL.md it applies immediately; after editing hooks,
 agents, MCP, or output styles run `/reload-plugins` or restart the session.
+
+## Upgrading from a release before v1.5.1
+
+The marketplace was renamed from `praxis` to `ohswedd-praxis`, because an
+unrelated project (`xD4O/praxis`) publishes a marketplace under the same name —
+and Claude Code allows only one marketplace per name, silently replacing the
+first with the second. The plugin itself is still `praxis`, and every
+`/praxis:*` command is unchanged.
+
+Claude Code migrates plugin renames automatically, but not marketplace renames,
+so this one is manual and takes two commands:
+
+```
+/plugin marketplace remove praxis
+/plugin marketplace add Ohswedd/praxis
+/plugin install praxis@ohswedd-praxis
+```
 
 ## The quality mindset (automatic)
 
