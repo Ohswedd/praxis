@@ -6,6 +6,8 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-07-22
+
 ### Added
 - Marketplace entry now carries the discovery metadata Claude Code and the official plugin directory read — displayName, category, author, homepage, license and keywords — so Praxis presents properly in the /plugin UI and is submission-ready. Validated with 'claude plugin validate'
 
