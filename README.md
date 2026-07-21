@@ -1,137 +1,172 @@
-# Praxis
+<p align="center">
+  <img src="assets/banner.svg" alt="Praxis — the disciplined practice of engineering, applied automatically inside Claude Code" width="820">
+</p>
 
-**The disciplined practice of engineering, applied automatically — inside Claude Code.**
+<p align="center">
+  <a href="https://github.com/Ohswedd/praxis/actions/workflows/release.yml"><img src="https://github.com/Ohswedd/praxis/actions/workflows/release.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/Ohswedd/praxis/releases/latest"><img src="https://img.shields.io/github/v/release/Ohswedd/praxis?color=167A5B&label=release" alt="Latest release"></a>
+  <img src="https://img.shields.io/badge/Claude%20Code-plugin-12161D" alt="Claude Code plugin">
+  <img src="https://img.shields.io/badge/python-3.8%2B%20stdlib%20only-4A5462" alt="Python 3.8+, standard library only">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-167A5B" alt="MIT">
+  </a>
+</p>
 
-> *Praxis* is the enactment of theory into practice. That is what this tool does:
-> it turns engineering principles and best-practices into production-grade software,
-> autonomously, while keeping your project's knowledge alive and regression-free.
+Claude Code will happily tell you a change is done. Praxis is the part that
+disagrees. It turns the review you would otherwise retype into every prompt —
+*read the docs first, reuse what exists, try to break it, check what it broke,
+finish it* — into behaviour that lives in the session lifecycle, and it holds a
+turn open until the work actually holds up.
 
-_Stable public surface under SemVer — see [`docs/STABILITY.md`](docs/STABILITY.md).
-Every push is CI-verified: JSON manifests, plugin self-check, and the full test suite._
+*Praxis* is theory enacted: the point at which principles stop being advice and
+become what you do.
 
-## Quickstart
+**Contents** ·
+[Install](#install) · [How it works](#how-it-works) · [What you get](#what-you-get) ·
+[Commands](#commands) · [Configuration](#configuration) · [Safety](#safety) ·
+[Docs](#documentation)
+
+## Install
 
 ```
-/plugin marketplace add Ohswedd/praxis      # or a local path
-/plugin install praxis@ohswedd-praxis       # the praxis-quality mindset turns on automatically
-/praxis:bootstrap                           # set up the repo (CLAUDE.md, /docs, guardrails)
+/plugin marketplace add Ohswedd/praxis
+/plugin install praxis@ohswedd-praxis
+/praxis:bootstrap
 ```
+
+Then describe what you want — *"fix the pagination bug"*, *"integrate Stripe"* —
+and pick your effort (`/effort high`, or `ultracode`). There is no command to
+remember: the `praxis-quality` output style enables itself with the plugin, and a
+prompt router engages the right skills from how you phrased the request.
+
+Requires **Claude Code** (v2.1.139+ recommended) and **Python 3.8+** on `PATH`.
+Hooks are standard-library only — no pip installs, no third-party supply chain.
+macOS and Linux work out of the box; on Windows, ensure `python3` resolves.
 
 > **Installed before v1.5.1?** The marketplace was renamed `praxis` →
-> `ohswedd-praxis` (an unrelated project publishes one under the old name, and
-> Claude Code keeps only one marketplace per name). Run
-> `/plugin marketplace remove praxis`, then the two commands above. The plugin
-> and every `/praxis:*` command are unchanged.
+> `ohswedd-praxis`, because an unrelated project publishes one under the old name
+> and Claude Code keeps only one marketplace per name. Run
+> `/plugin marketplace remove praxis`, then the commands above. The plugin and
+> every `/praxis:*` command are unchanged.
 
-Then just describe what you want — *"fix the pagination bug"*, *"integrate Stripe"* —
-and pick your effort (`/effort high` or `ultracode`). Optional: `/praxis:autopilot on`
-for a hands-off run, and `/praxis:ship` to open a reviewable PR when the change is done.
+## How it works
 
-The `praxis-quality` output style activates automatically once the plugin is enabled,
-so the doctrine is on from the first turn — no command to remember.
+You state the idea. Praxis sizes the request, runs the pipeline, and refuses to
+call it finished until the audit is green.
 
-Praxis turns a batch of engineering checks you would otherwise retype into every
-prompt — *documentation-first, no reinvention, no over-engineering, adversarial audit,
-regression, performance, edge cases, vertical + horizontal analysis* — into
-**permanent, automatic behaviour** that lives in the Claude Code lifecycle instead
-of your prompts.
+<p align="center">
+  <img src="assets/pipeline.svg" alt="Any prompt enters a seven-stage pipeline — spec, investigate, plan, implement, audit, document, ship. A Stop gate returns the work to implement while it is unfinished, unverified or unaudited, and releases it once the audit is green." width="900">
+</p>
 
-It also **bootstraps any repository** (brand-new, existing-without-setup, or one
-with a legacy `CLAUDE.md`) to a top-tier Claude Code configuration, keeps the
-`CLAUDE.md` hierarchy **continuously updated and regression-verified**, and maintains
-your project's **living knowledge** — a `/docs` tree, a `CHANGELOG.md`, and
-Architecture Decision Records — current with every change.
+The gate is the part that matters. It is a Stop hook, not a suggestion: while the
+tree has unreviewed changes, the turn does not end. Refusals escalate — first the
+workflow, then the specific evidence that is missing, then a demand that you
+either finish or tell the user plainly that the change is going out unaudited.
+Two caps and a fail-open path guarantee it can never trap a session.
 
-**From a one-line prompt to a production-ready change.** Ask *"fix this"* or
-*"integrate X"* and Praxis runs the whole pipeline for you:
+Four layers, only one of which has authority:
 
-```
-restructure the request → investigate the code-base → plan (plan mode)
-   → implement (professional code-craft) → full audit → update docs & changelog
-   → structured report → (optional) ship a reviewable PR
-```
+<p align="center">
+  <img src="assets/layers.svg" alt="Four layers: the output style sets the doctrine every turn; skills carry the reasoning workflows; nine read-only subagents perform the vertical audits in isolated context; hooks are the deterministic gates and the only layer that can refuse." width="900">
+</p>
 
-No jumping straight to edits, no placeholders or stubs, no silently narrowed scope,
-no "missing" pieces you were never told about — and a precise, structured report at
-the end.
+## What you get
 
-**You state the macro idea; Claude does the rest.** Praxis sizes each request
-(trivial / standard / substantial) and applies the right amount of machinery
-automatically — for large multi-step tasks it opens a self-driving task so the
-session runs to completion without you managing `/goal`. It composes with your
-habitual `/effort high` or `/effort ultracode`. See [`docs/MODES.md`](docs/MODES.md).
+### It engages without being asked
 
-> Designed for quality over cost. It runs entirely **in the interactive session**
-> so a Claude **Pro/Max subscription** covers it — see
-> [`docs/USAGE.md`](docs/USAGE.md) for why the harness deliberately avoids the
-> headless/`-p` path.
+A `UserPromptSubmit` router reads each request and names the skills it needs, so
+a bare *"fix the checkout page"* runs the same pipeline as `/praxis:task` —
+including the front-end pipeline and the UI auditors when the request touches an
+interface. Questions, slash commands and acknowledgements are left alone.
 
----
+### It refuses to hand back unfinished work
 
-## What it does
-
-| Capability | How |
+| Refused | Detected by |
 | --- | --- |
-| **End-to-end task engine** | `task-orchestrator` skill runs restructure → investigate → plan → implement → audit → report |
-| **Prompt restructuring** | `prompt-architect` skill turns a vague prompt into goal / scope / non-goals / acceptance criteria |
-| **Always-on, no keywords** | the workflow is carried by an always-injected SessionStart directive + output style, **plus a per-prompt router** that names the skills each request needs — so a bare "fix the checkout page" engages the same pipeline as `/praxis:task`, and it is enforced by change-based gates however you phrase the request |
-| **Best-practices, by need** | `best-practices` skill selects and applies the minimal relevant families (SOLID, DDD, REST, ACID/CAP, OWASP, testing, clean code, performance…) for the change's domains, from a curated catalog |
-| **Living knowledge** | maintains the project's `/docs`, `CHANGELOG.md`, and ADRs — read/searched/updated/created for every change, no regression, always current |
-| **Git/GitHub delivery** | `git-delivery` skill (`/praxis:ship`): Conventional Commit → branch → push → PR. Human-in-the-loop merge by default; opt-in `git.auto_merge` reviews and merges autonomously — never without a green audit |
-| **Professional code-craft** | `code-craft` skill: comments that explain *why*, self-documenting names, simplicity/YAGNI (no over-engineering, no reinvention), no debug or dead code |
-| **Auto-pilot** | zero questions: Praxis does its own QA, resolves every design decision by the best-practice that fits, and logs each under "Decisions taken autonomously" (safety guards stay active) |
-| **Plan-first** | output style + orchestrator require a plan (plan mode) before any file is edited |
-| **Completeness enforcement** | `completeness-auditor` subagent + `scan_placeholders.py`: no TODOs/stubs/placeholders, no silently narrowed scope |
-| **Always-on quality mindset** | `praxis-quality` output style modifies the system prompt every turn — auto-enabled with the plugin, layered on top of Claude Code's built-in engineering instructions |
-| **Universal bootstrap** | `bootstrap` skill classifies repo state and sets up / migrates CLAUDE.md + guardrails |
-| **Living CLAUDE.md** | `claudemd-living` skill updates root + nested files, regression-verified, never overwriting valid instructions |
-| **Auto-discovery of capabilities** | `capability-discovery` skill finds an existing MCP/skill/plugin before scaffolding a new one |
-| **Vertical review** | nine read-only Opus subagents: adversarial, regression, duplication (incl. over-engineering), performance, edge-case, doc-reference, completeness — plus accessibility and design-consistency for UI-touching changes |
-| **Front-end pipeline** | `frontend-pipeline` skill (`/praxis:frontend`): business research (client call → goals → audience → competitors → positioning → messaging) → story-first wireframes → design system → development → optimization → ship, for any UI niche (sites, storefronts, lead pages, SaaS UI, CRM/CMS, admin panels, dashboards) — proportional to task size, with design artifacts kept as living knowledge (`docs/design/`) |
-| **Repo-wide scanner** | `repo-audit` skill (`/praxis:scan`): shard-ledger inventory of the whole codebase, every vertical auditor over every shard, adversarial reverse-audit of each finding (`finding-verifier`), fixes in audited change-sets — coverage-honest starting & final reports, resumable on large repos |
-| **Horizontal review + orchestration** | `quality-rubric` skill runs the cross-cutting pass and loops until green |
-| **Deterministic gates** | hooks: a secret/destructive-command guard (blocks force-pushes, destructive resets, and secret exfiltration — even under `--dangerously-skip-permissions`), auto-format on edit, and a **Stop gate** that won't let a turn finish while code is unreviewed |
-| **Structured reporting** | canonical report: what changed, criteria met, audit table, tests, out-of-scope, assumptions |
-| **Session orientation** | `SessionStart` hook injects a repo health report + standing directives into context |
+| A `TODO`, stub, or `NotImplementedError` in your own diff | deterministic scan of the working-tree diff | <!-- praxis:ack — naming the marker is the point here -->
+| Deferral prose — *"for now"*, *"in a real implementation"*, *"you can extend this"* | comment-level scan; `praxis:ack` exempts a genuine case |
+| A test suite that was never run | `report.py` executes the suite itself and records the real exit code |
+| Scope quietly narrowed | the completeness auditor checks the change against its own spec |
+
+Unless you ask for a prototype, the deliverable is the finished product — error
+handling and the states you know are needed are in scope, not follow-ups.
+
+### It audits like an adversary
+
+Nine read-only subagents, each with one concern and its own context:
+**adversarial**, **regression**, **duplication** (including over-engineering),
+**performance**, **edge-case**, **doc-reference**, **completeness** — plus
+**accessibility** and **design-consistency** whenever a change touches UI. A
+horizontal pass then checks the change reads as one coherent whole, and the loop
+repeats until every vertical is green.
+
+`/praxis:scan` applies the same auditors to an entire existing codebase, shard by
+shard, adversarially re-verifying every finding before acting on it and reporting
+coverage honestly.
+
+### It designs, not just complies
+
+The front-end pipeline runs business research → story-first wireframes → design
+system → build → optimize, for any niche. Its craft reference names the tells of
+generated UI — centered everything, the violet gradient hero, three equal cards,
+a rocket icon standing in for evidence, lorem ipsum — and treats them as defects
+rather than taste. Invented proof (a fabricated quote, logo, rating, or metric)
+is a hard failure.
+
+### It keeps the project's knowledge alive
+
+Every behaviour, API, config or architecture change updates `/docs`, adds a
+`CHANGELOG.md` entry, and records an ADR when the decision was significant or
+taken autonomously. The `CLAUDE.md` hierarchy is kept current and
+regression-verified — proposed as diffs, never silently overwritten.
+
+### It can run the whole thing unattended
+
+`/praxis:autopilot on` stops the questions: Praxis resolves each design decision
+by the best-practice that fits and records it under *Decisions taken
+autonomously*. Safety guards stay active regardless. For a long task it opens a
+self-driving task so the session runs to completion — you never manage `/goal`.
+
+> Praxis is built for quality over cost, and runs entirely in the interactive
+> session, so a Claude Pro/Max subscription covers it. See
+> [`docs/USAGE.md`](docs/USAGE.md) for why it avoids the headless path.
 
 ## Commands
 
-- `/praxis:task <request>` — run the full pipeline end-to-end on a request
-- `/praxis:frontend <request>` — run the front-end pipeline: research → story wireframes → design system → build → optimize → ship
-- `/praxis:spec <request>` — restructure a request into an explicit spec
-- `/praxis:bootstrap` — set up / migrate this repo
-- `/praxis:audit` — run the full quality rubric on the current change
-- `/praxis:scan [path] [--report-only]` — audit, reverse-audit, and fix the entire repo (coverage-honest, resumable)
-- `/praxis:sync` — update the CLAUDE.md hierarchy, regression-verified
-- `/praxis:docs` — update the living knowledge (/docs, CHANGELOG, ADRs)
-- `/praxis:ship` — deliver the change: Conventional Commit, push, open a PR (merge only if auto-merge is on)
-- `/praxis:release` — cut a release (SemVer bump + changelog finalize)
-- `/praxis:discover` — find or create a missing capability
-- `/praxis:autopilot [on|off]` — toggle no-questions auto-pilot mode
-- `/praxis:doctor` — diagnose setup health and drift
+You rarely need these — the router and the gate apply the pipeline on their own.
 
-> You usually don't need `/praxis:task` explicitly — the always-on directive
-> applies the pipeline to implementation work automatically, and Praxis's Stop
-> gate keeps the session working until the task is done (no `/goal` needed).
+| Command | What it does |
+| --- | --- |
+| `/praxis:task <request>` | run the full pipeline end to end |
+| `/praxis:frontend <request>` | research → wireframes → design system → build → optimize |
+| `/praxis:spec <request>` | restructure a request into an explicit spec |
+| `/praxis:audit` | run the quality rubric on the current change |
+| `/praxis:scan [path]` | audit, reverse-audit and fix an entire repo |
+| `/praxis:bootstrap` | set up or migrate this repo |
+| `/praxis:sync` | update the `CLAUDE.md` hierarchy, regression-verified |
+| `/praxis:docs` | update `/docs`, `CHANGELOG.md` and ADRs |
+| `/praxis:ship` | Conventional Commit → branch → PR |
+| `/praxis:release` | cut a release (SemVer bump + changelog) |
+| `/praxis:discover` | find or create a missing capability |
+| `/praxis:autopilot [on\|off]` | toggle no-questions mode |
+| `/praxis:doctor` | diagnose setup health and drift |
 
 ## Configuration
 
-Per-repo settings live in an optional, version-controlled `.praxis.toml` (all keys
-optional; defaults shown):
+Optional, version-controlled `.praxis.toml` — every key has a default:
 
 ```toml
 [gate]
-enabled = true          # the Stop quality/task gate
+enabled       = true     # the Stop quality/task gate
 require_tests = true     # a green report must record a passing test run
 
 [autopilot]
-default = false          # start sessions in auto-pilot
+default       = false    # start sessions in auto-pilot
 
 [audit]
-depth = "high"           # auditor depth hint: "high" | "max"
+depth         = "high"   # auditor depth: "high" | "max"
 
 [git]
-auto_merge = false       # off: open the PR and let a human merge; on: review + merge
+auto_merge     = false   # off: open the PR and let a human merge
 default_branch = ""      # PR base ("" auto-detects origin/HEAD, then main/master)
 ```
 
@@ -139,81 +174,45 @@ Session escapes: `PRAXIS_GATE=off`, `PRAXIS_AUTOPILOT=on`, `PRAXIS_AUTO_MERGE=on
 and `touch .claude/.praxis/skip-gate`. The full stable surface is in
 [`docs/STABILITY.md`](docs/STABILITY.md).
 
-## Install
+## Safety
 
-```bash
-# 1. Register the marketplace (from GitHub, or a local path)
-/plugin marketplace add Ohswedd/praxis      # or:  /plugin marketplace add ./praxis
+Installing any plugin runs its code on your machine. Praxis is deliberately
+conservative about that:
 
-# 2. Install the plugin — the praxis-quality output style turns on automatically
-/plugin install praxis@ohswedd-praxis
-```
-
-The `praxis-quality` output style auto-enables with the plugin (`force-for-plugin`)
-and layers its doctrine on top of Claude Code's built-in engineering instructions
-(`keep-coding-instructions`). It overrides your `outputStyle` while Praxis is
-enabled; disable the plugin to opt out. (The `/output-style` command was removed in
-Claude Code v2.1.91; output styles are now set via `/config` or the `outputStyle`
-setting.)
-
-For auto-update, add the marketplace to your settings with `autoUpdate: true`
-(see [`docs/INSTALL.md`](docs/INSTALL.md)).
-
-## Requirements & compatibility
-
-- **Claude Code** v2.1.139+ recommended (the optional `/goal` power-tool needs it;
-  Praxis's own loop does not).
-- **Python 3.8+** on `PATH` (`python3`). Hooks are **standard-library only** — no
-  pip installs, no third-party supply-chain surface.
-- **OS:** macOS and Linux out of the box. On Windows, ensure `python3` resolves
-  (or change the hook commands in `hooks/hooks.json` to `python`).
-- Verified by CI on every push: JSON manifests, plugin self-integrity
-  (`selfcheck.py`), and the full test suite (`tests/`).
-
-See [`SECURITY.md`](SECURITY.md) for the security posture and
-[`CONTRIBUTING.md`](CONTRIBUTING.md) to develop Praxis itself.
-
-## How it fits together
-
-```
-output style ──▶ mindset on every turn (plan-first, doc-first, complete, structured)
-skills ────────▶ task-orchestrator + prompt-architect + best-practices + code-craft +
-                 frontend-pipeline + bootstrap + quality-rubric + repo-audit +
-                 claudemd-living + docs-living + capability-discovery + git-delivery
-subagents ─────▶ deep vertical audits in isolated context (read-only, Opus)
-hooks ─────────▶ SessionStart directive + UserPromptSubmit skill router +
-                 PreToolUse guard + PostToolUse format + Stop task/quality gate
-```
-
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design,
-[`docs/FLOWS.md`](docs/FLOWS.md) for diagrams, worked examples, edge cases and a
-requirement→component traceability matrix, [`docs/MODES.md`](docs/MODES.md) for
-effort / `ultracode` / `/goal` / auto-mode recipes, [`docs/DELIVERY.md`](docs/DELIVERY.md)
-for the Git/GitHub delivery model, [`docs/KNOWLEDGE.md`](docs/KNOWLEDGE.md) for the
-living-knowledge model, [`docs/USAGE.md`](docs/USAGE.md) for day-to-day use, and
-[`docs/STABILITY.md`](docs/STABILITY.md) for the stable public surface. The
-[`docs/`](docs/) index lists everything.
-
-## Safety model
-
-Installing any plugin runs its code on your machine (hooks, scripts). Praxis is
-deliberately conservative:
-
-- **Deterministic guardrails.** A PreToolUse guard blocks secret-file access,
-  force-pushes, destructive resets, `rm -rf` on broad paths, and secret
-  exfiltration — and holds even under `--dangerously-skip-permissions`. It is a
-  best-effort backstop; your permission settings remain the primary control.
-- **Read-only auditors.** The nine vertical subagents are restricted to read-only
-  tools (`Read, Grep, Glob`; doc-reference also has `WebSearch`/`WebFetch`).
-- **Propose, don't overwrite.** Bootstrap and CLAUDE.md changes are shown as diffs
-  and confirmed; valid instructions are never silently dropped.
-- **Human-in-the-loop delivery.** Praxis opens PRs but never merges or force-pushes
-  on its own unless you opt in with `git.auto_merge`.
-- **Fail-open hooks.** If a hook script errors, the session continues.
-- **Clear escapes.** The Stop gate can be disabled per-repo
-  (`touch .claude/.praxis/skip-gate`) or per-session (`PRAXIS_GATE=off`).
-- **No shipped secrets / no live MCP.** MCP wiring is a template that references
+- **A guard that holds under `--dangerously-skip-permissions`.** A PreToolUse hook
+  blocks secret-file access, force-pushes, destructive resets, broad `rm -rf`, and
+  secret exfiltration. It is a backstop — your permission settings remain the
+  primary control.
+- **Read-only auditors.** The nine vertical subagents get `Read, Grep, Glob` and
+  nothing else (doc-reference also has web search).
+- **Propose, never overwrite.** Bootstrap and `CLAUDE.md` changes arrive as diffs;
+  valid instructions are never silently dropped.
+- **Human-in-the-loop delivery.** Praxis opens PRs. It does not merge or
+  force-push unless you opt in with `git.auto_merge`, and never without a green
+  audit.
+- **Fail-open hooks.** If a hook errors, the session continues.
+- **No shipped secrets, no live MCP.** MCP wiring is a template referencing
   environment variables.
+
+Full posture in [`SECURITY.md`](SECURITY.md).
+
+## Documentation
+
+| | |
+| --- | --- |
+| [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | the design, layer by layer |
+| [`FLOWS.md`](docs/FLOWS.md) | diagrams, worked examples, edge cases, traceability |
+| [`MODES.md`](docs/MODES.md) | effort, `ultracode`, auto-pilot, `/goal` |
+| [`FRONTEND.md`](docs/FRONTEND.md) | the front-end pipeline and its craft reference |
+| [`AUDIT.md`](docs/AUDIT.md) | Praxis audited against itself, findings and fixes |
+| [`KNOWLEDGE.md`](docs/KNOWLEDGE.md) | the living-knowledge model |
+| [`DELIVERY.md`](docs/DELIVERY.md) | the Git/GitHub delivery model |
+| [`STABILITY.md`](docs/STABILITY.md) | the stable public surface under SemVer |
+| [`INSTALL.md`](docs/INSTALL.md) · [`USAGE.md`](docs/USAGE.md) | setup and day-to-day use |
+
+To work on Praxis itself, see [`CONTRIBUTING.md`](CONTRIBUTING.md). It holds
+itself to the standards it enforces: every push is CI-verified for manifest
+validity, plugin self-integrity, and the full test suite.
 
 ## License
 

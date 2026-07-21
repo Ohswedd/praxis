@@ -1,0 +1,34 @@
+<svg width="900" height="330" viewBox="0 0 900 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="lt ld">
+  <title id="lt">How Praxis is built: four layers, only one of which can block</title>
+  <desc id="ld">Four stacked layers. Output style sets the mindset every turn. Skills carry the reasoning workflows. Read-only subagents perform deep vertical audits in isolated context. Hooks are the deterministic gates — the only layer that can refuse.</desc>
+
+  <rect x="1" y="1" width="898" height="328" rx="14" fill="#FAF8F4" stroke="#D8D1C3" stroke-width="1.5"/>
+
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+
+    <!-- 1. output style -->
+    <rect x="40" y="28" width="820" height="60" rx="10" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.4"/>
+    <text x="62" y="53" font-size="14.5" font-weight="700" fill="#12161D">output style</text>
+    <text x="62" y="74" font-size="13" fill="#4A5462">The doctrine, re-applied on every turn — plan first, document first, finish the work, report precisely.</text>
+    <text x="838" y="53" font-size="11.5" font-weight="600" letter-spacing="1.2" fill="#9AA2AE" text-anchor="end">ALWAYS ON</text>
+
+    <!-- 2. skills -->
+    <rect x="40" y="98" width="820" height="60" rx="10" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.4"/>
+    <text x="62" y="123" font-size="14.5" font-weight="700" fill="#12161D">skills</text>
+    <text x="62" y="144" font-size="13" fill="#4A5462">The reasoning workflows: orchestrator, prompt-architect, best-practices, code-craft, front-end, repo audit.</text>
+    <text x="838" y="123" font-size="11.5" font-weight="600" letter-spacing="1.2" fill="#9AA2AE" text-anchor="end">ROUTED PER PROMPT</text>
+
+    <!-- 3. subagents -->
+    <rect x="40" y="168" width="820" height="60" rx="10" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.4"/>
+    <text x="62" y="193" font-size="14.5" font-weight="700" fill="#12161D">subagents</text>
+    <text x="62" y="214" font-size="13" fill="#4A5462">Nine vertical auditors, one concern each, in isolated context — adversarial, regression, duplication, performance.</text>
+    <text x="838" y="193" font-size="11.5" font-weight="600" letter-spacing="1.2" fill="#9AA2AE" text-anchor="end">READ ONLY</text>
+
+    <!-- 4. hooks — the only layer with authority -->
+    <rect x="40" y="238" width="820" height="64" rx="10" fill="#12161D" stroke="#12161D" stroke-width="1.4"/>
+    <rect x="40" y="238" width="5" height="64" rx="2.5" fill="#167A5B"/>
+    <text x="62" y="264" font-size="14.5" font-weight="700" fill="#FAF8F4">hooks</text>
+    <text x="62" y="285" font-size="13" fill="#B9C0CB">Session orientation, the prompt router, the secret and destructive-command guard, and the Stop gate.</text>
+    <text x="838" y="264" font-size="11.5" font-weight="600" letter-spacing="1.2" fill="#167A5B" text-anchor="end">THE ONLY LAYER THAT CAN REFUSE</text>
+  </g>
+</svg>

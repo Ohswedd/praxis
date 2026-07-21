@@ -1,0 +1,70 @@
+<svg width="900" height="300" viewBox="0 0 900 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pt pd">
+  <title id="pt">The Praxis pipeline, and the gate that closes it</title>
+  <desc id="pd">Any prompt enters a seven-stage pipeline: spec, investigate, plan, implement, audit, document, ship. A Stop gate after the audit returns the work to implement while the change is unfinished, unverified, or unaudited, and only releases once the audit is green.</desc>
+
+  <defs>
+    <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10z" fill="#8A929E"/>
+    </marker>
+    <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10z" fill="#B4501C"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="898" height="298" rx="14" fill="#FAF8F4" stroke="#D8D1C3" stroke-width="1.5"/>
+
+  <text x="60" y="46" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="13" font-weight="600" letter-spacing="1.6" fill="#6B7482">ANY PROMPT — TYPED, NOT COMMANDED</text>
+  <text x="60" y="70" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="15" font-style="italic" fill="#12161D">“fix the pagination bug”</text>
+
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+     font-size="12.5" font-weight="600" fill="#12161D" text-anchor="middle">
+    <g>
+      <rect x="60"  y="96" width="96" height="44" rx="8" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.4"/>
+      <text x="108" y="123">spec</text>
+      <rect x="174" y="96" width="96" height="44" rx="8" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.4"/>
+      <text x="222" y="123">investigate</text>
+      <rect x="288" y="96" width="96" height="44" rx="8" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.4"/>
+      <text x="336" y="123">plan</text>
+      <rect x="402" y="96" width="96" height="44" rx="8" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.4"/>
+      <text x="450" y="123">implement</text>
+      <rect x="516" y="96" width="96" height="44" rx="8" fill="#12161D" stroke="#12161D" stroke-width="1.4"/>
+      <text x="564" y="123" fill="#FAF8F4">audit</text>
+      <rect x="630" y="96" width="96" height="44" rx="8" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.4"/>
+      <text x="678" y="123">document</text>
+      <rect x="744" y="96" width="96" height="44" rx="8" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.4" stroke-dasharray="4 3"/>
+      <text x="792" y="123">ship</text>
+    </g>
+  </g>
+
+  <g stroke="#8A929E" stroke-width="1.6" marker-end="url(#ah)">
+    <line x1="158" y1="118" x2="170" y2="118"/>
+    <line x1="272" y1="118" x2="284" y2="118"/>
+    <line x1="386" y1="118" x2="398" y2="118"/>
+    <line x1="500" y1="118" x2="512" y2="118"/>
+    <line x1="614" y1="118" x2="626" y2="118"/>
+    <line x1="728" y1="118" x2="740" y2="118"/>
+  </g>
+
+  <!-- the gate: the audit returns the work until it is genuinely done -->
+  <path d="M564 140 V196 Q564 208 552 208 H462 Q450 208 450 196 V148"
+        fill="none" stroke="#B4501C" stroke-width="1.8" marker-end="url(#ahg)"/>
+  <text x="462" y="230" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+        font-size="12.5" font-weight="600" fill="#B4501C">not green → keep working</text>
+
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5">
+    <text x="60" y="205" font-weight="600" letter-spacing="1.4" fill="#6B7482">THE GATE REFUSES</text>
+    <text x="60" y="228" fill="#4A5462">a TODO or “for now” in your own diff</text>
+    <text x="60" y="249" fill="#4A5462">a test suite that was never run</text>
+    <text x="60" y="270" fill="#4A5462">scope quietly narrowed and not reported</text>
+  </g>
+
+  <g transform="translate(700 196)">
+    <circle cx="10" cy="10" r="10" fill="#167A5B"/>
+    <path d="M5.5 10.5 8.5 13.5 14.5 6.5" fill="none" stroke="#FAF8F4" stroke-width="2.2"
+          stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="28" y="15" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
+          font-size="12.5" font-weight="600" fill="#167A5B">green → released</text>
+  </g>
+</svg>
