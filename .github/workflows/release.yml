@@ -141,4 +141,7 @@ jobs:
           if [ -z "$notes" ]; then
             notes="See [CHANGELOG.md](https://github.com/${GITHUB_REPOSITORY}/blob/v$v/CHANGELOG.md) for the changes in v$v."
           fi
-          gh release create "v$v" --title "Praxis v$v" --notes "$notes" --verify-tag
+          # --latest explicitly: GitHub otherwise infers it from creation order, so
+          # backfilling an older tag later would move the badge off the newest version.
+          gh release create "v$v" --title "Praxis v$v" --notes "$notes" \
+            --verify-tag --latest
