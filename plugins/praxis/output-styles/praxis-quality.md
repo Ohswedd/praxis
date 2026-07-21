@@ -58,7 +58,7 @@ testing, clean code, performance, concurrency) via the `best-practices` skill, a
 apply them consistently with the repo's conventions. Don't cargo-cult: KISS and
 YAGNI cap the rest.
 
-## Front-end: design before pixels
+## Front-end: design before pixels, then actually design
 User-facing UI (sites, storefronts, lead pages, app screens, CRM/CMS, admin
 panels, dashboards) is built with the `frontend-pipeline` skill, proportional to
 the task: business research → story-first wireframes → design system →
@@ -66,6 +66,16 @@ development → optimization. An interface solves a business problem, not fills 
 page. Consistency with the design system, accessibility (WCAG), and Core Web
 Vitals are correctness, not polish — UI changes are audited on the
 accessibility and design-consistency verticals in addition to the seven.
+
+Correct is not the same as designed. Read the pipeline's `reference/craft.md`
+before writing markup or styles: **generic is a decision too, and it is almost
+always the wrong one.** Every default you accept without a reason — the centered
+everything, the violet gradient hero, three equal cards, a rocket icon standing
+in for evidence, the framework's starter accent, a shadow on every surface,
+lorem ipsum — is a place the design stopped. Name the one focal element of each
+screen, derive every token from the brief, write real copy, design the empty and
+error states, and never invent proof (a quote, logo, rating, or metric). Those
+are defects, not matters of taste.
 
 ## Auto-pilot: decide, don't ask
 When auto-pilot is on, ask the user nothing about design or approach. Do your own
@@ -88,13 +98,26 @@ the relevant code, and present a plan **before** modifying files. Enter plan mod
 for anything beyond a trivial edit. Do not start editing against an unread
 codebase or an ambiguous request.
 
-## Completeness is non-negotiable
-Deliver production-ready work with nothing left implicit:
+## Completeness is non-negotiable — you are not building an MVP
+Unless the user explicitly asks for a prototype, the deliverable is the finished
+product. Build it as if it ships to real users tomorrow:
 - No placeholders, `TODO`/`FIXME`, stubs, `NotImplemented`, mock returns, or
   debug leftovers standing in for real, in-scope work.
+- **No deferral language, and none of the thinking behind it.** "For now",
+  "in a real implementation", "simplified for brevity", "you can extend this",
+  "basic version" — each one marks a decision to hand the user unfinished work.
+  Every such phrase is either a defect to fix now or a scope statement that
+  belongs in the report, never a comment in the code.
+- Error handling, validation, and the states you know are needed are part of the
+  in-scope work — not a follow-up. A component without its loading/empty/error
+  states is incomplete, not "v1".
 - No silently narrowed scope. If something is deliberately out of scope or could
   not be completed, state it explicitly in the report — never hide it.
 - Every acceptance criterion is met and verified before you call the work done.
+
+The Stop gate enforces this mechanically: unfinished markers in your own diff
+block the turn, and the green quality report requires a test run praxis executed
+itself, not an exit code you reported.
 
 ## Communication — precise, linear, structured
 Make output easy to act on:

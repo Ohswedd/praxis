@@ -159,8 +159,10 @@ flowchart TD
 **You type:** `fixami il bug di paginazione nella lista utenti`
 
 1. **Always-on:** the SessionStart directive + output style are already in
-   context, so Claude treats this as an engineering task (no keyword trigger, no
-   `/goal`). It opens a praxis task with the acceptance criteria.
+   context, and `UserPromptSubmit` routes this prompt as an `implement` request —
+   injecting the `task-orchestrator` pipeline by name, so the workflow engages
+   without a keyword trigger or `/goal`. Claude opens a praxis task with the
+   acceptance criteria.
 2. **Restructure (prompt-architect):**
    - Goal: pagination returns correct pages for the users list.
    - In scope: the paging logic + a regression test.
@@ -222,6 +224,9 @@ flowchart TD
 | **A hook script errors** | every hook is fail-open: on exception it exits 0, so the session never breaks because of praxis. |
 | **Not a git repo** | gate and signature logic no-op; guards and bootstrap still work. |
 | **No formatter installed** | PostToolUse formatting skips silently; nothing fails. |
+| **A question, not a task** | The prompt router stays silent on interrogatives, slash commands, and acknowledgements — no routing noise. |
+| **The audit genuinely can't finish** | The gate escalates 3× then releases, having instructed Claude to tell you the change is unaudited and what to check. |
+| **A deferral phrase is legitimate** | Annotate the line `praxis:ack`; the scanner records the acknowledgement in the code and exempts it. |
 | **Windows / no `python3`** | hooks need `python3` on PATH; on Windows adjust the hook commands to `python` (documented in INSTALL). |
 
 ---
@@ -237,7 +242,9 @@ Your stated goals mapped to what implements them:
 | Have the right CLAUDE.md | `bootstrap` + `claudemd-living` + `session_audit` | Guided + classified |
 | Plan mode before code | output-style + orchestrator Phase 3 | **Guided (not a hard block)** |
 | Keep working until the task is done | `quality_gate.py` task loop + `task.json` (no `/goal` needed) | **Deterministic** |
-| Invoke the right agents/skills | `quality-rubric` orchestration + skill descriptions | Guided |
+| Invoke the right agents/skills | `prompt_router.py` (UserPromptSubmit) names them per request + `quality-rubric` orchestration + skill descriptions | **Deterministic routing**, guided execution |
+| Finish it, don't ship an MVP | `scan_placeholders.py` deferral detection + escalating Stop gate + completeness-auditor | **Deterministic block** |
+| A designed UI, not a generic one | `frontend-pipeline` `reference/craft.md` + design-consistency-auditor §9 | Guided, gated by report |
 | Professional comments | `code-craft` skill | Guided |
 | Redo all audits, no regression | `quality-rubric` + 7 vertical subagents (+ accessibility & design-consistency on UI changes) | Guided, gated by report |
 | Professional front-end for any niche | `frontend-pipeline` skill + design artifacts (`docs/design/`) + a11y/design-consistency verticals | Guided, gated by report |

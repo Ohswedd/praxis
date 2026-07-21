@@ -38,7 +38,7 @@ front-end best-practices, then optimization, then ship. Output:
 | Layer | Front-end addition |
 | --- | --- |
 | Output style | "Front-end: design before pixels" doctrine, always on |
-| Skills | `frontend-pipeline` (+ its reference playbook: question banks, narrative arcs per niche, wireframe format, design-system checklist, artifact templates) |
+| Skills | `frontend-pipeline` + two references: **`playbook.md`** (question banks, narrative arcs per niche, wireframe format, design-system checklist, artifact templates) and **`craft.md`** (the visual judgement checklists can't encode — the tells of generated UI and what to do instead, hierarchy, typography, space, colour, depth, motion, the detail pass). The playbook makes an interface correct; craft.md is what makes it designed |
 | Subagents | `accessibility-auditor` (WCAG 2.2 AA) and `design-consistency-auditor` (tokens, scales, component reuse, states, responsiveness, story fidelity) — read-only, Opus, dispatched by the quality-rubric for any UI-touching change; the performance vertical covers Core Web Vitals for UI scope |
 | Hooks | unchanged — the same Stop gate refuses to finish an unreviewed change; the rubric records UI changes with `accessibility=pass,design-consistency=pass` in the evidence report (guided and gated by the report, like every vertical — see FLOWS.md §9) |
 

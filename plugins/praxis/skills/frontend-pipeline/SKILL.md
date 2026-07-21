@@ -19,10 +19,20 @@ discipline, the same Stop gate, the same quality rubric — plus the design
 phases and two extra vertical auditors for UI surface. Consistency creates
 trust; the pipeline is how consistency survives the project.
 
-The deep material (question banks, narrative patterns, wireframe format,
-design-system checklist, per-niche adaptations, artifact templates) lives in
-`${CLAUDE_PLUGIN_ROOT}/skills/frontend-pipeline/reference/playbook.md`. Read it
-when executing Phases 1–4; do not reinvent its content inline.
+Two references carry the depth; read them rather than reinventing their content
+inline:
+
+- **`reference/playbook.md`** — question banks, narrative patterns, wireframe
+  format, design-system checklist, per-niche adaptations, artifact templates.
+  Read when executing Phases 1–4.
+- **`reference/craft.md`** — the visual judgement the checklists cannot encode:
+  the tells of generated UI and what to do instead, hierarchy, typography,
+  space, colour, depth, motion, and the detail pass. **Read it before writing
+  any markup or styles, and again in Phase 5.** The playbook makes an interface
+  correct; craft.md is what makes it designed. Skipping it is how a
+  system-compliant page still ships looking generic.
+
+Both live under `${CLAUDE_PLUGIN_ROOT}/skills/frontend-pipeline/reference/`.
 
 ---
 
@@ -97,7 +107,9 @@ Define the system before styling any single page, sized to the project (a
 landing page needs a lean kit, a product UI needs a real component library):
 
 - **Brand identity** — 3–5 personality adjectives from the brief, translated
-  into a visual direction.
+  into a visual direction. Every token below traces to one of them: a palette,
+  a type family, or a radius you cannot justify from the brief is a default you
+  accepted rather than a decision you made (craft.md §1).
 - **Typography** — one or two families, a modular scale, line-height and
   measure rules.
 - **Color** — base/neutral/accent/semantic roles as tokens, with WCAG AA
@@ -127,6 +139,13 @@ exists** — with the front-end families from the **best-practices** catalog
 applied alongside the repo's own conventions. Copy comes from the messaging in
 the brief — not lorem ipsum, not improvised.
 
+Hold `craft.md` alongside §11 while you build. §11 keeps the interface correct;
+craft.md keeps it from reading as generated — name the focal element of each
+screen before you lay it out, take every §1 tell as a defect rather than a
+matter of taste, and design each state with real copy rather than leaving the
+framework's default. Build with real content at real lengths, including the
+long and the empty cases.
+
 ## Phase 5 — Optimization & QA (prove it, don't eyeball it)
 
 1. **Run the real thing.** Launch the app/site and walk every flow at the
@@ -137,9 +156,15 @@ the brief — not lorem ipsum, not improvised.
    `@praxis:accessibility-auditor` and `@praxis:design-consistency-auditor`
    (the quality-rubric skill dispatches them automatically for UI-touching
    changes; the perf vertical covers Core Web Vitals for UI scope).
-3. **Copy pass** — headlines state the value, CTAs state the action, error
-   messages help recovery, voice matches the brief.
-4. Fix every finding, then record the green report with the extended verticals
+3. **Craft pass** — work the `craft.md` §10 checklist yourself: focal element
+   and squint test per screen, headings-only story, no §1 tells, motion that
+   explains change, every state designed with real copy, detail pass clean at
+   320px / 768px / 1440px / 200% zoom. Each "no" is a finding, not a taste
+   argument.
+4. **Copy pass** — headlines state the value, CTAs state the action, error
+   messages help recovery, voice matches the brief, and no proof (quote, logo,
+   rating, metric) is invented.
+5. Fix every finding, then record the green report with the extended verticals
    string (see quality-rubric Step 5).
 
 ## Phase 6 — Ship & keep the knowledge alive

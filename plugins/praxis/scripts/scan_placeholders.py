@@ -6,6 +6,16 @@ Deterministic backstop for the rule "nothing left unfinished, no placeholders,
 no silently-narrowed scope". Scans either the working-tree diff (default) or
 given files for markers that signal unfinished or stubbed work.
 
+Two marker classes:
+  * literal markers (TODO, NotImplementedError, stub ellipsis, ...) praxis:ack
+    — matched everywhere;
+  * deferral prose — comments that admit the code is a stand-in without using a
+    literal marker ("temporary", "you can extend this", "omitted for brevity").
+    This is the usual shape of unfinished work in generated code, so it carries
+    the same weight. Matched only in comments, and never in prose files, where
+    such wording is description rather than a postponed implementation. A line
+    carrying `praxis:ack` is exempt.
+
 Usage:
     python3 scan_placeholders.py                # scan `git diff` added lines
     python3 scan_placeholders.py --all          # scan all tracked files
@@ -30,6 +40,38 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 import common  # noqa: E402
 
 
+# Deferred-work *language*: prose that admits the code is a stand-in, without
+# using an explicit marker. This is how unfinished work usually reaches a diff — an
+# apologetic comment rather than an explicit flag — so it is scanned with the
+# same weight as an explicit one.
+DEFERRAL_MARKERS = [
+    ("deferred: temporary stand-in",
+     r"(?i)\b(for\s+now|for\s+the\s+moment|temporar(y|ily)|placeholder\s+(for|until)|"
+     r"until\s+we\s+(have|add|implement))\b"),
+    ("deferred: production-grade version postponed",
+     r"(?i)\b(in\s+(a|the)\s+real\s+(implementation|app|system|world|scenario)|"
+     r"in\s+production(\s+(you|we|this))?\s+(would|should|you'd|we'd)|"
+     r"real\s+implementation\s+would|proper\s+implementation\s+would)\b"),
+    ("deferred: self-declared prototype",
+     r"(?i)\b(simplified\s+(version|for|implementation)|"
+     r"(basic|naive|minimal|rudimentary|crude)\s+(implementation|version|approach)\s+"
+     r"(for|that|which|—|-)|"
+     r"(this\s+is\s+)?(just|only)\s+an?\s+(mvp|prototype|proof[\s-]of[\s-]concept|poc|sketch)|"
+     r"good\s+enough\s+for\s+now)\b"),
+    ("deferred: hand-off to the reader",
+     r"(?i)\b(left\s+as\s+an\s+exercise|you\s+(can|could|may|might|should|would)\s+"
+     r"(extend|add|implement|expand|improve|replace|customi[sz]e)|"
+     r"(feel\s+free\s+to|consider)\s+(extending|adding|implementing)|"
+     r"extend\s+this\s+as\s+needed|adapt\s+(this|as)\s+(to|needed))\b"),
+    ("deferred: acknowledged gap",
+     r"(?i)\b(not\s+(yet\s+)?(implemented|handled|supported|covered)|"
+     r"doesn'?t\s+(yet\s+)?(handle|support|cover)|"
+     r"(no|without)\s+error\s+handling|"
+     r"skipping\s+(validation|error\s+handling|the)|"
+     r"(omitted|elided|stubbed)\s+for\s+brevity|"
+     r"a\s+full\s+implementation\s+would)\b"),
+]
+
 # (label, regex). Kept high-signal to limit false positives.
 MARKERS = [
     ("TODO/FIXME/XXX/HACK", r"\b(TODO|FIXME|XXX|HACK)\b"),
@@ -48,6 +90,21 @@ MARKERS = [
 ]
 
 _COMPILED = [(label, re.compile(pat, re.MULTILINE)) for label, pat in MARKERS]
+_COMPILED_DEFERRAL = [(label, re.compile(pat, re.MULTILINE)) for label, pat in DEFERRAL_MARKERS]
+
+# Deferral prose is matched only inside comments/docstrings. Natural-language
+# admissions live in comments; matching them in ordinary strings would flag every
+# piece of code that merely *mentions* the phrase (error copy, UI text, this
+# scanner's own patterns) and make the signal useless.
+_COMMENT_RE = re.compile(r"^\s*(#|//|/\*|\*|<!--|--|;|\"\"\"|''')|(?<=\s)(#|//)\s")
+
+# Prose files document behaviour; deferral wording there is description, not a
+# postponed implementation. Literal markers still apply to them.
+_PROSE_SUFFIXES = {".md", ".mdx", ".rst", ".txt", ".adoc"}
+
+# Escape hatch for a deferral phrase that is genuinely correct in context
+# (e.g. a comment explaining a documented, accepted limitation).
+_ACK_RE = re.compile(r"praxis:ack\b")
 
 
 def added_lines_from_diff(root: Path) -> list:
@@ -74,11 +131,25 @@ def added_lines_from_diff(root: Path) -> list:
 def scan_text_lines(pairs) -> list:
     findings = []
     for fname, lineno, text in pairs:
+        if _ACK_RE.search(text):
+            continue
         for label, rx in _COMPILED:
             if rx.search(text):
                 findings.append({"file": fname, "line": lineno,
                                  "marker": label, "text": text.strip()[:160]})
+        if _deferral_applies(fname, text):
+            for label, rx in _COMPILED_DEFERRAL:
+                if rx.search(text):
+                    findings.append({"file": fname, "line": lineno,
+                                     "marker": label, "text": text.strip()[:160]})
     return findings
+
+
+def _deferral_applies(fname, text: str) -> bool:
+    """True if deferral prose in `text` should be treated as a finding."""
+    if fname and Path(fname).suffix.lower() in _PROSE_SUFFIXES:
+        return False
+    return bool(_COMMENT_RE.search(text))
 
 
 def scan_files(paths) -> list:

@@ -5,8 +5,10 @@ Praxis test suite (stdlib unittest, no external deps).
 Covers the deterministic core so the plugin can't silently regress:
   * common helpers (signatures, sensitive paths, secrets, autopilot)
   * guard_paths (blocks destructive/secret access, allows safe)
-  * scan_placeholders (markers vs clean)
-  * quality_gate task-loop + per-change state machine
+  * scan_placeholders (literal markers, deferral prose, ack/prose exemptions)
+  * prompt_router (routing per request shape; silence on questions/commands)
+  * quality_gate task-loop + per-change state machine + refusal escalation
+  * report evidence (tests are executed, not reported; unverified reports rejected)
   * task_state / changelog / adr helpers
   * claudemd_check regression detection
   * git-delivery config, auto-merge toggle, default-branch detection
@@ -16,9 +18,11 @@ Run: python -m unittest discover -s tests   (or: python tests/test_praxis.py)
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -159,6 +163,121 @@ class TestQualityGate(GitRepoCase):
         self.assertEqual(r2.returncode, 0, "waiting_for_user should allow stopping")
 
 
+class TestGateEscalation(GitRepoCase):
+    """The gate must escalate rather than give up after one reminder."""
+
+    def dirty(self):
+        (self.root / "a.py").write_text("x = 1\ny = 2\n")
+
+    def gate(self):
+        return run_script("quality_gate.py", self.payload(), self.root)
+
+    def test_repeats_and_escalates_then_discloses_then_releases(self):
+        self.dirty()
+        seen = [self.gate() for _ in range(3)]
+        for r in seen:
+            self.assertEqual(r.returncode, 2, "gate gave up too early")
+        self.assertNotEqual(seen[0].stderr, seen[1].stderr,
+                            "each refusal must say something new")
+
+        disclosure = self.gate()
+        self.assertEqual(disclosure.returncode, 2, "the cap turn carries the disclosure")
+        self.assertIn("UNAUDITED", disclosure.stderr)
+        self.assertIn("NOT audited", disclosure.stderr)
+
+        self.assertEqual(self.gate().returncode, 0, "gate must release after disclosing")
+
+    def test_unchanged_tree_from_before_the_session_is_not_gated(self):
+        """Pre-existing dirty work is not this session's to audit."""
+        self.dirty()
+        common.write_state(self.root, "last_session_audit.json",
+                           {"signature": common.change_signature(self.root)})
+        self.assertEqual(self.gate().returncode, 0)
+        (self.root / "a.py").write_text("x = 1\ny = 2\nz = 3\n")
+        self.assertEqual(self.gate().returncode, 2, "an edit re-arms the gate")
+
+    def test_concurrent_sessions_do_not_reset_each_other(self):
+        self.dirty()
+        for _ in range(3):
+            run_script("quality_gate.py", self.payload(), self.root)
+            run_script("quality_gate.py", self.payload(session_id="s2"), self.root)
+        state = common.read_state(self.root, "gate_notified.json")
+        self.assertEqual(sorted(state["sessions"]), ["s1", "s2"])
+        for sid in ("s1", "s2"):
+            self.assertEqual(state["sessions"][sid]["total"], 3,
+                             "a session's count must survive the other session")
+
+    def test_unfinished_marker_in_diff_is_reported(self):
+        (self.root / "a.py").write_text("def f():\n    pass  # TODO: x\n")  # praxis:ack
+        r = self.gate()
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("unfinished marker", r.stderr)
+
+    def test_deferral_comment_in_diff_is_reported(self):
+        (self.root / "a.py").write_text("def f():\n    # for now\n    return 1\n")  # praxis:ack
+        r = self.gate()
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("unfinished marker", r.stderr)
+
+
+class TestDeferralMarkers(GitRepoCase):
+    def scan(self, name, body):
+        f = self.root / name
+        f.write_text(body)
+        r = sh([sys.executable, str(SCRIPTS / "scan_placeholders.py"), "--json", str(f)])
+        return json.loads(r.stdout)["findings"]
+
+    def test_detects_deferral_prose_in_comments(self):
+        for body in ("# in a real implementation you would validate\n",
+                     "// you can extend this later\n",
+                     "// error handling omitted for brevity\n",
+                     "# temporary workaround\n"):
+            self.assertTrue(self.scan("x.py", body), f"missed deferral: {body!r}")
+
+    def test_ignores_non_comment_and_prose_and_acked(self):
+        self.assertFalse(self.scan("x.py", 'log("processing for now")\n'),
+                         "string content must not be treated as a deferral")
+        self.assertFalse(self.scan("x.md", "This is temporary for now.\n"),
+                         "prose files describe, they don't defer")
+        self.assertFalse(self.scan("x.py", "# single-writer only for now  praxis:ack\n"),
+                         "praxis:ack must exempt the line")
+
+    def test_literal_markers_still_apply_to_prose_files(self):
+        self.assertTrue(self.scan("x.md", "- TODO: write this section\n"))  # praxis:ack
+
+
+class TestPromptRouter(GitRepoCase):
+    def route(self, prompt):
+        r = run_script("prompt_router.py",
+                       {"cwd": str(self.root), "prompt": prompt}, self.root)
+        self.assertEqual(r.returncode, 0, "the router must never block a prompt")
+        return r.stdout
+
+    def test_routes_bare_implementation_prompt(self):
+        out = self.route("add rate limiting to the login endpoint")
+        self.assertIn("task-orchestrator", out)
+        self.assertIn("quality-rubric", out)
+
+    def test_routes_ui_prompt_to_the_frontend_pipeline(self):
+        out = self.route("build the pricing page")
+        self.assertIn("frontend-pipeline", out)
+        self.assertIn("craft.md", out)
+
+    def test_silent_on_questions_commands_and_acks(self):
+        for prompt in ("what does this function do?", "/praxis:audit", "yes", ""):
+            self.assertEqual(self.route(prompt).strip(), "",
+                             f"router should stay silent for {prompt!r}")
+
+    def test_review_and_delivery_and_scan_routes(self):
+        self.assertIn("quality-rubric", self.route("review my changes"))
+        self.assertIn("git-delivery", self.route("commit this and open a PR"))
+        self.assertIn("repo-audit", self.route("audit the entire codebase"))
+
+    def test_autopilot_directive_surfaces(self):
+        (common.state_dir(self.root) / "autopilot").write_text("")
+        self.assertIn("Auto-pilot is ON", self.route("add a health endpoint"))
+
+
 class TestHelpers(GitRepoCase):
     def env(self):
         return {**os.environ, "CLAUDE_PROJECT_DIR": str(self.root)}
@@ -188,33 +307,111 @@ class TestHelpers(GitRepoCase):
         self.assertIn("Conv", data["dropped_headings"])
 
 
+@unittest.skipUnless(shutil.which("make"), "needs `make` to own a detectable test command")
 class TestEvidenceReport(GitRepoCase):
+    """report.py must measure the evidence, not accept it.
+
+    The fixture gives the repo a Makefile `test` target, so the command praxis
+    detects is the same one it runs — the substitution path is exercised
+    separately, because a substituted command is precisely what must NOT satisfy
+    the gate.
+    """
+
     def setUp(self):
         super().setUp()
-        # give the repo a real test command so the evidence requirement applies
-        (self.root / "package.json").write_text('{"scripts":{"test":"jest"}}\n')
+        self.set_test_target("@exit 0")
         sh(["git", "add", "-A"], cwd=self.tmp)
-        sh(["git", "commit", "-qm", "pkg"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "mk"], cwd=self.tmp)
         (self.root / "a.py").write_text("x = 1\ny = 2\n")  # dirty
+
+    def set_test_target(self, recipe):
+        (self.root / "Makefile").write_text(f"test:\n\t{recipe}\n")
 
     def env(self):
         return {**os.environ, "CLAUDE_PROJECT_DIR": str(self.root),
                 "CLAUDE_PLUGIN_ROOT": str(PLUGIN)}
 
-    def record(self, exit_code):
-        sh([sys.executable, str(SCRIPTS / "report.py"), "record",
-            "--tests", "npm test", "--tests-exit", str(exit_code),
-            "--verticals", "regression=pass,completeness=pass"], env=self.env())
+    def record(self, *extra):
+        return sh([sys.executable, str(SCRIPTS / "report.py"), "record",
+                   "--timeout", "60",
+                   "--verticals", "regression=pass,completeness=pass", *extra],
+                  env=self.env())
+
+    def report(self):
+        return common.read_state(self.root, "quality_report.json")
 
     def test_green_tests_allow(self):
-        self.record(0)
+        self.record()
         r = run_script("quality_gate.py", self.payload(), self.root)
         self.assertEqual(r.returncode, 0, "passing test evidence should allow stop")
 
     def test_failing_tests_block(self):
-        self.record(1)
+        self.set_test_target("@exit 1")
+        self.record()
+        self.assertEqual(self.report()["status"], "fail")
         r = run_script("quality_gate.py", self.payload(), self.root)
         self.assertEqual(r.returncode, 2, "failing test evidence must not satisfy the gate")
+
+    def test_exit_code_is_measured_not_reported(self):
+        """The recorded exit code comes from the run, never from the caller."""
+        self.set_test_target("@exit 3")
+        self.record("--tests-exit", "0")
+        ev = self.report()["evidence"]
+        self.assertNotEqual(ev["test_exit"], 0, "a reported exit code must be ignored")
+        self.assertTrue(ev["test_verified"])
+        self.assertEqual(self.report()["status"], "fail")
+
+    def test_substituted_command_does_not_satisfy_the_gate(self):
+        """`--tests true` exits 0 without running anything — it must not buy green."""
+        self.record("--tests", "exit 0")
+        ev = self.report()["evidence"]
+        self.assertTrue(ev["test_substituted"])
+        self.assertEqual(ev["test_exit"], 0)
+        r = run_script("quality_gate.py", self.payload(), self.root)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("instead of the project's", r.stderr)
+
+    def test_no_verticals_is_not_green(self):
+        sh([sys.executable, str(SCRIPTS / "report.py"), "record"], env=self.env())
+        self.assertEqual(self.report()["status"], "fail",
+                         "a report with no vertical verdicts attests to nothing")
+
+    def test_refuses_a_test_command_touching_a_secret(self):
+        r = self.record("--tests", "cat .env")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("refusing", r.stdout)
+
+    def test_timeout_is_enforced_and_recorded(self):
+        self.set_test_target("@sleep 30")
+        sh([sys.executable, str(SCRIPTS / "report.py"), "record", "--timeout", "2",
+            "--verticals", "regression=pass"], env=self.env())
+        ev = self.report()["evidence"]
+        self.assertIsNone(ev["test_exit"])
+        self.assertFalse(ev["test_verified"])
+        self.assertIn("timed out", ev["test_output_tail"])
+
+    def test_secrets_in_failing_output_are_redacted(self):
+        self.set_test_target('@echo "token=sk_live_0123456789abcdefgh" && exit 1')
+        self.record()
+        tail = self.report()["evidence"]["test_output_tail"]
+        self.assertNotIn("sk_live_0123456789abcdefgh", tail)
+        self.assertIn("redacted", tail)
+
+    def test_unverified_report_does_not_satisfy_gate(self):
+        """A hand-written report claiming green without a verified run is rejected."""
+        common.write_state(self.root, "quality_report.json", {
+            "signature": common.change_signature(self.root),
+            "status": "pass", "ts": time.time(),
+            "evidence": {"test_command": "npm test", "test_exit": 0,
+                         "verticals": {"regression": "pass"}},
+        })
+        r = run_script("quality_gate.py", self.payload(), self.root)
+        self.assertEqual(r.returncode, 2, "unverified test evidence must not pass the gate")
+
+    def test_failing_vertical_fails_the_report(self):
+        sh([sys.executable, str(SCRIPTS / "report.py"), "record",
+            "--verticals", "regression=pass,adversarial=fail"], env=self.env())
+        self.assertEqual(self.report()["status"], "fail")
 
 
 class TestWorkspaces(GitRepoCase):

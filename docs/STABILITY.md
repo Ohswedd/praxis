@@ -13,7 +13,8 @@ Versioning (breaking changes → a new MAJOR).
 - **Environment variables:** `PRAXIS_GATE` (`off` disables the Stop gate),
   `PRAXIS_AUTOPILOT` (`on` enables auto-pilot), `PRAXIS_AUTO_MERGE` (`on` enables
   autonomous PR review-and-merge).
-- **Escapes:** `.claude/.praxis/skip-gate` (per-repo gate opt-out).
+- **Escapes:** `.claude/.praxis/skip-gate` (per-repo gate opt-out); the
+  `praxis:ack` inline annotation (exempts one line from the placeholder scanner).
 - **State files** under `.claude/.praxis/` (git-ignored):
   `task.json`, `quality_report.json`, `gate_notified.json`, `repo_scan.json`,
   `autopilot`, `auto-merge`.
@@ -25,9 +26,11 @@ Versioning (breaking changes → a new MAJOR).
 
 ## Internal (may change without a MAJOR bump)
 - The wording of injected directives, skill/agent prompt text, and report layout.
-- Detection heuristics (test command, workspaces, formatters, secret/placeholder
-  patterns) — these improve over time; their *presence* is stable, their exact
-  matches are not.
+- Detection heuristics (test command, workspaces, formatters, secret/placeholder/
+  deferral patterns, and the prompt router's classification) — these improve over
+  time; their *presence* is stable, their exact matches are not.
+- The Stop gate's escalation caps (`MAX_NUDGES`, `SESSION_NUDGE_CAP`) and the
+  wording of each escalation step.
 - The internal schema of state files beyond the keys listed above.
 
 ## Compatibility

@@ -23,8 +23,10 @@ layers that fire automatically.
 │ 3. SUBAGENTS  (read-only, Opus: 9 vertical auditors + verifiers)    │
 │    Deep, verbose analysis in isolated context — one concern each.   │
 ├─────────────────────────────────────────────────────────────────────┤
-│ 4. HOOKS  (SessionStart, PreToolUse, PostToolUse, Stop)             │
+│ 4. HOOKS  (SessionStart, UserPromptSubmit, PreToolUse,             │
+│           PostToolUse, Stop)                                        │
 │    Deterministic gates. SessionStart injects the standing directive;│
+│    UserPromptSubmit routes each request to the skills it needs;     │
 │    the Stop gate runs the task-completion loop + per-change quality │
 │    gate. The only layer that can block.                             │
 └─────────────────────────────────────────────────────────────────────┘
@@ -159,9 +161,71 @@ The **change signature** (`common.change_signature`) hashes HEAD + the dirty fil
 set + sizes/mtimes, so a green report is valid only for the exact state it was
 produced against. Editing again re-keys the signature and re-arms the gate.
 
-Loop safety: the gate prompts at most once per signature per session
-(`gate_notified.json`), so it enforces review without trapping the agent, and it
-honours the `skip-gate` file and `PRAXIS_GATE=off` escapes.
+Refusals **escalate**. A single generic reminder is trivially acknowledged and
+stepped past, so each successive refusal names something more concrete: first the
+workflow, then the specific evidence that is missing (which vertical failed, why
+the existing report doesn't count), then a direct instruction to execute rather
+than restate the plan. Escalation is keyed on the session's refusal total, not on
+the change signature — Claude normally edits between two Stops, which re-keys the
+signature, so a per-change counter would restart at 1 every turn and never
+sharpen.
+
+When a cap is reached the gate spends one final turn on a **disclosure**: it
+instructs Claude either to finish the audit or to tell the user plainly that the
+change is going out unaudited, which verticals are unverified, and what to check.
+Only the turn after that does it release. Releasing silently would skip the one
+message that matters most.
+
+Unfinished markers found in the change's **own diff** lead the message at every
+attempt. A `TODO`, a stub, or deferral prose in a comment ("for now", "in a real  <!-- praxis:ack -->
+implementation", "you can extend this") is the signature of an MVP-shaped
+delivery, so the gate names each one with its file:line and requires it to be
+either implemented or removed and reported as out of scope. `scan_placeholders.py`
+supplies that signal; a line carrying `praxis:ack` is exempt.
+
+Loop safety, in layers:
+
+- Two caps bound the escalation — `MAX_NUDGES` (3) per change signature and
+  `SESSION_NUDGE_CAP` (12) per session — so a change set that keeps mutating
+  cannot loop indefinitely.
+- Each session owns its own entry in `gate_notified.json`. A single shared record
+  would let two Claude windows on one repo wipe each other's counters every turn,
+  and the caps would then never be reached.
+- If the counter **cannot be persisted** (unwritable `.claude/`, full disk), the
+  gate fails open. The caps depend on that write; blocking while unable to record
+  the block would trap the session forever.
+- A tree that is byte-for-byte as the session found it is never gated. A repo can
+  be dirty from work that predates the session, and demanding an audit of someone
+  else's diff — while attributing their unfinished markers to "this change" — is
+  worse than not gating at all.
+- The `skip-gate` file and `PRAXIS_GATE=off` escapes always apply.
+
+## Per-prompt routing
+
+`prompt_router.py` runs on every `UserPromptSubmit`. It closes praxis's oldest
+gap: the pipeline used to be announced once at `SessionStart`, after which skill
+selection depended on the model spontaneously matching a skill description — which
+works for `/praxis:task` but degrades for a bare "add rate limiting" many turns
+into a session, when the SessionStart block is far behind in the context.
+
+The router classifies the prompt's *shape* (not its keywords-as-commands) and
+injects a short directive naming the exact skills that request requires:
+
+| Route | Trigger | Injected directive |
+| --- | --- | --- |
+| `implement` | a change verb (add/fix/refactor/migrate/…) | `task-orchestrator` pipeline, production-complete standard, open a task if multi-step |
+| `review` | review/audit/verify wording | `quality-rubric` with the auditors dispatched as subagents |
+| `scan` | repo-wide wording | `repo-audit` with adversarial verification and honest coverage |
+| `deliver` | commit/push/PR/ship | `git-delivery` |
+| `none` | an information question, a slash command, an acknowledgement | nothing — silence beats noise |
+
+Two modifiers stack on any route: UI wording adds the `frontend-pipeline` skill
+(and its `reference/craft.md`) plus the two UI verticals; documentation wording
+adds `docs-living`. Auto-pilot appends its decide-don't-ask directive.
+
+An opening interrogative ("what…", "how…", "why…") wins over any verb in the
+sentence, so "how do I add caching?" is answered rather than implemented. The
+hook never blocks and never rewrites the prompt.
 
 ## Universal onboarding
 

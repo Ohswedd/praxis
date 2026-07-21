@@ -68,7 +68,7 @@ habitual `/effort high` or `/effort ultracode`. See [`docs/MODES.md`](docs/MODES
 | --- | --- |
 | **End-to-end task engine** | `task-orchestrator` skill runs restructure → investigate → plan → implement → audit → report |
 | **Prompt restructuring** | `prompt-architect` skill turns a vague prompt into goal / scope / non-goals / acceptance criteria |
-| **Always-on, no keywords** | the workflow is carried by an always-injected SessionStart directive + output style, and enforced by change-based gates — it applies however you phrase the request, deterministically |
+| **Always-on, no keywords** | the workflow is carried by an always-injected SessionStart directive + output style, **plus a per-prompt router** that names the skills each request needs — so a bare "fix the checkout page" engages the same pipeline as `/praxis:task`, and it is enforced by change-based gates however you phrase the request |
 | **Best-practices, by need** | `best-practices` skill selects and applies the minimal relevant families (SOLID, DDD, REST, ACID/CAP, OWASP, testing, clean code, performance…) for the change's domains, from a curated catalog |
 | **Living knowledge** | maintains the project's `/docs`, `CHANGELOG.md`, and ADRs — read/searched/updated/created for every change, no regression, always current |
 | **Git/GitHub delivery** | `git-delivery` skill (`/praxis:ship`): Conventional Commit → branch → push → PR. Human-in-the-loop merge by default; opt-in `git.auto_merge` reviews and merges autonomously — never without a green audit |
@@ -175,8 +175,8 @@ skills ────────▶ task-orchestrator + prompt-architect + best-p
                  frontend-pipeline + bootstrap + quality-rubric + repo-audit +
                  claudemd-living + docs-living + capability-discovery + git-delivery
 subagents ─────▶ deep vertical audits in isolated context (read-only, Opus)
-hooks ─────────▶ SessionStart directive + PreToolUse guard + PostToolUse format +
-                 Stop task/quality gate
+hooks ─────────▶ SessionStart directive + UserPromptSubmit skill router +
+                 PreToolUse guard + PostToolUse format + Stop task/quality gate
 ```
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the full design,

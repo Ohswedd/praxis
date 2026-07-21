@@ -475,7 +475,8 @@ def change_signature(root: Path) -> str:
     """A stable hash of the current change set (HEAD + dirty file list + sizes).
 
     Used to key the quality-gate: a green audit is valid only for the exact
-    state it was produced against.
+    state it was produced against. Recomputed on every call (two git
+    subprocesses); callers that need it more than once should hold the value.
     """
     parts = [git_head(root)]
     for ln in git_status_porcelain(root):

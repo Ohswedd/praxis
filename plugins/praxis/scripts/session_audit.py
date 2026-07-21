@@ -199,8 +199,11 @@ def build_report(root: Path) -> str:
                  "minimal fitting set, matched to repo conventions; don't cargo-cult.")
     lines.append("- Front-end/UI work runs the `frontend-pipeline` skill, proportional to the "
                  "task: business research → story-first wireframes → design system → "
-                 "development → optimization. UI-touching changes are audited on the "
-                 "accessibility and design-consistency verticals in addition to the seven.")
+                 "development → optimization. Read its `reference/craft.md` before writing "
+                 "markup or styles — generic defaults (centered everything, gradient hero, "
+                 "three equal cards, stock icons, lorem ipsum, invented testimonials) are "
+                 "defects, not taste. UI-touching changes are audited on the accessibility "
+                 "and design-consistency verticals in addition to the seven.")
     if common.autopilot_on(root):
         lines.append("- **AUTO-PILOT IS ON:** do not ask the user design/approach questions. "
                      "Do your own QA and decide by the best-practice that fits, recording "
@@ -214,8 +217,13 @@ def build_report(root: Path) -> str:
                  "patterns before writing; never reinvent or duplicate what exists.")
     lines.append("- Apply code-craft: self-documenting names, comments that explain *why*, "
                  "no debug leftovers, no commented-out or dead code.")
-    lines.append("- Completeness is mandatory: no placeholders/TODOs/stubs and no silently "
-                 "narrowed scope. State anything out-of-scope explicitly in the report.")
+    lines.append("- You are not building an MVP: unless the user asked for a prototype, "
+                 "deliver the finished product. No placeholders/TODOs/stubs, no deferral "
+                 "language ('for now', 'in a real implementation', 'you can extend this'), "
+                 "no silently narrowed scope — error handling and the states you know are "
+                 "needed are in scope, not follow-ups. State anything genuinely out-of-scope "
+                 "explicitly in the report. The Stop gate blocks on unfinished markers found "
+                 "in your own diff.")
     lines.append("- After any non-trivial change, run the quality rubric (`/praxis:audit`) "
                  "— vertical auditors (doc-reference, duplication, regression, adversarial, "
                  "edge-case, performance, completeness) + a horizontal pass — and fix every "
