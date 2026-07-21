@@ -6,6 +6,24 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-21
+
+### Added
+- Per-prompt skill router (UserPromptSubmit): a bare prompt like "fix the checkout page" now engages the same pipeline as /praxis:task — the router classifies the request and names the exact skills it needs
+- Deferral detection in scan_placeholders.py: comments that admit unfinished work without a literal marker ("for now", "in a real implementation", "you can extend this", "omitted for brevity") are findings; a praxis:ack annotation exempts a line
+- frontend-pipeline reference/craft.md — the visual judgement the checklists could not encode: the tells of generated UI and what to do instead, hierarchy, typography, space, colour, depth, motion, content-shaped states, and a pre-ship craft checklist
+
+### Changed
+- The Stop gate now escalates instead of giving up: it refused once per change state and then allowed any stop, so the audit was effectively optional. Refusals now sharpen over 3 attempts (workflow, then the missing evidence, then the consequence) before releasing, bounded per change state and per session
+- report.py executes the project's test command itself and records the real exit code. A caller-supplied --tests-exit is accepted for compatibility but ignored, and reports without a verified run no longer satisfy the gate
+- design-consistency-auditor gains a craft vertical: generic defaults, stock decoration, placeholder or invented content, and undesigned states are FAILs, so a uniformly generic page can no longer pass on consistency alone
+
+### Fixed
+- Unfinished markers in a change's own diff are now blocking and cited with file:line, instead of being printed as advisory text the model could step past
+- Stop gate could block a session indefinitely when its counter state could not be written, and two Claude windows on one repo wiped each other's counters — both are release-cap failures that would have trapped a session
+- Stop gate no longer fires on a working tree that was already dirty when the session started — it demanded an audit of pre-existing work and misattributed its unfinished markers to the current change
+- report.py: a substituted test command (--tests true) no longer satisfies the gate, an empty vertical set is no longer vacuously green, a sensitive path in --tests is refused, timeouts kill the whole test tree, and secrets in the persisted output tail are redacted
+
 ## [1.4.0] - 2026-07-20
 
 ### Added

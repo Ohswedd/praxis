@@ -60,7 +60,9 @@ def main() -> int:
                 criteria.append(args[i]); i += 1
         if "--max" in args:
             try:
-                max_iter = int(args[args.index("--max") + 1])
+                # At least one turn: a cap of 0 is reached before any work
+                # happens, which would silently disable the loop it configures.
+                max_iter = max(1, int(args[args.index("--max") + 1]))
             except Exception:
                 pass
         save(root, {

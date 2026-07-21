@@ -80,24 +80,34 @@ across many turns (see the task-orchestrator skill) — use it for large tasks, 
 for closing out a single change here.
 
 ## Step 5 — Record the green report (with evidence)
-When all passes are green, record the report the Stop gate reads — with evidence:
-the test command and its exit code, plus the per-vertical verdicts. Run the tests
-first, then:
+Record it **last**, after the docs/CHANGELOG/ADR updates and any other write the
+change needs. The report is keyed to the change signature, so a file written
+afterwards re-keys it and the gate will correctly reject the audit as stale —
+costing you a full re-run.
+
+When all passes are green: 
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/report.py" record \
-  --tests "<the project's test command>" --tests-exit <exit code you observed> \
   --verticals "doc-reference=pass,duplication=pass,regression=pass,adversarial=pass,edge-case=pass,performance=pass,completeness=pass"
 ```
+
+`report.py` **runs the project's test command itself** and records the real exit
+code — it does not accept one you report. That is deliberate: a self-reported
+pass is a claim, and the gate's guarantee is only as strong as its weakest input.
+It auto-detects the command; pass `--tests "<cmd>"` to override it (e.g. the
+specific package in a monorepo) and `--timeout <seconds>` for a slow suite.
+
+Expect the record step to take as long as the suite does, and read its output: if
+it prints a non-zero exit, the report is written as `fail` and the gate will keep
+you working. Fix the failure — do not re-record around it.
 
 When the UI verticals ran, extend the string with
 `,accessibility=pass,design-consistency=pass` — a UI change's report is not
 green without them.
 
-If the repo has a test command, the gate will **not** accept the report unless it
-records a passing run (`--tests-exit 0`) — so green is backed by a real result,
-not a promise. If the repo genuinely has no tests, omit `--tests`; the report is
-recorded without a test requirement (and you should note the missing coverage).
+If the repo genuinely has no test command, the report is recorded without a test
+requirement; say so to the user and note the missing coverage.
 
 ## Output to the user
 Give a compact verdict table with one row per vertical (doc-reference,

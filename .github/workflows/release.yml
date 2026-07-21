@@ -117,3 +117,23 @@ jobs:
           git commit -am "chore(release): v$v" || true
           git tag "v$v"
           git push origin HEAD --tags
+
+      - name: Publish the GitHub release
+        if: steps.bump.outputs.release == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Tagging alone leaves no release page — v1.2.0 and v1.2.1 were tagged
+          # but never published, because this step used to be a manual one.
+          v="${{ steps.bump.outputs.version }}"
+          notes=$(python - "$v" <<'PY'
+          import re, sys, pathlib
+          version = sys.argv[1]
+          text = pathlib.Path("CHANGELOG.md").read_text(encoding="utf-8")
+          # The section for this version, up to the next version heading.
+          m = re.search(rf"^## \[{re.escape(version)}\][^\n]*\n(.*?)(?=^## \[|\Z)",
+                        text, re.MULTILINE | re.DOTALL)
+          print(m.group(1).strip() if m else f"See CHANGELOG.md for v{version}.")
+          PY
+          )
+          gh release create "v$v" --title "Praxis v$v" --notes "$notes" --verify-tag

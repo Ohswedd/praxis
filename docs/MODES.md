@@ -109,15 +109,21 @@ green audit and passing checks, and never by force-pushing the base branch. See
 
 | Concern | Mechanism | Deterministic? |
 | --- | --- | --- |
-| Does the workflow engage? | always-on directive (SessionStart) + output style; enforced by the change/task gate | Yes — keyed on real file changes, not prompt text |
+| Does the workflow engage? | always-on directive (SessionStart) + output style + per-prompt router (UserPromptSubmit); enforced by the change/task gate | Yes — the router names the skills each request needs, and the gate is keyed on real file changes |
 | Keep working until done | Stop gate + `task.json` (turn cap, `waiting`, `done`) | Yes |
 | No secrets / destructive ops | PreToolUse guard (holds even in auto mode) | Yes |
-| No placeholders / stubs | `scan_placeholders.py` on the diff | Yes |
+| No placeholders / stubs / deferral | `scan_placeholders.py` on the diff (literal markers + deferral prose in comments) | Yes |
+| Actually run the audit | Stop gate escalates 3× with increasingly specific instructions before releasing | Yes |
+| Tests really passed | `report.py` executes the test command itself; unverified evidence is rejected | Yes |
 | Depth of reasoning | your `/effort` setting | You choose |
 
-There is **no** prompt-keyword classifier deciding your fate. The workflow is
-carried by an always-injected directive and enforced by change-based gates, so it
-applies regardless of how you phrase the request.
+The prompt router reads your request to decide **which skills to name**, but it
+can only ever add context — it never blocks, never rewrites your prompt, and is
+not what makes the workflow apply. That guarantee still comes from the
+always-injected directive and the change-based gates, which are keyed on real
+file changes rather than on your wording. So a request the router misreads still
+gets the full pipeline; the router only means you don't have to rely on phrasing
+for the *right* skills to engage.
 
 ---
 

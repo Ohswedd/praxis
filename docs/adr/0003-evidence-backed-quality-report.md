@@ -3,6 +3,10 @@
 - Status: accepted
 - Date: 2026-07-16
 
+> **Amended by [ADR 0010](0010-the-quality-report-runs-the-tests-itself.md) (2026-07-21):** the exit code recorded here was supplied by the caller.
+> A claim is not evidence, so `report.py` now runs the test command itself.
+> The rest of this decision stands.
+
 ## Context
 The Stop gate accepted a "green" report if it existed and matched the change
 signature — it trusted that the audit and tests had actually passed. For a tool
