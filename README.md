@@ -194,6 +194,9 @@ conservative about that:
 - **No shipped secrets, no live MCP.** MCP wiring is a template referencing
   environment variables.
 
+- **No data collection.** Praxis has no backend, makes no network calls, and
+  sends nothing to its author — see [`PRIVACY.md`](PRIVACY.md).
+
 Full posture in [`SECURITY.md`](SECURITY.md).
 
 ## Documentation

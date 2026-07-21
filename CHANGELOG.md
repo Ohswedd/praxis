@@ -6,6 +6,9 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- PRIVACY.md — a plain data-flow statement: Praxis has no backend, makes no network calls and sends nothing to its author; it documents what is read locally, what is written to .claude/.praxis/, and the one place information leaves the machine (Claude Code's own conversation channel to Anthropic)
+
 ## [1.6.0] - 2026-07-22
 
 ### Added
