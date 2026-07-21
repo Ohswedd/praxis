@@ -37,3 +37,10 @@ your machine during sessions. It is designed to be safe by construction.
 
 Open a private security advisory on the repository, or email the maintainers.
 Please do not file public issues for security reports.
+
+## Privacy
+
+Praxis collects and transmits nothing; all processing is local. See
+[`PRIVACY.md`](PRIVACY.md) for the full data-flow statement, including the
+one place information leaves your machine — Claude Code's own conversation
+channel to Anthropic.
