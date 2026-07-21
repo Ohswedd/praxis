@@ -21,6 +21,10 @@ Versioning (breaking changes → a new MAJOR).
 - **Helper CLIs** (stable flags): `task_state.py`, `report.py`, `changelog.py`,
   `adr.py`, `workspaces.py`, `autopilot.py`, `git_delivery.py`, `doctor.py`,
   `selfcheck.py`, `repo_scan.py`.
+- **Install identifier:** marketplace `ohswedd-praxis`, plugin `praxis` — i.e.
+  `/plugin install praxis@ohswedd-praxis`. Owner-scoped deliberately: a
+  marketplace name is a single global slot per user, so a generic one can be
+  silently replaced by an unrelated project claiming the same name.
 - **Managed marker:** `<!-- praxis:managed -->` in a Praxis-managed `CLAUDE.md`.
 - **The `/docs` + `CHANGELOG.md` + `docs/adr/` contract** Praxis maintains.
 

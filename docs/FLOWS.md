@@ -308,7 +308,7 @@ refuses to pass until the green report exists):**
 Logic is validated in isolation; the real proof is a 5-minute smoke test inside
 Claude Code:
 
-1. Install locally: `/plugin marketplace add ./` → `/plugin install praxis@praxis`.
+1. Install locally: `/plugin marketplace add ./` → `/plugin install praxis@ohswedd-praxis`.
 2. `/praxis:doctor` → confirms version + health.
 3. Open a repo with a `.env` and ask Claude to read it → guard should deny.
 4. Ask `crea una funzione X` → confirm the pipeline directive appears and a plan

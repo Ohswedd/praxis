@@ -6,6 +6,11 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-07-21
+
+### Fixed
+- Marketplace renamed praxis → ohswedd-praxis: an unrelated project (xD4O/praxis) publishes a marketplace with the identical name AND an identical plugin name, and Claude Code keeps only one marketplace per name — silently replacing the first with the second, so praxis@praxis could resolve to the wrong plugin. Install is now praxis@ohswedd-praxis; the plugin name and all /praxis:* commands are unchanged. Existing installs need a one-time 'plugin marketplace remove praxis' then re-add (Claude Code auto-migrates plugin renames, but not marketplace renames)
+
 ## [1.5.0] - 2026-07-21
 
 ### Added
