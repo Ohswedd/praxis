@@ -82,8 +82,8 @@ the team every time they touch it.
 - Do not re-report the other verticals' findings. A bug is a bug (adversarial,
   edge-case), a stub is incompleteness, a slow query is performance. You cover
   what is *correct today and expensive tomorrow*.
-- Do not treat every TODO as debt: `scan_placeholders.py` already refuses those.
-  A TODO is unfinished work in this change; debt is finished work that costs.
+- Do not treat every TODO as debt: `scan_placeholders.py` already refuses those.  <!-- praxis:ack: naming the marker is the point -->
+  A TODO is unfinished work in this change; debt is finished work that costs.  <!-- praxis:ack -->
 
 ## Output
 
