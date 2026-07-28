@@ -270,6 +270,34 @@ work, and reports PASS on a change it never saw.
 <!-- praxis:review-scope end -->"""
 
 
+def _preloads_skill(body: str, skill: str) -> bool:
+    """True if the frontmatter's `skills:` list really contains `skill`.
+
+    Parsed rather than substring-matched: `# - praxis:review-scope` contains the
+    name and preloads nothing, and a check that accepted it would report the
+    wiring as present on an agent that has none.
+    """
+    if body.count("---") < 2:
+        return False
+    front = body.split("---")[1]
+    in_list = False
+    for raw in front.splitlines():
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.strip():
+            continue
+        if re.match(r"^skills:\s*$", line):
+            in_list = True
+            continue
+        if in_list:
+            item = re.match(r"^\s+-\s*(.+?)\s*$", line)
+            if not item:
+                in_list = False          # the list ended at the next key
+                continue
+            if item.group(1).strip("'\"") == skill:
+                return True
+    return False
+
+
 def _review_scope_wiring(plugin: Path, errors: list) -> int:
     """Assert the scoping rules exist once and reach every auditor. Returns checks.
 
@@ -306,8 +334,7 @@ def _review_scope_wiring(plugin: Path, errors: list) -> int:
             body = md.read_text(encoding="utf-8")
         except Exception:
             body = ""
-        front = body.split("---")[1] if body.count("---") >= 2 else ""
-        declared = f"praxis:{REVIEW_SCOPE_SKILL}" in front
+        declared = _preloads_skill(body, f"praxis:{REVIEW_SCOPE_SKILL}")
         has_block = REVIEW_SCOPE_BLOCK in body
 
         if md.stem in NON_REVIEW_AGENTS:

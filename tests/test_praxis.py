@@ -2007,6 +2007,26 @@ class TestReviewScopeWiring(unittest.TestCase):
             self.assertIn(sc.REVIEW_SCOPE_BLOCK, body,
                           f"{p.name}'s pointer has drifted from the canonical block")
 
+    def test_a_commented_out_preload_is_not_a_preload(self):
+        """`# - praxis:review-scope` contains the name and preloads nothing."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "praxis_selfcheck3", SCRIPTS / "selfcheck.py")
+        sc = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sc)
+        skill = "praxis:review-scope"
+        head = "---\nname: x\ndescription: y\ntools: Read\n"
+        self.assertFalse(sc._preloads_skill(
+            head + "skills:\n  # - praxis:review-scope\n---\nbody", skill))
+        self.assertFalse(sc._preloads_skill(
+            head + "skills:\n  - praxis:review_scope\n---\nbody", skill))
+        self.assertFalse(sc._preloads_skill(
+            head + "skills:\n  - review-scope\n---\nbody", skill))
+        self.assertTrue(sc._preloads_skill(
+            head + 'skills:\n  - "praxis:review-scope"\n---\nbody', skill))
+        self.assertTrue(sc._preloads_skill(
+            head + "skills:\n  - other\n  - praxis:review-scope\n---\nbody", skill))
+
     def test_selfcheck_rejects_a_drifted_pointer(self):
         """The enforcement itself is tested, not just its current result."""
         errors = []

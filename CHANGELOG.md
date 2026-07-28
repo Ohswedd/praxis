@@ -14,6 +14,7 @@ All notable changes to praxis are documented here. The format follows
 
 ### Fixed
 - debt.py paid --by flattens the note it records. The removal that replaces a previous note is line-anchored, so a note spanning lines left its own tail orphaned in the entry when it was later replaced.
+- The review-scope wiring check parses the skills list rather than substring-matching it. A commented-out entry contains the skill name and preloads nothing, so it would have been reported as wired when it was not.
 
 ## [3.1.0] - 2026-07-28
 
