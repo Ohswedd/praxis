@@ -390,11 +390,14 @@ def added_line_pairs(root: Path) -> List[tuple]:
             seen.add(key)
             pairs.append(key)
 
-    ranges = []
     base = review_base(root)
-    if base:
-        ranges.append([f"{base}...HEAD"])
-    for extra in ranges + [[], ["--staged"]]:
+    # `git diff <base>` compares the base to the *working tree*, so one diff
+    # covers committed, staged and unstaged work as a net result. The union of
+    # separate diffs would double-count: a line committed and then corrected
+    # would appear in both, and the superseded version would still be reported
+    # as a finding against a file that no longer contains it.
+    sources = [[base]] if base else [[], ["--staged"]]
+    for extra in sources:
         diff = _run(["git", "diff", "--unified=0", "--no-color"] + extra, cwd=root, timeout=20)
         for fname, lineno, text in _parse_diff_added(diff):
             if fname and not _is_praxis_state(fname):
@@ -454,8 +457,11 @@ def changed_files(root: Path) -> List[str]:
     key = str(root)
     if key in _CHANGED_FILES_CACHE:
         return _CHANGED_FILES_CACHE[key]
-    files = set(committed_files(root))
-    for extra in ([], ["--staged"]):
+    files = set()
+    base = review_base(root)
+    # As in added_line_pairs: `git diff <base>` is the net effect against the
+    # working tree, so it already covers committed, staged and unstaged.
+    for extra in ([[base]] if base else [[], ["--staged"]]):
         out = _run(["git", "diff", "--name-only", "--no-color"] + extra, cwd=root, timeout=20)
         files.update(f.strip() for f in out.splitlines() if f.strip())
     files.update(untracked_files(root))
