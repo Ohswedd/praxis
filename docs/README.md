@@ -8,7 +8,8 @@ sets up in the repositories it manages.
 - [MODES.md](MODES.md): workspace mode (owner vs contributor), effort, auto-pilot, `/goal`, and how autonomy works.
 - [FRONTEND.md](FRONTEND.md): the front-end pipeline: research → wireframes → design system → build → optimize, triggered by the surface a change touches.
 - [DELIVERY.md](DELIVERY.md): Git and GitHub delivery, covering commits, PRs, and the merge policy.
-- [KNOWLEDGE.md](KNOWLEDGE.md): the living-knowledge model (/docs, CHANGELOG, ADRs).
+- [DEBT.md](DEBT.md): the technical-debt register: what praxis has knowingly borrowed, what it costs, and what would repay it.
+- [KNOWLEDGE.md](KNOWLEDGE.md): the living-knowledge model (/docs, CHANGELOG, ADRs, the debt register).
 - [AUDIT.md](AUDIT.md): the project's self-audit and resolutions.
 - [SCAN.md](SCAN.md): the repo-wide scanner (`/praxis:audit repo`), which audits, reverse-audits, and fixes.
 - [STABILITY.md](STABILITY.md): the stable public surface (v1.0, SemVer).

@@ -89,7 +89,7 @@ contributor to introduce them; the tokens still ship in code either way. See
 
 ## Scope notes
 
-- The repo-wide scanner (`/praxis:audit repo`) keeps its seven code dimensions; the
+- The repo-wide scanner (`/praxis:audit repo`) keeps its eight code dimensions; the
   UI verticals run in the change audit. To sweep an existing UI for
   accessibility/consistency debt, ask for the surface in question by name
   ("audit the checkout screens for accessibility"): the router sends it through

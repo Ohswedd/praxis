@@ -6,7 +6,8 @@ Deterministic backstop for the rule "nothing left unfinished, no placeholders,
 no silently-narrowed scope". Scans either the current change (default) or given
 files for markers that signal unfinished or stubbed work.
 
-"The current change" means the unstaged diff, the staged diff, *and* every
+"The current change" means the branch's commits since its base, the working
+tree, *and* every
 untracked file: a file created during the work is untracked until it is staged,
 so a scanner reading only `git diff` never sees the new code at all.
 
@@ -36,7 +37,6 @@ from __future__ import annotations
 import json
 import os
 import re
-import subprocess
 import sys
 from pathlib import Path
 

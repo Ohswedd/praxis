@@ -20,7 +20,7 @@ layers that fire automatically.
 │    claudemd-living, docs-living, capability-discovery, git-delivery │
 │    Reasoning workflows, auto-invoked when their description matches.│
 ├─────────────────────────────────────────────────────────────────────┤
-│ 3. SUBAGENTS  (read-only, Opus: 9 vertical auditors + verifiers)    │
+│ 3. SUBAGENTS  (read-only, Opus: 10 vertical auditors + verifiers)    │
 │    Deep, verbose analysis in isolated context, one concern each.   │
 ├─────────────────────────────────────────────────────────────────────┤
 │ 4. HOOKS  (SessionStart, UserPromptSubmit, PreToolUse,             │
@@ -60,7 +60,7 @@ user: "fix the pagination bug" + chosen effort
                          ensure CLAUDE.md is right (bootstrap/sync)
   Phase 3  Plan          plan mode; no edits until the plan is set
   Phase 4  Implement     to the plan, code-craft standards, reuse over reinvent
-  Phase 5  Audit         quality-rubric: 7 verticals (incl. completeness) +
+  Phase 5  Audit         quality-rubric: 8 verticals (incl. completeness) +
                          accessibility & design-consistency on UI changes +
                          horizontal pass; fix every finding; tests green
   Phase 6  Report        canonical structured report; record green report; task done
@@ -82,9 +82,10 @@ to ask.
 - **Deterministic:** `scan_placeholders.py` scans the change for TODO/FIXME/stub/  <!-- praxis:ack: the rule has to name the markers it looks for -->
   NotImplemented/debug markers and for deferral prose, language-agnostically, and  <!-- praxis:ack -->
   feeds the Stop gate's block message and the completeness auditor. "The change"
-  is the union of the unstaged diff, the staged diff, and every untracked file:
-  a file created during the work is untracked until it is staged, so a scanner
-  reading only `git diff` never sees the new code at all.
+  is everything this branch has committed since it left its base, plus the
+  working tree, plus every untracked file: a file created during the work is
+  untracked until it is staged, and work that has been committed appears in no
+  diff at all, so a scanner reading only `git diff` sees neither.
 - **Semantic:** `@praxis:completeness-auditor` judges each marker, checks every
   acceptance criterion, and flags any scope quietly dropped.
 - **Reported:** anything genuinely out of scope must appear in the report's
@@ -176,7 +177,7 @@ See `docs/KNOWLEDGE.md` for the full model.
 The change-audit machinery generalises to whole repositories via the
 `repo-audit` skill: `repo_scan.py` builds a deterministic shard ledger
 (inventory → shards → per-shard × dimension tracking → finding lifecycle), the
-seven vertical auditors run over every shard, and the `finding-verifier`
+eight vertical auditors run over every shard, and the `finding-verifier`
 subagent reverse-audits each finding before anything is fixed. Coverage claims
 come from recorded state: an unaudited shard makes the final report print
 INCOMPLETE. See `docs/SCAN.md`.
@@ -252,13 +253,36 @@ insufficient for the house style:
 3. The session audit, the prompt router and the skills state the mode and the
    artifact map, so the correct path is used first rather than caught last.
 
+## Review scope: the branch, not the working tree
+
+praxis used to define "the change" as the working tree: the unstaged diff, the
+staged diff, and untracked files. That definition has a hole that widens as the
+delivery discipline improves. One `git commit` empties every diff it reads, so
+the scanners find nothing, the auditors review nothing, and the Stop gate opens.
+With one commit per subtask, most of a task's life is spent in that state.
+
+`common.review_base()` resolves the merge-base with the integration branch, and
+`changed_files`, `added_line_pairs`, `change_signature` and `review_pending` all
+cover the range from there to HEAD as well as the working tree. Every existing
+consumer therefore sees committed work without knowing anything new. On the
+integration branch there is no range, and the behaviour is exactly as before.
+
+`scope.py` prints the base, the commits, the files and the diff commands, so the
+rubric and each subagent work from one resolved answer rather than each guessing.
+The regression auditor reads the commits **in order**, because its question is
+about differences between states: a signature changed in one commit with its
+callers updated in another is fine, and the same change with the callers never
+updated is a regression that a squashed diff makes no easier to see.
+
 ## Vertical vs horizontal
 
 - **Vertical analysis** = one subagent per concern, deep and isolated:
   `adversarial`, `regression`, `duplication`, `performance`, `edge-case`,
-  `doc-reference`, `completeness`, plus `accessibility` and
+  `doc-reference`, `debt`, `completeness`, plus `accessibility` and
   `design-consistency` when the change touches UI surface. Each returns
-  `PASS / PASS WITH NOTES / FAIL`.
+  `PASS / PASS WITH NOTES / FAIL`. The `debt` vertical is the only one that asks
+  about later rather than now: what the change will cost to live with, and
+  whether the shortcuts it took were recorded in `docs/DEBT.md` or left silent.
 - **Horizontal analysis** = the `quality-rubric` skill's cross-cutting pass over
   the whole change for consistency, use-case coverage, and guideline compliance,
   looping until every vertical is green.
@@ -457,8 +481,8 @@ plugins/praxis/
                                      quality-rubric, docs-living, claudemd-living,
                                      frontend-pipeline, repo-audit, git-delivery,
                                      bootstrap, capability-discovery
-  agents/*.md                        twelve read-only subagents (9 verticals +
-                                     finding-verifier + repo-cartographer +
+  agents/*.md                        thirteen read-only subagents (10 verticals
+                                     + finding-verifier + repo-cartographer +
                                      claudemd-verifier)
   hooks/hooks.json                   lifecycle wiring (command hooks)
   scripts/
@@ -473,8 +497,10 @@ plugins/praxis/
     scan_placeholders.py             unfinished work in the whole change
     scan_style.py                    em dashes and AI credits in the whole change
     drift.py                         docs versus live config, and stale references
+    scope.py                         what is under review: base, commits, files
     report.py  config.py  doctor.py  selfcheck.py  repo_scan.py
-    task_state.py  changelog.py  adr.py  workspaces.py  claudemd_check.py
+    task_state.py  changelog.py  adr.py  debt.py  workspaces.py
+    claudemd_check.py
     lib/common.py                    shared, defensive helpers
   templates/*                        CLAUDE.md, settings, MCP starting points
 ```

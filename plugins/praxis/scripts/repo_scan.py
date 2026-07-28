@@ -56,7 +56,8 @@ DIMENSIONS = [
     "duplication",   # copy-paste, reinvention, over-engineering
     "performance",   # complexity, hot paths, growth
     "doc-reference", # authoritative docs + in-repo pattern conformance
-    "completeness",  # stubs, dead code, debt, unwired pieces
+    "debt",          # what this code costs to live with, and whether it is recorded
+    "completeness",  # stubs, dead code, unwired pieces
 ]
 
 SEVERITIES = ("critical", "high", "medium", "low")
@@ -79,12 +80,37 @@ _MAX_FILE_BYTES = 500_000  # beyond this it is almost certainly generated
 
 def _load(root):
     try:
-        return common.read_state_strict(root, NAME)
+        data = common.read_state_strict(root, NAME)
     except Exception:
         print(f"praxis repo-scan: {NAME} exists but cannot be parsed, likely a "
               "partial write from an interrupted session. Inspect/restore "
               f".claude/.praxis/{NAME}, or discard it with 'clear --force'.")
         sys.exit(1)
+    return _migrate_dimensions(data)
+
+
+def _migrate_dimensions(data):
+    """Adopt dimensions this praxis knows but the ledger predates.
+
+    A ledger snapshots `DIMENSIONS` at init, and every reader uses the snapshot.
+    So a scan started before a new vertical existed would refuse to record it
+    ("unknown dimension") and, worse, would go on certifying full coverage from
+    the old, shorter list: the ledger's one promise is that coverage is claimed
+    from the record rather than from memory, and it would be claiming coverage of
+    a dimension that never ran.
+
+    Adding the dimension leaves affected shards correctly *unaudited*, which is
+    the honest state, and the extra work is one pass per shard.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get("dimensions"), list):
+        return data
+    added = [d for d in DIMENSIONS if d not in data["dimensions"]]
+    if added:
+        data["dimensions"] = list(data["dimensions"]) + added
+        print(f"praxis repo-scan: this ledger predates {', '.join(added)}; added, "
+              "so the shards that have not been audited on it now report as "
+              "incomplete rather than certifying coverage they never had.")
+    return data
 
 
 def _save(root, data):

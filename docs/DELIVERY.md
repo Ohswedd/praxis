@@ -10,6 +10,31 @@ every edit; you invoke it once a change is complete and its audit is green, via
 `/praxis:ship` (or the `git-delivery` skill inside the task pipeline). The
 mechanics live in the skill; this page is the contract.
 
+## One task, one branch, one pull request
+
+Whatever the user asked for in a prompt is delivered as a single reviewable
+unit, so the version history matches the work rather than being reconstructed
+from it afterwards.
+
+- A task praxis decomposed into subtasks lands as **one commit per subtask** on
+  **one branch**, and becomes **one pull request**. The PR's commit list should
+  read as the plan.
+- A single-step task is the same shape with a plan of one.
+- Two unrelated tasks never share a branch. A pull request that does two things
+  cannot be reviewed, reverted cleanly, or versioned honestly; if a new request
+  arrives mid-task, it is a second task and a second branch.
+
+`task_state.py subtask done <n>` records the commit each subtask landed on and
+warns when a subtask shares a commit with the one before it, because that is the
+moment the tracking disappears. `task_state.py done` reports a task that closed
+with no pull request recorded.
+
+This is also why the audit scope is the branch rather than the working tree: with
+one commit per subtask, `git diff` is empty for most of a task's life, and a
+review scoped to it would read nothing. See [`ARCHITECTURE.md`](ARCHITECTURE.md) (Review scope),
+[ADR-0022](adr/0022-a-review-is-scoped-to-the-branch-not-the-working-tree.md), and
+`scope.py`.
+
 ## The default: human-in-the-loop
 
 Out of the box, praxis:

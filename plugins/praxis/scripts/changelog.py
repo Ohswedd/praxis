@@ -130,7 +130,7 @@ def add(root, ctype: str, message: str) -> None:
     # Name the file, not just the section: in contributor mode this is a local
     # record rather than the project's changelog, and a caller that believes it
     # updated the repo's would report the wrong thing to the user.
-    print(f"praxis: {_rel(root, p)} [Unreleased] › {ctype}: {message}")
+    print(f"praxis: {common.rel_path(root, p)} [Unreleased] › {ctype}: {message}")
 
 
 def release(root, version: str) -> None:
@@ -142,14 +142,7 @@ def release(root, version: str) -> None:
                         f"## [Unreleased]\n\n## [{version}] - {today}", 1)
     p = path(root)
     p.write_text(text, encoding="utf-8")
-    print(f"praxis: released {version} ({today}) in {_rel(root, p)}.")
-
-
-def _rel(root, p) -> str:
-    try:
-        return str(p.relative_to(root))
-    except ValueError:
-        return str(p)
+    print(f"praxis: released {version} ({today}) in {common.rel_path(root, p)}.")
 
 
 def show(root) -> None:

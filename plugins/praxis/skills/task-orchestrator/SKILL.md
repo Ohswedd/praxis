@@ -118,10 +118,14 @@ if something fails, and how each acceptance criterion will be met.
 - Add or update tests alongside the change.
 
 ## Phase 5: Audit (prove it's done)
-Run the **quality-rubric** skill in full:
+Run the **quality-rubric** skill in full. Scope it with
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/scope.py"` first: on a branch that has
+already committed subtasks, `git diff` is empty, and an audit scoped that way
+reviews nothing and passes everything.
 - vertical auditors: doc-reference, duplication, regression, adversarial,
-  edge-case, performance, **and completeness** (`@praxis:completeness-auditor`
-  + `scan_placeholders.py`);
+  edge-case, performance, **debt** (`@praxis:debt-auditor`: what this change
+  costs later, and whether any of it was recorded), **and completeness**
+  (`@praxis:completeness-auditor` + `scan_placeholders.py`);
 - horizontal consistency pass;
 - fix every FAIL and actionable note, then re-run the affected auditor;
 - confirm the test command passes and no regression was introduced;
@@ -141,6 +145,10 @@ Documentation is part of "done". Using the `docs-living` skill:
   it.
 - Add a `[Unreleased]` entry to `CHANGELOG.md`:
   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/changelog.py" add --type <added|changed|fixed|removed> "<desc>"`.
+- Record any debt this change knowingly took on:
+  `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/debt.py" add "<what>" --interest "<cost>" --principal "<the real fix>" --why "<why now>" --where "<where>"`.
+  A shortcut with a written reason is a decision; the same shortcut unrecorded is
+  a defect the next person meets without the reason.
 - Record an ADR for any significant or autonomously-taken decision:
   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/adr.py" new "<title>" --status accepted --context "..." --decision "..." --consequences "..."`.
 - Keep `docs/README.md` indexed.
@@ -172,6 +180,7 @@ End with the canonical praxis report. Keep it scannable and complete:
 | adversarial     | PASS    | ...                      |
 | edge-case       | PASS    | ...                      |
 | performance     | PASS    | ...                      |
+| debt            | PASS    | what it costs later      |
 | completeness    | PASS    | no placeholders/stubs    |
 
 (Add `accessibility` and `design-consistency` rows whenever the change touched
@@ -192,6 +201,11 @@ user-facing surface. The report is not green without them.)
 - Docs updated: <files under /docs>
 - CHANGELOG: <the [Unreleased] entry added>
 - ADR: <ADR filename, or "none needed">
+- Debt recorded: <register entry, or "none taken on">
+
+### Delivery
+- Branch / PR: <one per task>
+- Subtasks → commits: <n>/<n>, each on its own commit
 
 ### Out of scope / follow-ups
 - <anything deliberately not done, and why> (empty if none)
@@ -233,11 +247,38 @@ to run `/goal`.
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/task_state.py" open "<task title>" \
-  --criteria "criterion 1" "criterion 2" "tests pass" --max <turns>
+  --criteria "criterion 1" "criterion 2" "tests pass" \
+  --subtasks "first step" "second step" "third step" --max <turns>
 ```
 
-Choose `--max` by task size (a normal task ~15, a large migration ~40). While the
-task is open, the Stop gate keeps you working turn after turn. Then:
+Choose `--max` by task size (a normal task ~15, a large migration ~40).
+
+**Give a large task its plan.** A request with more than one deliverable is
+decomposed by `prompt-architect` into ordered subtasks, and they go in at `open`
+time. The plan is not decoration: the gate reports which subtask is in flight and
+what remains, and `task_state.py done` refuses while any of them is unfinished,
+so a plan cannot quietly become a smaller piece of work. Re-plan honestly with
+`task_state.py plan ...` if the shape of the work genuinely changed; do not
+`--force` past a subtask you decided to skip without saying so.
+
+**One task is one unit of delivery.** The task binds to a branch when it opens,
+each subtask lands as its own commit, and the whole task becomes one pull
+request. That is what makes the work reviewable and the version history
+meaningful:
+
+```bash
+git checkout -b <type>/<kebab-summary>        # once, at task open
+# ... work subtask 1 ...
+git commit -m "<type>(<scope>): <subtask 1>"
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/task_state.py" subtask done 1
+```
+
+`subtask done` records the commit it landed on, and warns when a subtask shares a
+commit with the one before it, because that is the tracking disappearing. Aim for
+a pull request whose commit list reads as the plan. See `git-delivery` for the
+branch, commit and PR mechanics.
+
+While the task is open, the Stop gate keeps you working turn after turn. Then:
 
 - **Genuine decision point** (real ambiguity, irreversible choice, conflicting
   requirements): run `task_state.py waiting`, then stop and ask the user. Resume

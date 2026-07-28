@@ -244,7 +244,9 @@ def render(decision: dict, root) -> str:
         lines += [
             "This is an **implementation request**. Do not start editing files. Run the "
             "`task-orchestrator` skill: it is mandatory here, not optional:",
-            "1. `prompt-architect` → spec (goal, scope, non-goals, acceptance criteria).",
+            "1. `prompt-architect` → spec (goal, scope, non-goals, acceptance "
+            "criteria), and, if this request has more than one deliverable, an "
+            "ordered plan: one subtask per commit, in dependency order.",
             "2. Investigate: read the affected code and the authoritative docs "
             "(`doc-reference-finder`) before writing anything.",
             "3. Plan mode for anything beyond a one-line edit.",
@@ -252,12 +254,18 @@ def render(decision: dict, root) -> str:
             "not an MVP**: no TODOs, no stubs, no \"for now\", no \"in a real "
             "implementation\". If something is genuinely out of scope, say so in the "
             "report, never leave it implied in the code.",
-            "5. `quality-rubric` (all verticals) → fix every finding.",
+            "5. `quality-rubric` (all verticals, including `debt`: what this change "
+            "costs later, and whether any of it was recorded). Scope it with "
+            "`scope.py`, never `git diff` alone: on a branch that has committed "
+            "anything `git diff` is empty and every auditor passes on nothing. "
+            "Fix every finding.",
             "6. `docs-living`: /docs + CHANGELOG [Unreleased] + ADR if the decision was "
             "significant or taken autonomously.",
             "7. Record the report LAST: it is keyed to the change signature, so any "
             "file written after it invalidates the audit.",
-            f"Open a praxis task first if this is multi-step: `{_TASK_CMD}`.",
+            f"Open a praxis task first if this is multi-step: `{_TASK_CMD}` (use "
+            "`--subtasks` for the plan). Deliver it as one branch and one pull "
+            "request, each subtask its own commit.",
         ]
     elif route == "review":
         lines += [

@@ -67,7 +67,7 @@ Two caps and a fail-open path guarantee it can never trap a session.
 Four layers, only one of which has authority:
 
 <p align="center">
-  <img src="assets/layers.svg" alt="Four layers: the output style sets the doctrine every turn; skills carry the reasoning workflows; nine read-only subagents perform the vertical audits in isolated context; hooks are the deterministic gates and the only layer that can refuse." width="900">
+  <img src="assets/layers.svg" alt="Four layers: the output style sets the doctrine every turn; skills carry the reasoning workflows; ten read-only subagents perform the vertical audits in isolated context; hooks are the deterministic gates and the only layer that can refuse." width="900">
 </p>
 
 ## Workflows
@@ -77,13 +77,13 @@ router reads what you typed, and the gate resolves the rest from the files you
 actually changed.
 
 <p align="center">
-  <img src="assets/workflows.svg" alt="Four kinds of request and the workflow each runs. Fix the pagination bug runs task-orchestrator, quality-rubric with seven auditors, and docs-living, and the gate requires a green report backed by a test run praxis executed itself. Build the pricing page runs frontend-pipeline, task-orchestrator, and the rubric with nine auditors, and the gate additionally requires the accessibility and design-consistency verdicts. Audit the whole repo runs repo-audit, finding-verifier, and a coverage report, and the gate requires every shard audited on every dimension. Commit this and open a PR runs git-delivery, commit and PR, and the merge policy, and the gate requires a green audit." width="900">
+  <img src="assets/workflows.svg" alt="Four kinds of request and the workflow each runs. Fix the pagination bug runs task-orchestrator, quality-rubric with eight auditors, and docs-living, and the gate requires a green report backed by a test run praxis executed itself. Build the pricing page runs frontend-pipeline, task-orchestrator, and the rubric with ten auditors, and the gate additionally requires the accessibility and design-consistency verdicts. Audit the whole repo runs repo-audit, finding-verifier, and a coverage report, and the gate requires every shard audited on every dimension. Commit this and open a PR runs git-delivery, commit and PR, and the merge policy, and the gate requires a green audit." width="900">
 </p>
 
 | You type | What runs | Where it stops |
 | --- | --- | --- |
-| *"fix the pagination bug"* | spec → investigate → plan → implement → 7 auditors → docs | a green report whose test run Praxis executed itself |
-| *"build the pricing page"* | brief → wireframes → design system → build → 9 auditors | the same, plus the accessibility and design-consistency verdicts |
+| *"fix the pagination bug"* | spec → investigate → plan → implement → 8 auditors → docs | a green report whose test run Praxis executed itself |
+| *"build the pricing page"* | brief → wireframes → design system → build → 10 auditors | the same, plus the accessibility and design-consistency verdicts |
 | *"update `Header.tsx`"* | the front-end route, from the file name alone | as above: naming a `.tsx` file is enough to make it design work |
 | *"why is this slow?"* | nothing. It is a question | Praxis answers it and stays out of the way |
 | *"audit the whole repo"* | shard ledger → every dimension → reverse audit → fixes | a coverage report computed from the ledger, gaps stated |
@@ -154,7 +154,7 @@ got there.
 
 | Refused | Detected by |
 | --- | --- |
-| A `TODO`, stub, or `NotImplementedError` in your own diff | deterministic scan of both diffs **and every untracked file**, so a brand-new file is not invisible | <!-- praxis:ack naming the marker is the point here -->
+| A `TODO`, stub, or `NotImplementedError` in your own diff | deterministic scan of the branch's commits, the working tree **and every untracked file**, so a brand-new file is not invisible | <!-- praxis:ack naming the marker is the point here -->
 | Deferral prose: *"for now"*, *"in a real implementation"*, *"future work will"* | comment-level scan; `praxis:ack` exempts a genuine case |
 | A test suite that was never run | `report.py` executes the suite itself and records the real exit code |
 | Scope quietly narrowed | the completeness auditor checks the change against its own spec |
@@ -168,12 +168,29 @@ handling and the states you know are needed are in scope, not follow-ups.
 
 ### It audits like an adversary
 
-Nine read-only subagents, each with one concern and its own context:
+Ten read-only subagents, each with one concern and its own context:
 **adversarial**, **regression**, **duplication** (including over-engineering),
-**performance**, **edge-case**, **doc-reference**, **completeness**, plus
-**accessibility** and **design-consistency** whenever a change touches UI. A
+**performance**, **edge-case**, **doc-reference**, **debt**, **completeness**,
+plus **accessibility** and **design-consistency** whenever a change touches UI. A
 horizontal pass then checks the change reads as one coherent whole, and the loop
 repeats until every vertical is green.
+
+The **debt** vertical is the only one that asks about later rather than now:
+what this change will cost to live with, and, above all, whether the shortcuts it
+took were written down. A shortcut with a stated reason is a decision; the same
+shortcut unrecorded is the defect, because the next person meets the consequence
+without the reason. `debt.py` keeps that register in `docs/DEBT.md` and refuses an
+entry that does not say what it costs and what would repay it.
+
+### It reviews the branch, not the working tree
+
+One `git commit` used to end a review: `git diff` goes empty, the tree is clean,
+and every scanner, auditor and gate sees nothing. The better the delivery
+discipline, the more complete that blindness became. The review scope is now
+everything the branch has done since it left its base, plus what is still
+uncommitted, plus untracked files. `scope.py` prints it, and the regression
+auditor reads the commits **in order**, because a signature changed in one commit
+and its callers updated in another is a story a squashed diff cannot tell.
 
 `/praxis:audit repo` applies the same auditors to an entire existing codebase,
 shard by shard, adversarially re-verifying every finding before acting on it and
@@ -223,7 +240,7 @@ than existing as a command of their own.
 | Command | What it does |
 | --- | --- |
 | `/praxis:task <request>` | run the full pipeline end to end. Prefix `spec:` to stop at the spec |
-| `/praxis:audit [repo\|path]` | the quality rubric on the current change, or the whole repo |
+| `/praxis:audit [repo\|path]` | the quality rubric on the current branch's change, or the whole repo |
 | `/praxis:docs` | update `/docs`, `CHANGELOG.md`, ADRs and the brief hierarchy |
 | `/praxis:ship [release]` | Conventional Commit → branch → PR, or cut a SemVer release |
 | `/praxis:bootstrap` | set up or migrate this repo (it also runs on its own) |
@@ -310,7 +327,7 @@ conservative about that:
   blocks secret-file access, force-pushes, destructive resets, broad `rm -rf`, and
   secret exfiltration. It is a backstop: your permission settings remain the
   primary control.
-- **Read-only auditors.** The nine vertical subagents get `Read, Grep, Glob` and
+- **Read-only auditors.** The ten vertical subagents get `Read, Grep, Glob` and
   nothing else (doc-reference also has web search).
 - **Additive setup, never a silent overwrite.** Bootstrap writes what is absent
   and stops to ask before reconciling a brief it did not author; valid

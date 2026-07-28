@@ -6,7 +6,9 @@ argument-hint: "[ blank = current change | repo | <path> | repo --report-only ]"
 Two scopes, one command. Read `${ARGUMENTS}` and pick:
 
 **Blank, `staged`, or a narrow focus** goes to the `quality-rubric` skill on the
-current change. Scope the diff, dispatch every vertical auditor (doc-reference,
+current change. Scope it with `scope.py` (never `git diff` alone: on a branch
+that has committed anything it is empty), then dispatch every vertical auditor
+(doc-reference,
 duplication, regression, adversarial, edge-case, performance, completeness, plus
 accessibility and design-consistency whenever the change touches user-facing
 surface) and the horizontal consistency pass. Fix every FAIL, re-run the affected

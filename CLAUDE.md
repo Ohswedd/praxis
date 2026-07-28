@@ -22,7 +22,8 @@ Four layers, only one of which can refuse:
 - `plugins/praxis/scripts/*.py`: the hooks, wired in `hooks/hooks.json`. These are
   the only deterministic gates.
 
-`scripts/lib/common.py` holds every shared helper: workspace mode and artifact
+`scripts/lib/common.py` holds every shared helper: the review scope (the branch's
+base, its commits, and what is still uncommitted), workspace mode and artifact
 paths, repo state, the change signature, config resolution, UI-surface detection,
 secret and house-style patterns. Put shared logic there rather than in a second
 script. `docs/ARCHITECTURE.md` is the long form.

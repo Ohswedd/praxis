@@ -1,6 +1,6 @@
 ---
 name: docs-living
-description: "Keep the project's /docs tree, CHANGELOG.md, and Architecture Decision Records (docs/adr/) alive and accurate. Use for EVERY change that adds, modifies, or removes behaviour, an API, a config, an architectural decision, or a workflow: read the relevant docs first, then update or create them, and record a changelog entry (and an ADR for significant/autonomous decisions). Also use to establish /docs when a repo lacks it. The project must always have a /docs; treat documentation as part of \"done\", never an afterthought."
+description: "Keep the project's /docs tree, CHANGELOG.md, the technical-debt register (docs/DEBT.md), and Architecture Decision Records (docs/adr/) alive and accurate. Use for EVERY change that adds, modifies, or removes behaviour, an API, a config, an architectural decision, or a workflow: read the relevant docs first, then update or create them, and record a changelog entry (and an ADR for significant/autonomous decisions). Also use to establish /docs when a repo lacks it. The project must always have a /docs; treat documentation as part of \"done\", never an afterthought."
 ---
 
 # Living Docs
@@ -39,6 +39,7 @@ Expect and maintain this shape (create what's missing):
 docs/
   README.md            index of the docs (what lives where)
   ARCHITECTURE.md      high-level design, components, data flow
+  DEBT.md              the technical-debt register (what was borrowed, and why)
   adr/                 Architecture Decision Records (NNNN-title.md)
   <domain>.md          per-subsystem/feature docs as needed
 CHANGELOG.md           at the repo root (Keep a Changelog)
@@ -72,7 +73,22 @@ CHANGELOG.md           at the repo root (Keep a Changelog)
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/changelog.py" add --type <added|changed|fixed|removed|security|deprecated> "<concise description>"
    ```
    Map to Conventional Commits: feature→added, bugfix→fixed, breaking→changed/removed.
-7. **ADR for significant or autonomous decisions.** When you make an architectural
+7. **Record the debt you knowingly took on.** If this change took a shortcut, left
+   a workaround in place, created duplication something will have to keep in sync
+   by hand, or leaned on a deprecated API, write it down as it happens:
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/debt.py" add "<what was borrowed>" \
+     --interest "<what it costs, and how often>" \
+     --principal "<what the real fix is>" --why "<why this was the right call now>" \
+     --where "<the file or module>"
+   ```
+   Debt is not a synonym for bad code. A shortcut taken for a stated reason and
+   written down is a decision; the same shortcut taken silently is the defect,
+   because the next person meets the consequence without the reason. The
+   `debt-auditor` reads this register: what is listed here it will not re-report,
+   and what it finds that is *not* here is a finding. `debt.py list` shows the
+   register; `debt.py paid <n>` closes an entry when it is repaid.
+8. **ADR for significant or autonomous decisions.** When you make an architectural
    or non-obvious design decision, especially any decision taken autonomously in
    auto-pilot: persist it:
    ```bash
@@ -81,8 +97,8 @@ CHANGELOG.md           at the repo root (Keep a Changelog)
    ```
    ADRs are a historical record: supersede one with a new ADR, never by rewriting
    what it originally said.
-8. **Keep the index current.** Update `docs/README.md` when you add a doc.
-9. **Re-run the drift check** before you call the docs done. It is the cheapest
+9. **Keep the index current.** Update `docs/README.md` when you add a doc.
+10. **Re-run the drift check** before you call the docs done. It is the cheapest
    proof that this change did not introduce a new stale reference.
 
 ## Establishing /docs (new/legacy repos, owner mode)
@@ -98,6 +114,8 @@ notes locally instead.
 - A `[Unreleased]` entry exists for this change, in the project's `CHANGELOG.md`
   or, in `contributor` mode without one, in local knowledge.
 - Any significant/autonomous decision has an ADR.
+- Any debt this change knowingly took on is in the register, with its
+  interest and principal, rather than in someone's memory.
 - `docs/README.md` indexes any new doc.
 - Nothing still-valid was lost.
 - `drift.py` is clean, or every remaining finding is explained.

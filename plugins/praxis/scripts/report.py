@@ -16,7 +16,7 @@ Usage:
     report.py record \
         [--tests "pytest"] [--timeout 900] \
         --verticals "doc-reference=pass,duplication=pass,regression=pass,\
-adversarial=pass,edge-case=pass,performance=pass,completeness=pass"
+adversarial=pass,edge-case=pass,performance=pass,debt=pass,completeness=pass"
     report.py show
 
 --tests defaults to the repo's detected test command. Overriding it is recorded

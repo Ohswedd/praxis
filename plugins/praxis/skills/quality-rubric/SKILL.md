@@ -1,6 +1,6 @@
 ---
 name: quality-rubric
-description: Run praxis's full quality review on a code change. Use this whenever you finish a non-trivial edit, before declaring work done, when the Stop gate reports an unreviewed change, or when the user asks for a review, audit, or quality check. Dispatches the vertical auditors (adversarial, regression, duplication, performance, edge-case, doc-reference, completeness, plus accessibility and design-consistency on UI changes) and a horizontal consistency pass, then records a green report so the quality gate can pass. Always use this before finishing coding work.
+description: Run praxis's full quality review on a code change. Use this whenever you finish a non-trivial edit, before declaring work done, when the Stop gate reports an unreviewed change, or when the user asks for a review, audit, or quality check. Dispatches the vertical auditors (adversarial, regression, duplication, performance, edge-case, doc-reference, technical debt, completeness, plus accessibility and design-consistency on UI changes) and a horizontal consistency pass, then records a green report so the quality gate can pass. Always use this before finishing coding work.
 ---
 
 # Quality Rubric
@@ -12,11 +12,37 @@ a per-prompt checklist into a repeatable, gated workflow. Invoke it via
 Prefer maximum thoroughness: run high effort, and do not shortcut the vertical
 passes. Quality is the priority over speed.
 
-## Step 1: Scope the change
-Identify exactly what changed and what it touches:
-- `git diff` (and `git diff --staged`) for the current change set.
-- Map the blast radius: callers, callees, shared state, public contracts, tests,
-  and docs affected by the diff.
+## Step 1: Scope the change (the branch, not the working tree)
+
+A change does not stop being a change by being committed. Scope it as everything
+this branch has done since it left its base, plus whatever is still uncommitted:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/scope.py"     # base, commits, files, stats
+```
+
+That prints the review base and the exact commands for the diff. Use them:
+
+- `git diff <base>...HEAD` for what the branch has already committed, and
+  `git log <base>..HEAD` for the commits themselves. Reviewing commit by commit
+  is often faster than one large diff, and it shows the *order* the work was
+  done in, which is where an accidental revert or a fix-up of a bug this same
+  branch introduced becomes obvious.
+- `git diff` and `git diff --staged` for what is not committed yet.
+- Untracked files: they are part of the change and appear in no diff at all.
+
+**Never scope a review with `git diff` alone.** On a branch that has committed
+anything, it is empty, and every auditor then reviews nothing and reports PASS.
+Praxis's own helpers (`changed_files`, the scanners, the change signature, the
+Stop gate) all use the branch scope, so a review that used the working tree alone
+would be narrower than the gate that judges it.
+
+Then map the blast radius: callers, callees, shared state, public contracts,
+tests, and docs affected by the change.
+
+Dispatch each auditor with the base you resolved here, so they scope it the same
+way. An auditor that is told "the staged change" will look at the working tree
+and find nothing.
 
 ## Step 2: Vertical analysis (dispatch the auditors)
 Run each concern as its own read-only subagent so their (verbose) analysis stays
@@ -35,12 +61,19 @@ agents:
 - `@praxis:edge-case-hunter`: enumerate boundary/null/concurrency/error cases
   and check each is handled.
 - `@praxis:perf-scalability-analyst`: complexity, hot paths, N+1, growth.
+- `@praxis:debt-auditor`: what this change will cost later. Shortcuts and
+  workarounds, coupling and hand-synchronised duplication it creates,
+  abstractions it has made wrong, deprecated or pinned dependencies it leans on,
+  tests that lock in implementation, and whether debt it knowingly took on was
+  **recorded** (`debt.py add`) or left silent. Recording is usually the cheapest
+  correct resolution: this vertical is not a demand to refactor what the change
+  did not come to fix.
 - `@praxis:completeness-auditor`: no placeholders/stubs/TODOs, no debug or
   dead code, and no scope silently dropped relative to the spec; every acceptance
   criterion met. Back it with the deterministic scan:
   `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/scan_placeholders.py --json`. That scan
-  covers the unstaged diff, the staged diff, **and** every untracked file, so a
-  brand-new file is not invisible to it.
+  covers the branch's commits, the working tree, **and** every untracked file, so
+  neither a committed subtask nor a brand-new file is invisible to it.
 
 **UI-touching changes** (markup/templates, components, styles, `docs/design/`,
 client-side view logic) additionally dispatch the two UI verticals. These are not
@@ -111,7 +144,7 @@ When all passes are green:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/report.py" record \
-  --verticals "doc-reference=pass,duplication=pass,regression=pass,adversarial=pass,edge-case=pass,performance=pass,completeness=pass"
+  --verticals "doc-reference=pass,duplication=pass,regression=pass,adversarial=pass,edge-case=pass,performance=pass,debt=pass,completeness=pass"
 ```
 
 `report.py` **runs the project's test command itself** and records the real exit
@@ -134,8 +167,9 @@ requirement; say so to the user and note the missing coverage.
 
 ## Output to the user
 Give a compact verdict table with one row per vertical (doc-reference,
-duplication, regression, adversarial, edge-case, performance, completeness:
-plus accessibility and design-consistency when the change touched UI), the
+duplication, regression, adversarial, edge-case, performance, debt,
+completeness: plus accessibility and design-consistency when the change touched
+UI), the
 horizontal summary, the fixes applied, and any accepted notes. Keep it scannable.
 When this rubric runs as part of a full task, fold the table into the
 task-orchestrator's canonical report rather than duplicating it.

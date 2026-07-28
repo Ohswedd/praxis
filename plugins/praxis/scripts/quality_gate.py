@@ -120,6 +120,7 @@ def handle_task(root, session_id):
         f"[praxis] Task '{task.get('title','')}' is not finished "
         f"(turn {iters + 1}/{cap}). Keep working end to end.\n"
         f"Acceptance criteria:\n{crit_txt}\n"
+        + _plan_status(task) +
         "Next: either continue the next step; or, if EVERY criterion is met and the "
         "praxis audit is green, run "
         "`python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/task_state.py\" done`. "
@@ -127,6 +128,37 @@ def handle_task(root, session_id):
         "then stop and ask."
     )
     return True
+
+
+def _plan_status(task) -> str:
+    """The subtask plan, and the delivery discipline that goes with it.
+
+    Restated on every refusal because this is where it is acted on: the point of
+    a plan is that the next step is never in doubt, and the point of one commit
+    per subtask is that the pull request ends up reading like the plan.
+    """
+    subs = task.get("subtasks")
+    # Coerced, not trusted. task.json is read straight off disk, and a hand
+    # edit, a 3.0 file or a torn write can make `subtasks` a string or a list of
+    # strings. `s.get` would then raise inside the argument to `common.block`,
+    # the exception would reach main's handler, and that handler calls `allow()`:
+    # a malformed plan would release the gate on an open, unfinished task.
+    subs = [s for s in subs if isinstance(s, dict)] if isinstance(subs, list) else []
+    if not subs:
+        return ""
+    mark = {"done": "x", "in_progress": ">", "pending": " "}
+    lines = [f"Plan ({sum(1 for s in subs if s.get('status') == 'done')}/{len(subs)} "
+             "subtasks done):"]
+    for i, sub in enumerate(subs, 1):
+        commit = f"  [{sub['commit']}]" if sub.get("commit") else ""
+        lines.append(f"  [{mark.get(sub.get('status'), ' ')}] {i}. "
+                     f"{sub.get('title', '')}{commit}")
+    nxt = next((i for i, s in enumerate(subs, 1) if s.get("status") != "done"), None)
+    if nxt:
+        lines.append(f"Work subtask {nxt} next. Commit it on its own "
+                     "(`task_state.py subtask done {n}` records the sha), so the "
+                     "task's pull request reads as this plan.")
+    return "\n".join(lines) + "\n"
 
 
 # --------------------------------------------------------------------------- #
@@ -213,7 +245,10 @@ def has_green_report(root, sig) -> bool:
 
 
 def handle_per_change(root, session_id):
-    if not common.working_tree_dirty(root):
+    # "Is there anything to review", not "is the tree dirty". Committing work
+    # used to end the review: one `git commit` emptied every diff praxis looks
+    # at, so the better the delivery discipline, the less the gate saw.
+    if not common.review_pending(root):
         common.allow()
     sig = common.change_signature(root)
     if has_green_report(root, sig):
@@ -334,7 +369,7 @@ def _escalating_message(root, sig, attempt: int, unfinished: list, style: list) 
             + _report_status(root, sig) +
             "Run it before finishing: the `quality-rubric` skill (or `/praxis:audit`). "
             "It dispatches the read-only vertical auditors: adversarial, regression, "
-            "duplication, performance, edge-case, doc-reference, completeness (plus "
+            "duplication, performance, edge-case, doc-reference, debt, completeness (plus "
             "accessibility and design-consistency if this change touches UI), then a "
             "horizontal pass, and records the green report."
         )

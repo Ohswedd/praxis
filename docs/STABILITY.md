@@ -1,4 +1,4 @@
-# Stability & Public Surface (v3.0)
+# Stability & Public Surface (v3.1)
 
 From v1.0, the following surface is **stable** and changes to it follow Semantic
 Versioning (breaking changes → a new MAJOR).
@@ -31,9 +31,10 @@ Versioning (breaking changes → a new MAJOR).
   `.claude/.praxis/`. praxis keeps them out of git with a marked block in
   `$GIT_COMMON_DIR/info/exclude`, and the PreToolUse guard refuses to stage them in
   either mode.
-- **Helper CLIs** (stable flags): `task_state.py`, `report.py`, `changelog.py`,
-  `adr.py`, `workspaces.py`, `config.py`, `doctor.py`, `drift.py`,
-  `scan_placeholders.py`, `scan_style.py`, `selfcheck.py` (including
+- **Helper CLIs** (stable flags): `task_state.py` (including `--subtasks`,
+  `plan`, `subtask start|done`, `delivery`), `report.py`, `changelog.py`,
+  `adr.py`, `debt.py`, `scope.py`, `workspaces.py`, `config.py`, `doctor.py`,
+  `drift.py`, `scan_placeholders.py`, `scan_style.py`, `selfcheck.py` (including
   `--require-repo`), `repo_scan.py`.
 
 - **Install identifier:** marketplace `ohswedd-praxis`, plugin `praxis`, i.e.
@@ -41,7 +42,22 @@ Versioning (breaking changes → a new MAJOR).
   marketplace name is a single global slot per user, so a generic one can be
   silently replaced by an unrelated project claiming the same name.
 - **Managed marker:** `<!-- praxis:managed -->` in a Praxis-managed `CLAUDE.md`.
-- **The `/docs` + `CHANGELOG.md` + `docs/adr/` contract** Praxis maintains.
+- **The `/docs` + `CHANGELOG.md` + `docs/adr/` + `docs/DEBT.md` contract** Praxis
+  maintains.
+- **The review scope**: a change is the branch's commits since its merge-base
+  with the integration branch, plus the working tree and untracked files. On the
+  integration branch itself there is no range, and the scope is the working tree
+  alone.
+
+## Added in 3.1 (non-breaking)
+| What | Why it matters |
+| --- | --- |
+| `debt` vertical + `@praxis:debt-auditor` + `debt.py` + `docs/DEBT.md` | nothing asked what a change would cost later, or whether the shortcut was recorded |
+| Branch-scoped review + `scope.py` | one commit used to empty every diff praxis reads, so the audit apparatus went blind exactly when delivery got better |
+| `task_state.py` subtasks and delivery binding | a large prompt was one opaque task; now it is an ordered plan, one commit per subtask, one PR per task |
+
+Nothing was removed or renamed, and a repo that never branches behaves exactly
+as it did in 3.0.
 
 ## Removed in 3.0 (breaking)
 | Was | Now |
