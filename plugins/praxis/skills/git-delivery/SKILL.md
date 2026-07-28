@@ -47,10 +47,37 @@ it, and it also refuses to stage `CLAUDE.local.md`, `.claude/.praxis/` or
 `.claude/settings.local.json`, which describe your machine rather than the
 project and belong in no repository's history.
 
-## 2. Branch
+## 2. Branch, and the unit of delivery
 
 If on the integration branch, create a topic branch before committing:
-`<type>/<kebab-summary>` (e.g. `feat/github-delivery`). Keep one PR per branch.
+`<type>/<kebab-summary>` (e.g. `feat/github-delivery`).
+
+**One task is one branch is one pull request.** Whatever the user asked for in a
+prompt (which praxis may have decomposed into several subtasks) is delivered as a
+single reviewable unit, so the version history matches the work rather than being
+reconstructed from it afterwards.
+
+- **A task with subtasks**: one commit per subtask, on the task's branch, and one
+  pull request for the task. The PR's commit list should read as the plan. Record
+  each as it lands, so the mapping survives the session:
+  ```bash
+  git commit -m "<type>(<scope>): <the subtask>"
+  python3 "${CLAUDE_PLUGIN_ROOT}/scripts/task_state.py" subtask done <n>
+  ```
+  `subtask done` captures the commit and warns when a subtask shares one with the
+  previous subtask, because at that point the tracking has quietly gone.
+- **A single-step task**: one commit, one pull request. The rule is the same
+  shape, with a plan of one.
+- **Never** let two unrelated tasks share a branch. If the user asks for something
+  new while a task is open, that is a second task and a second branch: finish or
+  park the first, do not fold it in. A pull request that does two things cannot be
+  reviewed, cannot be reverted cleanly, and cannot be versioned honestly.
+
+Record the delivery on the task so the report can state it:
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/task_state.py" delivery --pr <url>
+```
+`task_state.py done` says so when a task closes with no pull request recorded.
 
 ## 3. Pull request
 
