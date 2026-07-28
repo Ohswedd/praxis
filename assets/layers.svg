@@ -1,4 +1,4 @@
-<svg width="900" height="330" viewBox="0 0 900 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="lt ld">
+<svg width="900" height="330" viewBox="0 0 900 330" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="lt" aria-describedby="ld">
   <title id="lt">How Praxis is built: four layers, only one of which can block</title>
   <desc id="ld">Four stacked layers. Output style sets the mindset every turn. Skills carry the reasoning workflows. Read-only subagents perform deep vertical audits in isolated context. Hooks are the deterministic gates: the only layer that can refuse.</desc>
 
@@ -29,6 +29,6 @@
     <rect x="40" y="238" width="5" height="64" rx="2.5" fill="#167A5B"/>
     <text x="62" y="264" font-size="14.5" font-weight="700" fill="#FAF8F4">hooks</text>
     <text x="62" y="285" font-size="13" fill="#B9C0CB">Session orientation, the prompt router, the secret and destructive-command guard, and the Stop gate.</text>
-    <text x="838" y="264" font-size="11.5" font-weight="600" letter-spacing="1.2" fill="#167A5B" text-anchor="end">THE ONLY LAYER THAT CAN REFUSE</text>
+    <text x="838" y="264" font-size="11.5" font-weight="600" letter-spacing="1.2" fill="#3FBF95" text-anchor="end">THE ONLY LAYER THAT CAN REFUSE</text>
   </g>
 </svg>

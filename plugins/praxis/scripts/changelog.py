@@ -38,12 +38,20 @@ All notable changes to this project are documented here. The format follows
 
 
 def path(root):
-    return root / "CHANGELOG.md"
+    """The changelog this repo's mode says to write.
+
+    In a repository we only contribute to, an existing `CHANGELOG.md` is joined
+    (a pull request that skipped the project's own changelog is a worse pull
+    request), and a missing one is left missing: introducing the convention is the
+    maintainers' call, so praxis keeps that record under `.claude/.praxis/`.
+    """
+    return common.knowledge_path(root, "CHANGELOG.md")
 
 
 def ensure(root) -> str:
     p = path(root)
     if not p.exists():
+        p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(HEADER, encoding="utf-8")
     return p.read_text(encoding="utf-8")
 
@@ -117,8 +125,12 @@ def add(root, ctype: str, message: str) -> None:
             j += 1
         lines.insert(last_bullet + 1, bullet)
 
-    path(root).write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"praxis: CHANGELOG [Unreleased] › {ctype}: {message}")
+    p = path(root)
+    p.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    # Name the file, not just the section: in contributor mode this is a local
+    # record rather than the project's changelog, and a caller that believes it
+    # updated the repo's would report the wrong thing to the user.
+    print(f"praxis: {_rel(root, p)} [Unreleased] › {ctype}: {message}")
 
 
 def release(root, version: str) -> None:
@@ -128,8 +140,16 @@ def release(root, version: str) -> None:
         print("praxis: no [Unreleased] section."); return
     text = text.replace("## [Unreleased]",
                         f"## [Unreleased]\n\n## [{version}] - {today}", 1)
-    path(root).write_text(text, encoding="utf-8")
-    print(f"praxis: released {version} ({today}).")
+    p = path(root)
+    p.write_text(text, encoding="utf-8")
+    print(f"praxis: released {version} ({today}) in {_rel(root, p)}.")
+
+
+def _rel(root, p) -> str:
+    try:
+        return str(p.relative_to(root))
+    except ValueError:
+        return str(p)
 
 
 def show(root) -> None:
@@ -153,11 +173,20 @@ def main() -> int:
         print("usage: changelog.py add --type <t> \"msg\" | release <ver> | show"); return 1
     cmd = args[0]
     if cmd == "add":
-        ctype, msg = "Changed", None
+        ctype = "Changed"
         if "--type" in args:
-            ctype = args[args.index("--type") + 1]
-        rest = [a for k, a in enumerate(args[1:], 1)
-                if a not in ("--type", ctype)]
+            at = args.index("--type")
+            if at + 1 >= len(args):
+                print("praxis: --type needs a value "
+                      f"({', '.join(t.lower() for t in TYPES)}).")
+                return 1
+            ctype = args[at + 1]
+            # Drop the flag and its value by position. Filtering by equality
+            # would also swallow a message word that happens to match the type,
+            # turning `add --type fixed fixed the parser` into "the parser".
+            rest = args[1:at] + args[at + 2:]
+        else:
+            rest = args[1:]
         msg = " ".join(rest).strip()
         if not msg:
             print("praxis: nothing to add (empty message)."); return 1
@@ -174,7 +203,11 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # A CLI whose caller reports "changelog updated" on the strength of its exit
+    # code. Failing open here would record a change that was never written, which
+    # is the one lie the living-knowledge contract cannot absorb.
     try:
         sys.exit(main())
-    except Exception:
-        sys.exit(0)
+    except Exception as exc:
+        print(f"praxis: could not update the changelog: {exc}")
+        sys.exit(1)

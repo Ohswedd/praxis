@@ -1,6 +1,6 @@
 ---
 name: frontend-pipeline
-description: "Design and build user-facing front-ends to professional standard, any niche: marketing sites, landing/lead pages, storefronts/e-commerce, SaaS product UI, CRM/CMS, admin panels, dashboards. Use WHENEVER the request creates or substantially changes a user-facing interface (\"build a site for…\", \"make a landing page\", \"add a dashboard\", \"redesign the app\"), or when the user runs /praxis:frontend. Runs the full pipeline: business research (client call, goals, audience, competitors, positioning, messaging) → story-first wireframes → design system → development via the task-orchestrator → optimization with the accessibility and design-consistency verticals → ship. Proportional to task size; small UI fixes inherit the existing design system instead of re-running discovery."
+description: "Design and build user-facing front-ends to professional standard, any niche: marketing sites, landing/lead pages, storefronts/e-commerce, SaaS product UI, CRM/CMS, admin panels, dashboards. Use WHENEVER a change adds or alters user-facing surface, whatever the request called it: \"build a site for…\", \"make a landing page\", \"add a dashboard\", \"redesign the app\", but equally \"fix the checkout bug\" or \"update Header.tsx\". The trigger is the surface a change touches (markup, templates, components, styles, design tokens, docs/design/), not how it was phrased, so this runs on its own without a command in front of it. Runs the full pipeline: business research (client call, goals, audience, competitors, positioning, messaging) → story-first wireframes → design system → development via the task-orchestrator → optimization with the accessibility and design-consistency verticals → ship. Proportional to task size; small UI fixes inherit the existing design system instead of re-running discovery."
 ---
 
 # Front-End Pipeline
@@ -36,7 +36,7 @@ Both live under `${CLAUDE_PLUGIN_ROOT}/skills/frontend-pipeline/reference/`.
 
 ---
 
-## When this skill runs (it is not a judgement call)
+## When this skill runs (it is not a judgement call, and there is no command)
 
 Any change that adds or alters user-facing surface runs this pipeline, whatever
 the request called it. The trigger is the surface, not the wording:
@@ -52,6 +52,13 @@ same question from the changed file list and refuses a report that lacks
 `accessibility=pass` and `design-consistency=pass`, so a change routed here late
 pays for a second audit. Size the response with Phase 0; do not skip the pipeline
 because the request sounded small.
+
+Three mechanisms start this skill, and none of them is a command the user types:
+the prompt router recognises UI language and UI file names in the request, the
+task-orchestrator wraps its phases around this one whenever the work will touch
+that surface, and the gate refuses the report if neither of the first two
+noticed. A command would only add a fourth way to get it wrong, by being typed
+too late or not at all, and it was removed in 3.0 for that reason.
 
 ## Phase 0: Route and size (proportionality is mandatory)
 
@@ -101,6 +108,13 @@ every inference under assumptions.
 **Artifact:** write `docs/design/BRIEF.md` in the target repo (template in the
 playbook). The brief is living knowledge under the docs-living contract, every
 later phase traces back to it.
+
+The same applies to `WIREFRAMES.md` and `DESIGN-SYSTEM.md` below. In
+`contributor` mode all three follow the living-knowledge rule: they go into the
+repo's `docs/design/` if it already has one, and otherwise under
+`.claude/.praxis/knowledge/docs/design/`, which is git-excluded. A project that
+does not keep design artifacts did not ask a contributor to introduce them, and
+the tokens still ship in code either way.
 
 ## Phase 2: Story-first structure (wireframes define what users should *feel*)
 

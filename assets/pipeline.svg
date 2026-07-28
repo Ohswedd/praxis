@@ -1,4 +1,4 @@
-<svg width="900" height="300" viewBox="0 0 900 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pt pd">
+<svg width="900" height="300" viewBox="0 0 900 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pt" aria-describedby="pd">
   <title id="pt">The Praxis pipeline, and the gate that closes it</title>
   <desc id="pd">Any prompt enters a seven-stage pipeline: spec, investigate, plan, implement, audit, document, ship. A Stop gate after the audit returns the work to implement while the change is unfinished, unverified, or unaudited, and only releases once the audit is green.</desc>
 

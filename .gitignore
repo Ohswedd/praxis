@@ -1,6 +1,8 @@
-# praxis local state (per-project, never committed)
+# praxis local state (per-project, never committed). The guard refuses to stage
+# these in either workspace mode, so ignoring them keeps `git status` honest.
 .claude/.praxis/
 .claude/settings.local.json
+CLAUDE.local.md
 
 # OS / editor
 .DS_Store

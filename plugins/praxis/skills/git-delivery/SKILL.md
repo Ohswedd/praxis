@@ -1,6 +1,6 @@
 ---
 name: git-delivery
-description: "Deliver a finished change through Git and GitHub to professional standards, and cut releases. Use when the work is complete and audited and it should be committed, pushed, turned into a pull request, or released, or when the user runs /praxis:ship. Covers Conventional Commits, branch naming, PR authoring, SemVer releases, the ban on AI attribution in the project's record, and the review/merge policy: human-in-the-loop by default, autonomous review-and-merge only when opted in. Never merges without a green audit."
+description: "Deliver a finished change through Git and GitHub to professional standards, and cut releases. Use when the work is complete and audited and it should be committed, pushed, turned into a pull request, or released, or when the user runs /praxis:ship. Covers Conventional Commits, branch naming, PR authoring, SemVer releases, the ban on AI attribution in the project's record, contributing to a repository you do not own (match its conventions, ship nothing praxis authored, stop at the PR), and the review/merge policy: human-in-the-loop by default, autonomous review-and-merge only when opted in. Never merges without a green audit."
 ---
 
 # Git Delivery
@@ -43,7 +43,9 @@ Match the repo's existing history first; where it already uses
 
 Never commit secrets, credentials, or local state (respect `.gitignore`). The
 PreToolUse guard blocks force-pushes and destructive resets; delivery works within
-it.
+it, and it also refuses to stage `CLAUDE.local.md`, `.claude/.praxis/` or
+`.claude/settings.local.json`, which describe your machine rather than the
+project and belong in no repository's history.
 
 ## 2. Branch
 
@@ -65,6 +67,34 @@ the release automation reads it. The no-attribution rule applies to the PR body,
 the release notes, and any issue comment exactly as it does to the commit, and the
 guard blocks those commands too.
 
+## 3b. Contributing to a repository that is not yours
+
+`config.py status` reports the workspace mode. When it says `contributor`, the
+project's maintainers own the standards and the merge button, and delivery
+changes shape:
+
+- **The commit carries the change and nothing else.** No `CLAUDE.md`, no
+  `.praxis.toml`, no `/docs` tree, no `CHANGELOG.md`, no `.gitignore` edit that
+  praxis wanted. Those are praxis's setup, and praxis keeps them out of git
+  through `$GIT_COMMON_DIR/info/exclude` so `git add -A` cannot reach them. Review
+  `git status` and `git diff --staged` before committing anyway: the guard is a
+  backstop, not a substitute for looking.
+- **Match their conventions, not ours.** Read `CONTRIBUTING.md`, the PR template,
+  and the last several merged commits, and follow what you find: their commit
+  format even if it is not Conventional Commits, their branch naming, their
+  changelog expectation, their test command, their sign-off requirement
+  (`git commit -s` where DCO applies). praxis's house rules that are about *not*
+  adding noise (no AI attribution, no em dashes) still hold, because they never
+  conflict with a project's own style.
+- **Fork or branch as the project expects**, and push to your fork when you do
+  not have write access. Never push to their default branch.
+- **Stop at the pull request.** Auto-merge does not apply here whatever the local
+  toggle says: merging someone else's project is not a decision praxis or you get
+  to make. Report the PR URL and what still needs their review.
+- **Say where the knowledge went.** If the project has no `CHANGELOG.md` and the
+  entry landed in `.claude/.praxis/knowledge/`, say so rather than implying the
+  PR updated a changelog it did not.
+
 ## 4. Review & merge policy
 
 **Resolve the policy, do not recall it.** Run
@@ -75,6 +105,7 @@ toggle goes stale the moment the toggle is flipped; the resolved value cannot.
 The SessionStart audit states it too, so there is no excuse for acting on the
 wrong one.
 
+- **`contributor` mode: never.** Section 3b applies and outranks the toggle.
 - **Auto-merge OFF (the default): human-in-the-loop.** Stop after opening the PR.
   Report the PR URL and hand it to the user to review and merge. Do not merge.
 - **Auto-merge ON: autonomous.** Only after the audit is green and (when the repo
@@ -89,7 +120,8 @@ Either way, delivery ends with the PR URL and the merge state stated plainly.
 ## 5. Release (`/praxis:ship release [version]`)
 
 A release is the same delivery discipline applied to a version boundary, so it
-lives here rather than in a command of its own.
+lives here rather than in a command of its own. It is an `owner`-mode activity:
+versioning someone else's project is theirs to do.
 
 1. Review what is pending: `changelog.py show`.
 2. Derive the next version from the commits since the last tag and the

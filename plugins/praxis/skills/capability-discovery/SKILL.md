@@ -38,6 +38,21 @@ Create the minimal working version in `.claude/` (fast to iterate). Give it a
 crisp, "pushy" description so it triggers when relevant. Keep it small, every
 component adds always-on context. Document how to use it.
 
+**Check the workspace mode before you write it**
+(`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config.py" status`). A capability is a
+file in the project's tree like any other, and in `contributor` mode the project
+did not ask for it:
+
+- Scaffold under `.claude/.praxis/capabilities/` instead of `.claude/`, which is
+  inside the git-excluded state directory, and load it explicitly rather than by
+  convention. A command or skill you invented for one task is not a contribution.
+- Put MCP servers in `.claude/settings.local.json` (or user scope), never in a
+  committed `.mcp.json`. That file exists to be shared with the team, and the
+  team here is not yours.
+- If the capability is genuinely something the project needs, that is a proposal
+  for its maintainers: raise it in the pull request or an issue, with the
+  reasoning, rather than committing it alongside an unrelated change.
+
 ## Step 5: Update stale capabilities
 If the gap is an existing capability that has drifted (renamed API, changed
 schema, new auth), update it in place and re-verify rather than adding a

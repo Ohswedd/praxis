@@ -29,7 +29,14 @@ import common  # noqa: E402
 
 
 def adr_dir(root):
-    d = root / "docs" / "adr"
+    """Where this repo's mode keeps decision records.
+
+    A project with a `docs/adr/` expects a contribution's decisions to land in it.
+    A project without one has not adopted the convention, and adding it on their
+    behalf is not a contributor's call, so those records stay under
+    `.claude/.praxis/knowledge/docs/adr/` instead.
+    """
+    d = common.knowledge_path(root, os.path.join("docs", "adr"))
     d.mkdir(parents=True, exist_ok=True)
     return d
 
@@ -55,6 +62,9 @@ def arg(args, name, default=""):
 
 def new(root, args) -> None:
     title = args[0]
+    if title.startswith("-"):
+        raise SystemExit("praxis: the title comes first, before the flags: "
+                         "adr.py new \"<title>\" [--status ...]")
     status = arg(args, "--status", "accepted")
     context = arg(args, "--context", "")
     decision = arg(args, "--decision", "")
@@ -81,7 +91,11 @@ def new(root, args) -> None:
     if alternatives:
         body += f"\n## Alternatives considered\n{alternatives}\n"
     (d / fname).write_text(body, encoding="utf-8")
-    print(f"praxis: ADR created, docs/adr/{fname}")
+    try:
+        where = str((d / fname).relative_to(root))
+    except ValueError:
+        where = str(d / fname)
+    print(f"praxis: ADR created, {where}")
 
 
 def list_adrs(root) -> None:
@@ -113,7 +127,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # Same reasoning as changelog.py: an ADR reported as recorded but never
+    # written loses the decision it existed to preserve.
     try:
         sys.exit(main())
-    except Exception:
-        sys.exit(0)
+    except Exception as exc:
+        print(f"praxis: could not record the ADR: {exc}")
+        sys.exit(1)

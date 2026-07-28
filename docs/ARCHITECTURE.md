@@ -181,7 +181,7 @@ subagent reverse-audits each finding before anything is fixed. Coverage claims
 come from recorded state: an unaudited shard makes the final report print
 INCOMPLETE. See `docs/SCAN.md`.
 
-## Front-end pipeline (`/praxis:frontend`)
+## Front-end pipeline
 
 The same doctrine extends to design work via the `frontend-pipeline` skill:
 business research (client call → goals → audience → competitors → positioning
@@ -204,6 +204,53 @@ suffixes, token and theme configs, `docs/design/`). A change touching any of the
 is not green without `accessibility=pass` and `design-consistency=pass`, recorded
 by `report.py`, which applies the same rule at record time so the failure is
 reported where it can still be acted on cheaply.
+
+There is deliberately **no command** for this pipeline. 2.x shipped
+`/praxis:frontend`; 3.0 removed it, because a command is a fourth way to start <!-- praxis:ack: naming the removed command is the point of this paragraph -->
+something the other three already decide from files, and the only ways it could
+differ from them were both wrong: typed after the design decisions had been made,
+or not typed at all for a request that never mentioned design. See ADR-0020.
+
+## Workspace modes: owner and contributor
+
+praxis writes real files into a project. In your own repository that is the
+point; in a repository you only contribute to, every one of them is a file the
+project never asked for, one `git add -A` away from a polluted pull request.
+
+`common.workspace_mode()` resolves the question the same way every other setting
+resolves: `PRAXIS_MODE`, then `.claude/.praxis/workspace`, then `.praxis.toml`,
+then detection. Detection is offline and asks whether the address configured to
+commit here has ever committed here: a repo with a remote, real history, and no
+commit from your git email is somebody else's. Every uncertain case (no remote,
+no configured email, barely any history, not a repo) resolves to `owner`, which
+is the behaviour praxis has always had.
+
+The mode moves the paths rather than adding a code path at each call site:
+`brief_path`, `settings_path`, `knowledge_root` and `knowledge_path` are the
+single place the decision is made, and `repo_state`, `bootstrap`, `changelog.py`,
+`adr.py`, the doctor and the skills all read through them.
+
+`knowledge_path` carries the one rule that is not a straight substitution: in
+`contributor` mode, praxis joins a `/docs`, `CHANGELOG.md` or `docs/adr/` the
+project already has (a pull request that skipped the project's changelog is a
+worse pull request), and creates none that it does not, keeping those records
+under `.claude/.praxis/knowledge/` instead.
+
+Containment is three layers, because directives alone had already proved
+insufficient for the house style:
+
+1. `ensure_local_exclusions` writes a marked block into `$GIT_COMMON_DIR/info/exclude`,
+   the file gitignore(5) reserves for per-clone patterns that are never shared.
+   Excluded artifacts are invisible to `git status`, unreachable by `git add -A`,
+   and absent from `changed_files()`, so they cannot be committed and cannot make
+   the Stop gate see a dirty tree.
+2. `guard_paths.py` refuses any command that stages `CLAUDE.local.md`,
+   `.claude/.praxis/` or `.claude/settings.local.json` (in either mode: they are
+   never the project's), refuses to write a praxis path into a `.gitignore` that
+   is not ours, and verifies rather than assumes on a stage-everything command,
+   repairing a missing exclusion and blocking only if the repair fails.
+3. The session audit, the prompt router and the skills state the mode and the
+   artifact map, so the correct path is used first rather than caught last.
 
 ## Vertical vs horizontal
 
@@ -325,40 +372,66 @@ An opening interrogative ("what…", "how…", "why…") wins over any verb in t
 sentence, so "how do I add caching?" is answered rather than implemented. The
 hook never blocks and never rewrites the prompt.
 
-## Universal onboarding
+## Universal onboarding, and why it stopped being a suggestion
 
-`session_audit.py` classifies the repo on every `SessionStart` and injects the
-verdict into context:
+`common.repo_state()` classifies the repo, and `session_audit.py` injects the
+verdict into context on every `SessionStart`:
 
 | State | Meaning | Route |
 | --- | --- | --- |
 | `new` | empty/near-empty | full bootstrap |
 | `uninitialised` | real code, no Claude setup | analyse then bootstrap |
-| `legacy` | CLAUDE.md without the praxis marker | reconcile + migrate via verifier |
+| `legacy` | a brief without the praxis marker | reconcile + migrate via verifier |
 | `partial` | some `.claude/` config | doctor reconcile |
 | `managed` | praxis marker present | gates active, patch drift only |
 
-Alongside the verdict it injects the repo's **live configuration**: the gate, the
-test-evidence and UI-vertical requirements, auto-pilot, auto-merge with the PR
-base branch, the house-style switches, and the detected test command. Each is
-resolved at that moment from environment, toggle file, and `.praxis.toml`, so a
-session never has to infer a policy from a document that may have gone stale, and
-any drift found in the repo's own docs is listed right below it.
+Through 2.x each of the first four printed a *recommendation* to run
+`/praxis:bootstrap`, and that recommendation was routinely stepped past: the
+session then worked with no operating brief, no guardrails and no living
+knowledge, which is the state praxis exists to prevent. From 3.0 the same verdict
+produces an **instruction** to run the skill first and continue in the same turn,
+repeated by the prompt router on every actionable prompt (the SessionStart block
+has effectively expired by the tenth turn). It stays silent on conversational
+prompts: answering a question does not require writing a brief first.
+
+The classifier is mode-aware, so a bootstrapped contributor clone reads as
+`managed` from its `CLAUDE.local.md` while the project's own `CLAUDE.md`, if it
+has one, is untouched and uncounted. `bootstrap.auto` turns the whole thing off
+per repo. See ADR-0018.
+
+Alongside the verdict it injects the repo's **live configuration**: the workspace
+mode with the source that decided it, the gate, the test-evidence and UI-vertical
+requirements, auto-pilot, auto-bootstrap, auto-merge with the PR base branch, the
+house-style switches, and the detected test command. Each is resolved at that
+moment from environment, toggle file, and `.praxis.toml`, so a session never has
+to infer a policy from a document that may have gone stale, and any drift found in
+the repo's own docs is listed right below it.
 
 ## Settings, resolved in one place
 
-`config.py` reads and toggles the three switches a user actually flips
-(auto-pilot, auto-merge, the Stop gate) and prints every resolved value **with
-the source it came from**: environment variable, then repo toggle file, then
-`.praxis.toml`, then the default. Naming the source matters more than the value:
-a user who clears a toggle that an environment variable still forces would
-otherwise believe the policy changed, and every later turn would act on the old
-one. Asking for a state that a higher-precedence source overrides prints a warning
-and exits non-zero rather than reporting success.
+`config.py` reads and toggles the four switches a user actually flips
+(auto-pilot, auto-merge, auto-bootstrap, the Stop gate) and prints every resolved
+value **with the source it came from**: environment variable, then repo toggle
+file, then `.praxis.toml`, then the default. Naming the source matters more than
+the value: a user who clears a toggle that an environment variable still forces
+would otherwise believe the policy changed, and every later turn would act on the
+old one. Asking for a state that a higher-precedence source overrides prints a
+warning and exits non-zero rather than reporting success.
 
-The gate's toggle is inverted (its file is `skip-gate`, so the file's presence
-means off) and that inversion is encoded once in the switch table rather than
+Two switches are inverted (`skip-gate` and `no-bootstrap` record the OFF state by
+existing) and that inversion is encoded once in the switch table rather than
 special-cased at each call site.
+
+`mode` is the one setting that is not a switch, because it has three states:
+`owner`, `contributor`, and `auto`, which hands the decision to detection. It
+therefore records a value rather than an existence, and setting it also adds or
+removes the exclude block, so the files on disk always match the verdict.
+
+`.praxis.toml` is read in two layers: the committed file the team shares, then
+`.claude/.praxis/praxis.toml`, which is git-excluded and overrides it. That is
+what lets a contributor hold local preferences without editing a config file the
+upstream project owns. A malformed shared file falls back to the defaults without
+discarding the local layer.
 
 ## Language-agnostic by construction
 
@@ -377,8 +450,8 @@ absent.
 plugins/praxis/
   .claude-plugin/plugin.json         plugin manifest
   output-styles/praxis-quality.md     always-on doctrine
-  commands/*.md                      nine entry points (task, frontend, audit, docs,
-                                     ship, bootstrap, doctor, config, discover)
+  commands/*.md                      eight entry points (task, audit, docs, ship,
+                                     bootstrap, doctor, config, discover)
   skills/*/SKILL.md                  twelve reasoning workflows: task-orchestrator,
                                      prompt-architect, best-practices, code-craft,
                                      quality-rubric, docs-living, claudemd-living,
@@ -389,10 +462,12 @@ plugins/praxis/
                                      claudemd-verifier)
   hooks/hooks.json                   lifecycle wiring (command hooks)
   scripts/
-    session_audit.py                 SessionStart: state, live config, drift
+    session_audit.py                 SessionStart: workspace mode, state, the
+                                     bootstrap instruction, live config, drift
     prompt_router.py                 UserPromptSubmit: per-prompt skill routing
     guard_paths.py                   PreToolUse: secrets, destructive commands,
-                                     AI attribution in the project's record
+                                     AI attribution in the project's record,
+                                     staging a praxis local artifact
     post_edit.py                     PostToolUse: format + secret tripwire
     quality_gate.py                  Stop: task loop and per-change gate
     scan_placeholders.py             unfinished work in the whole change

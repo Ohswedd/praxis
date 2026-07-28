@@ -2,11 +2,11 @@
 """
 praxis settings, read and toggled in one place.
 
-praxis has three switches a user actually flips: auto-pilot (ask nothing, decide
-by best-practice), auto-merge (praxis merges its own PRs, or a human does), and
-the Stop gate. Each used to have its own script and its own command, which made
-the surface larger without making anything clearer, and left the third with no
-command at all.
+praxis has four switches a user actually flips: auto-pilot (ask nothing, decide
+by best-practice), auto-merge (praxis merges its own PRs, or a human does),
+auto-bootstrap (set an unmanaged repo up on its own), and the Stop gate. Each
+used to have its own script and its own command, which made the surface larger
+without making anything clearer, and left some with no command at all.
 
 Every switch resolves the same way, most specific first:
 
@@ -15,11 +15,19 @@ Every switch resolves the same way, most specific first:
 so `status` is the authoritative answer to "what is actually in force here", and
 the source of a surprising value is always named.
 
+`mode` is the one setting that is not a switch: whether this repository is ours
+to set up (`owner`) or one we only contribute to (`contributor`) has a third
+state, `auto`, in which praxis works it out from the repo's own git history. So
+it records a value rather than an existence, and flipping it also adds or removes
+the per-clone exclude block that keeps praxis's files out of the project.
+
 Usage:
     config.py                       # everything, resolved, with its source
     config.py status
+    config.py mode       owner|contributor|auto
     config.py autopilot  on|off
     config.py auto-merge on|off
+    config.py bootstrap  on|off
     config.py gate       on|off
 """
 
@@ -33,19 +41,14 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 import common  # noqa: E402
 
 
-# switch -> (toggle filename, env var, config key, inverted?)
-#
-# The gate is inverted: its toggle file is `skip-gate`, so the file's presence
-# means OFF while the other two mean ON. Encoding that here keeps one code path
-# instead of special-casing the gate at every call site.
-SWITCHES = {
-    "autopilot": ("autopilot", "PRAXIS_AUTOPILOT", "autopilot.default", False),
-    "auto-merge": ("auto-merge", "PRAXIS_AUTO_MERGE", "git.auto_merge", False),
-    "gate": ("skip-gate", "PRAXIS_GATE", "gate.enabled", True),
-}
-
-_ON_WORDS = ("on", "1", "true", "yes", "enable", "enabled")
-_OFF_WORDS = ("off", "0", "false", "no", "disable", "disabled")
+# The switch table and its resolver live in `common`, because every *reader* of a
+# switch is a hook and this module is only its presentation layer. Two copies of
+# the ladder is how the settings command and the gate it reports on came to
+# disagree about the same `PRAXIS_GATE`.
+SWITCHES = common.SWITCHES
+resolve = common.resolve_switch
+_ON_WORDS = common.ON_WORDS
+_OFF_WORDS = common.OFF_WORDS
 
 DESCRIPTIONS = {
     "autopilot": ("ON: praxis asks nothing and resolves each decision by the "
@@ -54,32 +57,53 @@ DESCRIPTIONS = {
     "auto-merge": ("ON: praxis self-reviews and merges its own PRs once the audit "
                    "and the required checks are green.",
                    "OFF: praxis opens the PR and leaves the merge to a human."),
+    "bootstrap": ("ON: a repo praxis has not set up is bootstrapped first, in the "
+                  "same turn, before the work starts.",
+                  "OFF: praxis works in this repo without a brief or guardrails "
+                  "until you run the bootstrap yourself."),
     "gate": ("ON: the Stop hook holds the turn open until the change is audited "
              "and any open task is finished.",
              "OFF: praxis can end a turn with the change unreviewed."),
 }
 
+MODE_DESCRIPTIONS = {
+    common.OWNER: ("praxis maintains CLAUDE.md, .claude/settings.json, /docs, "
+                   "CHANGELOG.md and ADRs as this project's own committed files."),
+    common.CONTRIBUTOR: ("this repository is not ours: praxis writes CLAUDE.local.md, "
+                         ".claude/settings.local.json and .claude/.praxis/knowledge/, "
+                         "all git-excluded, and adds nothing to the project itself."),
+}
 
-def resolve(root: Path, switch: str):
-    """(value, source) for one switch, most specific source first.
 
-    Only the toggle *file* is inverted. `PRAXIS_GATE=off` disables the gate and
-    `gate.enabled = true` enables it, both read the natural way round; it is
-    solely the file that records the off state by existing. Applying the
-    inversion to all three sources would make `PRAXIS_GATE=on` report the gate as
-    disabled, which is the opposite of what the hook does with it.
+def set_mode(root: Path, want: str) -> int:
+    """Record the workspace mode, and make the exclusions match it.
+
+    Writing the toggle without updating `.git/info/exclude` would leave a clone
+    labelled `contributor` whose praxis files are still visible to `git add -A`,
+    which is the failure the mode exists to prevent.
     """
-    toggle, env_var, key, inverted = SWITCHES[switch]
-    env = os.environ.get(env_var, "").strip().lower()
-    if env in _ON_WORDS:
-        return True, f"env {env_var}={env}"
-    if env in _OFF_WORDS:
-        return False, f"env {env_var}={env}"
-    if (common.state_dir(root) / toggle).exists():
-        return (False if inverted else True), f".claude/.praxis/{toggle}"
-    cfg = common.read_config(root)
-    return bool(cfg.get(key)), (".praxis.toml" if (root / ".praxis.toml").exists()
-                                else "default")
+    toggle = common.state_dir(root) / common.WORKSPACE_TOGGLE
+    try:
+        if want == common.AUTO:
+            toggle.unlink(missing_ok=True)
+        else:
+            toggle.write_text(want + "\n", encoding="utf-8")
+    except Exception as exc:
+        print(f"praxis: could not write the workspace toggle: {exc}")
+        return 1
+
+    mode, source = common.workspace_mode_reason(root)
+    changed = common.ensure_local_exclusions(root, mode == common.CONTRIBUTOR)
+    print(f"praxis mode: {mode} (from {source})")
+    print(f"            {MODE_DESCRIPTIONS[mode]}")
+    if changed:
+        print("            .git/info/exclude updated "
+              f"({'added' if mode == common.CONTRIBUTOR else 'removed'} the praxis block).")
+    if want != common.AUTO and mode != want:
+        print(f"praxis: WARNING, you asked for {want} but {source} still forces "
+              f"{mode}. Change that source instead.")
+        return 1
+    return 0
 
 
 def set_switch(root: Path, switch: str, on: bool) -> int:
@@ -112,6 +136,12 @@ def set_switch(root: Path, switch: str, on: bool) -> int:
 
 def status(root: Path) -> int:
     print(f"## praxis settings  ({root})")
+    mode, source = common.workspace_mode_reason(root)
+    print(f"  {'mode':<11} {mode:<3}  (from {source})")
+    print(f"              {MODE_DESCRIPTIONS[mode]}")
+    print(f"              brief={common.brief_path(root).name}  "
+          f"settings={common.settings_path(root).relative_to(root)}  "
+          f"knowledge={_knowledge_label(root)}")
     for switch in SWITCHES:
         value, source = resolve(root, switch)
         state = "ON " if value else "OFF"
@@ -130,9 +160,20 @@ def status(root: Path) -> int:
           f"  (style.ban_ai_attribution)")
     if common.is_git_repo(root):
         print(f"  {'PR base':<11} {common.git_default_branch(root)}  (git.default_branch)")
-    print("\nToggle: config.py <autopilot|auto-merge|gate> <on|off>. "
-          "Version a permanent choice in .praxis.toml instead of a toggle file.")
+    print("\nToggle: config.py <autopilot|auto-merge|bootstrap|gate> <on|off>, "
+          "or config.py mode <owner|contributor|auto>.\n"
+          "Version a permanent choice in .praxis.toml instead of a toggle file "
+          "(in contributor mode, in .claude/.praxis/praxis.toml, which is local).")
     return 0
+
+
+def _knowledge_label(root: Path) -> str:
+    """Where /docs, CHANGELOG.md and ADRs go, as a path relative to the repo."""
+    kroot = common.knowledge_root(root)
+    try:
+        return "the repo root" if kroot == root else str(kroot.relative_to(root)) + "/"
+    except ValueError:
+        return str(kroot)
 
 
 def main() -> int:
@@ -142,9 +183,21 @@ def main() -> int:
         return status(root)
 
     switch = args[0]
+    if switch == "mode":
+        if len(args) < 2:
+            mode, source = common.workspace_mode_reason(root)
+            print(f"praxis mode: {mode} (from {source})")
+            return 0
+        want = args[1].strip().lower()
+        if want not in (common.OWNER, common.CONTRIBUTOR, common.AUTO):
+            print(f"praxis: '{want}' is not a workspace mode. Use "
+                  f"{common.OWNER}, {common.CONTRIBUTOR}, or {common.AUTO}.")
+            return 1
+        return set_mode(root, want)
+
     if switch not in SWITCHES:
         print(f"praxis: unknown setting '{switch}'. "
-              f"Known: {', '.join(SWITCHES)}, or `status`.")
+              f"Known: mode, {', '.join(SWITCHES)}, or `status`.")
         return 1
     if len(args) < 2:
         value, source = resolve(root, switch)

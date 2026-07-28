@@ -42,7 +42,7 @@ PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 # Files whose statements are read as authoritative by a session: the root
 # instructions, the docs tree, and every nested CLAUDE.md. Anything deeper is
 # project prose, which is free to say what it likes.
-DOC_GLOBS = ("CLAUDE.md", "README.md", "docs/*.md")
+DOC_GLOBS = ("CLAUDE.md", "CLAUDE.local.md", "README.md", "docs/*.md")
 
 MAX_DOCS = 60
 
@@ -116,9 +116,17 @@ _ASSERTION_RULES = [
     ),
     (
         "gate.enabled",
-        lambda root: bool(common.read_config(root).get("gate.enabled", True)),
-        re.compile(r"(?i)the\s+(quality\s+|stop\s+)?gate\s+is\s+(off|disabled)\b"),
+        # The value in force, not just the config layer: a doc saying "the gate is
+        # off" is correct when PRAXIS_GATE=off, and flagging it would be the
+        # checker itself going stale.
+        lambda root: common.gate_enabled(root),
+        # Asserted while the gate is OFF: claims it is on.
         re.compile(r"(?i)the\s+(quality\s+|stop\s+)?gate\s+is\s+(on|enabled|active)\b"),
+        # Asserted while the gate is ON: claims it is off. These two were the
+        # wrong way round, which made the rule a pure false-positive generator
+        # (it flagged a doc for correctly saying the gate is on) that could never
+        # catch the drift it exists for.
+        re.compile(r"(?i)the\s+(quality\s+|stop\s+)?gate\s+is\s+(off|disabled)\b"),
         "quality gate",
     ),
 ]

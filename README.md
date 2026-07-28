@@ -30,13 +30,14 @@ become what you do.
 ```
 /plugin marketplace add Ohswedd/praxis
 /plugin install praxis@ohswedd-praxis
-/praxis:bootstrap
 ```
 
 Then describe what you want: *"fix the pagination bug"*, *"integrate Stripe"*,
-and pick your effort (`/effort high`, or `ultracode`). There is no command to
-remember: the `praxis-quality` output style enables itself with the plugin, and a
-prompt router engages the right skills from how you phrased the request.
+and pick your effort (`/effort high`, or `ultracode`). There is genuinely no
+command to remember. The `praxis-quality` output style enables itself with the
+plugin, a prompt router engages the right skills from how you phrased the
+request, and in a repo Praxis has not set up it bootstraps first and then gets on
+with your actual request in the same turn.
 
 Requires **Claude Code** (v2.1.139+ recommended) and **Python 3.8+** on `PATH`.
 Hooks are standard-library only, no pip installs, no third-party supply chain.
@@ -102,6 +103,52 @@ A `UserPromptSubmit` router reads each request and names the skills it needs, so
 a bare *"fix the checkout page"* runs the same pipeline as `/praxis:task`:
 including the front-end pipeline and the UI auditors when the request touches an
 interface. Questions, slash commands and acknowledgements are left alone.
+
+### It sets the repo up before it works in it
+
+Open a repository Praxis does not manage and it does not suggest a setup command:
+it maps the repo read-only, writes the operating brief, the guardrails and the
+living-knowledge scaffolding, reports it in a line, and continues to the thing you
+actually asked for. It stops to ask about exactly one step, reconciling a
+`CLAUDE.md` it did not author, because that merge is the only one that can lose
+an instruction. Questions never trigger it, and `/praxis:config bootstrap off`
+turns it off per repo.
+
+### It knows when the repo isn't yours
+
+Praxis writes real files into a project: a brief, settings, `/docs`, a changelog,
+ADRs. In your own repository that is the point. In one you are only contributing
+to, every one of them is a file the maintainers never asked for, sitting one
+`git add -A` away from a pull request that should have contained a bug fix.
+
+So Praxis works out whose repository it is, offline, from git alone: a remote,
+real history, and not one commit from your git address means you cloned somebody
+else's project. Everything uncertain resolves to `owner`, and
+`/praxis:config mode owner|contributor|auto` overrides the verdict, which the
+session audit prints with its reason every time. The verdict is pinned once
+reached, so the commit you came to make cannot quietly turn the repo back into
+"yours".
+
+In `contributor` mode the brief becomes `CLAUDE.local.md`, settings become
+`.claude/settings.local.json`, and `/docs`, `CHANGELOG.md`, `docs/adr/` and
+`docs/design/` are joined **only if the project already has them**, on its terms,
+and otherwise kept under `.claude/.praxis/knowledge/`. A project that keeps a
+changelog expects your PR to update it; a project without one did not ask a
+contributor to introduce the convention.
+
+<p align="center">
+  <img src="assets/workspace.svg" alt="Owner mode versus contributor mode, six artifacts each. Owner: CLAUDE.md plus nested files; .claude/settings.json; a committed .praxis.toml; /docs, CHANGELOG.md and ADRs created and kept current; Praxis's paths added to .gitignore; delivery is a commit, a PR and the merge policy. Contributor: CLAUDE.local.md, with the project's own CLAUDE.md untouched; .claude/settings.local.json; .claude/.praxis/praxis.toml; /docs and CHANGELOG joined only if they already exist, otherwise kept in .claude/.praxis/knowledge/; .gitignore never touched; delivery is a commit and a PR in the project's style, then stop. None of it can reach their history: the artifacts are excluded in the per-clone exclude file, so git status cannot see them and git add -A cannot reach them; the guard refuses to stage one even with -f, in either mode; and a stage-everything command is verified rather than trusted, with the exclusion repaired or the command blocked. The mode is detected offline from a remote, real history, and no commit from your git address." width="900">
+</p>
+
+Containment does not rely on remembering. A marked block in
+`$GIT_COMMON_DIR/info/exclude`, the file git reserves for per-clone patterns that
+are never shared, makes the artifacts invisible to `git status` and unreachable
+by `git add -A`. The PreToolUse guard refuses to stage them by name even with
+`-f`, refuses a forced stage-everything outright, and refuses to write a Praxis
+path into a `.gitignore` that isn't ours. And because a command string can always
+be written another way, the last layer asks git rather than the text: a `commit`,
+`push` or `stash` is refused while a Praxis artifact is in the index, however it
+got there.
 
 ### It refuses to hand back unfinished work
 
@@ -170,20 +217,33 @@ self-driving task so the session runs to completion: you never manage `/goal`.
 ## Commands
 
 You rarely need these: the router and the gate apply the pipeline on their own.
-Nine commands, each with one job; several take a mode as their argument rather
+Eight commands, each with one job; several take a mode as their argument rather
 than existing as a command of their own.
 
 | Command | What it does |
 | --- | --- |
 | `/praxis:task <request>` | run the full pipeline end to end. Prefix `spec:` to stop at the spec |
-| `/praxis:frontend <request>` | research → wireframes → design system → build → optimize |
 | `/praxis:audit [repo\|path]` | the quality rubric on the current change, or the whole repo |
-| `/praxis:docs` | update `/docs`, `CHANGELOG.md`, ADRs and the `CLAUDE.md` hierarchy |
+| `/praxis:docs` | update `/docs`, `CHANGELOG.md`, ADRs and the brief hierarchy |
 | `/praxis:ship [release]` | Conventional Commit → branch → PR, or cut a SemVer release |
-| `/praxis:bootstrap` | set up or migrate this repo |
+| `/praxis:bootstrap` | set up or migrate this repo (it also runs on its own) |
 | `/praxis:doctor` | diagnose setup health and documentation drift |
-| `/praxis:config [switch on\|off]` | show or toggle auto-pilot, auto-merge, and the gate |
+| `/praxis:config [mode\|switch]` | show or set the workspace mode, auto-pilot, auto-merge, auto-bootstrap, the gate |
 | `/praxis:discover` | find or create a missing capability |
+
+<details>
+<summary>Removed in 3.0 (one command, no lost workflow)</summary>
+
+| Was | Now |
+| --- | --- |
+| `/praxis:frontend <request>` | nothing to type. The front-end pipeline is engaged by the surface a change touches, through the prompt router, the task-orchestrator, and the gate | <!-- praxis:ack: a migration table names the old command on purpose -->
+
+Every phase, artifact and auditor is unchanged. What went is the fourth way to
+start the pipeline, and it was the only one that could be used wrongly: typed
+after the design decisions were made, or not typed at all for the *"fix the
+checkout bug"* that was front-end work all along.
+
+</details>
 
 <details>
 <summary>Moved in 2.0 (five commands folded into four)</summary>
@@ -207,6 +267,12 @@ toggles the gate and reports where each resolved value came from.
 Optional, version-controlled `.praxis.toml`, every key has a default:
 
 ```toml
+[workspace]
+mode          = "auto"   # "auto" | "owner" | "contributor"
+
+[bootstrap]
+auto          = true     # set an unmanaged repo up before working in it
+
 [gate]
 enabled             = true   # the Stop quality/task gate
 require_tests       = true   # a green report must record a passing test run
@@ -228,10 +294,12 @@ ban_ai_attribution = true  # refuse AI co-author and generated-by credits
 ```
 
 `/praxis:config` prints every one of these as resolved, and names the source, so
-a surprising value is always traceable. Session escapes: `PRAXIS_GATE=off`,
-`PRAXIS_AUTOPILOT=on`, `PRAXIS_AUTO_MERGE=on`, and
-`touch .claude/.praxis/skip-gate`. The full stable surface is in
-[`docs/STABILITY.md`](docs/STABILITY.md).
+a surprising value is always traceable. Session escapes: `PRAXIS_MODE=owner`,
+`PRAXIS_GATE=off`, `PRAXIS_AUTOPILOT=on`, `PRAXIS_AUTO_MERGE=on`,
+`PRAXIS_BOOTSTRAP=off`, and `touch .claude/.praxis/skip-gate`. A second copy of
+this file at `.claude/.praxis/praxis.toml` is read afterwards and overrides it;
+it is git-excluded, and it is the only one Praxis writes in `contributor` mode.
+The full stable surface is in [`docs/STABILITY.md`](docs/STABILITY.md).
 
 ## Safety
 
@@ -244,8 +312,12 @@ conservative about that:
   primary control.
 - **Read-only auditors.** The nine vertical subagents get `Read, Grep, Glob` and
   nothing else (doc-reference also has web search).
-- **Propose, never overwrite.** Bootstrap and `CLAUDE.md` changes arrive as diffs;
-  valid instructions are never silently dropped.
+- **Additive setup, never a silent overwrite.** Bootstrap writes what is absent
+  and stops to ask before reconciling a brief it did not author; valid
+  instructions are never silently dropped.
+- **Nothing of Praxis's reaches a repo that isn't yours.** In `contributor` mode
+  every artifact it writes is local and git-excluded, and the guard refuses to
+  stage one even when asked directly.
 - **Human-in-the-loop delivery.** With `git.auto_merge` off, which is the default,
   Praxis opens the PR and stops. It never force-pushes, and never merges without a
   green audit even when you do opt in.
@@ -267,7 +339,7 @@ Full posture in [`SECURITY.md`](SECURITY.md).
 | --- | --- |
 | [`ARCHITECTURE.md`](docs/ARCHITECTURE.md) | the design, layer by layer |
 | [`FLOWS.md`](docs/FLOWS.md) | diagrams, worked examples, edge cases, traceability |
-| [`MODES.md`](docs/MODES.md) | effort, `ultracode`, auto-pilot, `/goal` |
+| [`MODES.md`](docs/MODES.md) | workspace mode, auto-bootstrap, effort, auto-pilot, `/goal` |
 | [`FRONTEND.md`](docs/FRONTEND.md) | the front-end pipeline and its craft reference |
 | [`AUDIT.md`](docs/AUDIT.md) | Praxis audited against itself, findings and fixes |
 | [`KNOWLEDGE.md`](docs/KNOWLEDGE.md) | the living-knowledge model |

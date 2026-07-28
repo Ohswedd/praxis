@@ -60,13 +60,12 @@ SESSION_NUDGE_CAP = 12
 
 
 def gate_disabled(root) -> bool:
-    if os.environ.get("PRAXIS_GATE", "").lower() in ("off", "0", "false"):
-        return True
-    if (common.state_dir(root) / "skip-gate").exists():
-        return True
-    if common.read_config(root).get("gate.enabled", True) is False:
-        return True
-    return False
+    """The one question this hook asks before anything else.
+
+    Resolved through the shared switch ladder rather than re-derived here, so
+    what `/praxis:config` reports and what this hook enforces cannot disagree.
+    """
+    return not common.gate_enabled(root)
 
 
 # --------------------------------------------------------------------------- #

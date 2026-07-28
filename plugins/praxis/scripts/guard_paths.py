@@ -19,6 +19,12 @@ run before the permission-mode check:
      the same deterministic enforcement: it is stated in the doctrine, complied
      with in the abstract, and forgotten at the moment of committing. Once the
      commit exists the credit is in the history for good.
+  4. Staging praxis's own local artifacts (`CLAUDE.local.md`, `.claude/.praxis/`,
+     `.claude/settings.local.json`). These describe how one machine works, never
+     what the project is, so committing them is wrong in any repository and
+     actively harmful in one you are only contributing to. `$GIT_COMMON_DIR/info/exclude`
+     already hides them from `git add -A`; this catches the explicit path and the
+     `-f` that would override the exclusion.
 
 Exit 2 blocks the tool and feeds the reason back to Claude.
 """
@@ -28,18 +34,24 @@ from __future__ import annotations
 import os
 import re
 import sys
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 import common  # noqa: E402
 
 
-# `git … push …`, tolerating interposed global options (git -c k=v push,
-# git -C path push, git --git-dir=… push) so a force-push can't hide behind them.
-# Matches up to a command/comment boundary. This is a best-effort backstop over the
-# raw command string, not a shell parser: it cannot see through config-injected
-# refspecs (git -c remote.*.push=+…) or aliases. The permission system is the
-# primary control; this catches the common, obvious cases even when it is bypassed.
-_GIT_PUSH = r"\bgit\b(?:\s+-\S+(?:\s+\S+)?)*\s+push\b[^|&;#]*"
+# Interposed global options (git -c k=v push, git -C path push, git --git-dir=… push)
+# so a subcommand cannot hide behind them.
+#
+# Written so the two alternatives cannot both match the same token: a flag starts
+# with `-`, a flag's value does not. The obvious form, `(?:\s+-\S+(?:\s+\S+)?)*`,
+# is ambiguous with itself, which gives a run of k dash-tokens Fib(k) distinct
+# parses and makes a failed match exponential: 40 of them took 27 seconds to
+# reject here, against a 15 second hook budget. A PreToolUse hook that times out
+# does not deny the tool, so that was not a slow guard, it was a way to switch
+# the guard off from inside the command it was meant to inspect.
+_GIT_OPTS = r"(?:\s+-\S+|\s+(?![a-z-]*\b(?:push|add|stage|commit)\b)[^-\s]\S*)*"
+_GIT_PUSH = r"\bgit\b" + _GIT_OPTS + r"\s+push\b[^|&;#]*"
 
 # Commands that are effectively irreversible and should never run unattended.
 DANGEROUS_COMMAND_PATTERNS = [
@@ -116,6 +128,172 @@ def check_attribution(hook_input, command: str) -> None:
     )
 
 
+# Commands that can put a path into the index. `git commit <path>` bypasses the
+# index entirely, and `update-index`/`stash`/`apply --cached` write it directly
+# without consulting an exclude file at all, so all of them belong here.
+_STAGING_RE = re.compile(
+    r"\bgit\b" + _GIT_OPTS + r"\s+(?:add|stage|commit|update-index|stash|apply)\b",
+    re.IGNORECASE)
+
+#: Any command that reads or writes the index, at which point the authoritative
+#: question is what is actually staged rather than what the string looks like.
+_INDEX_WRITER_RE = re.compile(
+    r"\bgit\b" + _GIT_OPTS + r"\s+(?:commit|stash|push)\b", re.IGNORECASE)
+
+# `-m "…"`, `-F file`, and quoted runs. Stripped before the artifact search so a
+# commit *about* these files is not mistaken for a commit *of* them: praxis's own
+# history is full of messages naming CLAUDE.local.md, and blocking the one command
+# a user cannot cheaply retry, for a false positive, with no escape, is worse than
+# the miss it would prevent (the index check below catches the real case anyway).
+_QUOTED_RE = re.compile(r"""(-m|-F|--message|--file)(\s*=\s*|\s+)("[^"]*"|'[^']*'|\S+)"""
+                        r"""|"[^"]*"|'[^']*'""")
+
+# The artifact names, matched on the raw command before anything is resolved.
+# Cheap enough to run before every Bash call, and specific enough that a match is
+# always about a real praxis file. Derived from the canonical list rather than
+# restated, so a fourth artifact cannot be added to common and silently left
+# unguarded here.
+_LOCAL_ARTIFACT_RE = re.compile(
+    "|".join(re.escape(p.rstrip("/")) for p in common.LOCAL_ARTIFACTS))
+
+
+_WHY_NOT_COMMITTED = (
+    "`CLAUDE.local.md`, `.claude/.praxis/` and `.claude/settings.local.json` "
+    "hold how *your machine* is set up, not what the project is. They are "
+    "git-excluded on purpose; committing one puts your local setup into "
+    "someone else's history, and in a repo you are contributing to it puts it "
+    "into their pull request."
+)
+
+
+def check_local_artifacts(command: str) -> None:
+    """Refuse to stage a file that describes this machine rather than the project.
+
+    Ordered cheapest-first: the artifact names are rarer than `git add`, so they
+    are tested first and the staging regex only runs on a hit. Quoted text is
+    removed first, so this fires on a path argument and not on a commit message
+    that happens to mention one.
+    """
+    bare = _QUOTED_RE.sub(" ", command)
+    if not _LOCAL_ARTIFACT_RE.search(bare) or not _STAGING_RE.search(bare):
+        return
+    common.block(
+        "[praxis] Blocked: this command would stage a praxis local artifact.\n"
+        f"Command: {command.strip()[:400]}\n"
+        + _WHY_NOT_COMMITTED + "\n"
+        "Stage the files your change actually touches instead. If a project "
+        "genuinely wants one of these committed, that is a decision for its "
+        "maintainers to make and to run themselves."
+    )
+
+
+def check_staged_index(hook_input, command: str) -> None:
+    """Refuse to commit an index that already contains a praxis artifact.
+
+    The command string is a proxy; the index is the fact. Every string-level check
+    can be walked around (`git -C .claude add -f settings.local.json`, a glob that
+    the shell expands after the hook has read the command, `--pathspec-from-file`,
+    `git update-index --add`), and none of that matters if the thing that
+    publishes the index refuses to run while an artifact is in it.
+
+    So this asks git, at the last moment before the content becomes permanent.
+    It is the layer that actually holds.
+    """
+    if not _INDEX_WRITER_RE.search(command):
+        return
+    root = common.project_dir(hook_input)
+    staged = common.staged_local_artifacts(root)
+    if not staged:
+        return
+    common.block(
+        "[praxis] Blocked: a praxis local artifact is staged, so this command "
+        "would publish it.\n"
+        f"Staged: {', '.join(staged)}\n"
+        + _WHY_NOT_COMMITTED + "\n"
+        "Unstage it and run the command again:\n"
+        f"  git restore --staged {' '.join(staged)}\n"
+        "(if the path is already tracked in this repo, `git rm --cached "
+        "<path>` removes it from the index without deleting your copy)."
+    )
+
+
+# `git add` over everything rather than over named paths. Quoting and a trailing
+# slash are both ordinary (`git add "."`, `git add ./`), so the pathspec is
+# matched with its optional quote and separator rather than assumed bare.
+_BROAD_STAGE_RE = re.compile(
+    r"\bgit\b" + _GIT_OPTS + r"\s+(?:add|stage)\b[^|&;#]*?"
+    r"(\s-{1,2}[Aa]\b|\s--all\b|\s--no-ignore-removal\b|\s--pathspec-from-file\b"
+    r"|\s['\"]?\.[/\\]?['\"]?(?:\s|$)|\s['\"]?:/|\s['\"]?\*)")
+
+#: `--force` on a stage-everything command. `git add -f` exists precisely to
+#: override an exclude file, so the exclusion cannot answer for this case and
+#: `git check-ignore` is the wrong question to ask about it.
+_FORCED_RE = re.compile(r"\s(?:-{1,2}f\b|--force\b|-[a-zA-Z]*f[a-zA-Z]*\b)")
+
+
+def check_broad_staging(hook_input, command: str) -> None:
+    """Stage-everything is only safe while praxis's files are actually excluded.
+
+    `ensure_local_exclusions` fails open, so a read-only `.git`, a clone made
+    before praxis ran, or a hand-deleted block all leave contributor artifacts
+    visible to `git add -A`. Rather than assume, ask git; and rather than refuse
+    outright, repair the exclusion first and only block if the repair did not take.
+
+    With `--force` there is nothing to verify: the flag's entire purpose is to
+    add ignored files, so a present artifact will be staged no matter how good
+    the exclusion is, and the only correct answer is no.
+    """
+    if not _BROAD_STAGE_RE.search(command):
+        return
+    root = common.project_dir(hook_input)
+    if not common.is_contributor(root):
+        return
+    present = [p for p in common.LOCAL_ARTIFACTS if (root / p).exists()]
+    if not present:
+        return
+    if _FORCED_RE.search(command):
+        common.block(
+            "[praxis] Blocked: `git add --force` over everything would stage "
+            "praxis's local files, because --force exists to override exactly "
+            "the exclusion that normally hides them.\n"
+            f"Present here: {', '.join(present)}\n"
+            + _WHY_NOT_COMMITTED + "\n"
+            "Name the paths you actually want to force-add instead."
+        )
+
+    exposed = [p for p in present if not common.git_is_ignored(root, p)]
+    if exposed:
+        common.ensure_local_exclusions(root, True)
+        exposed = [p for p in exposed if not common.git_is_ignored(root, p)]
+    if not exposed:
+        return
+
+    # `git check-ignore` never reports a tracked path as ignored, so an artifact
+    # some earlier commit captured looks identical to a broken exclude file.
+    # Sending the user to repair a file that is not broken is worse than not
+    # blocking at all.
+    tracked = set(common.tracked_local_artifacts(root))
+    if tracked:
+        common.block(
+            "[praxis] Blocked: this repository already tracks a praxis local "
+            f"artifact ({', '.join(sorted(tracked))}), so no exclusion can hide "
+            "it and staging everything will keep committing it.\n"
+            + _WHY_NOT_COMMITTED + "\n"
+            "Remove it from the index (your copy on disk is kept):\n"
+            f"  git rm --cached {' '.join(sorted(tracked))}"
+        )
+    common.block(
+        "[praxis] Blocked: staging everything would commit praxis's local files "
+        "into a repository that is not ours.\n"
+        f"Not excluded: {', '.join(exposed)}\n"
+        "praxis keeps these out of git through the per-clone exclude file and "
+        "could not write or repair it here (a read-only .git, or a permission "
+        "problem).\n"
+        "Stage the paths your change actually touches instead "
+        "(`git add <path> ...`), or fix the exclude file and try again."
+    )
+
+
 def check_bash(hook_input, command: str) -> None:
     if not command:
         common.allow()
@@ -131,6 +309,10 @@ def check_bash(hook_input, command: str) -> None:
                 "operations unattended."
             )
     check_attribution(hook_input, command)
+    check_local_artifacts(command)
+    check_broad_staging(hook_input, command)
+    check_staged_index(hook_input, command)
+    check_gitignore_shell(hook_input, command)
     # Catch reads of sensitive files via shell readers. The sensitive path may be
     # any argument (e.g. `grep SECRET .env` has it last), so scan all tokens of
     # each command segment whose first word is a known reader.
@@ -152,7 +334,89 @@ def check_bash(hook_input, command: str) -> None:
     common.allow()
 
 
-def check_file_tool(tool_input: dict) -> None:
+_GITIGNORE_RE = re.compile(r"(^|/)\.gitignore$")
+
+_GITIGNORE_REMEDY = (
+    "praxis keeps its own artifacts out of git through the per-clone exclude "
+    "file (`$GIT_COMMON_DIR/info/exclude`), which is never shared and never "
+    "appears in a diff, and it maintains that block itself: nothing is needed "
+    "in `.gitignore`.\n"
+    "If the rule is genuinely the project's (a build output, a local tool "
+    "everyone uses), write it without the praxis paths and say in the PR why "
+    "the project needs it."
+)
+
+
+def _mentions_praxis_path(text: str) -> bool:
+    return bool(_LOCAL_ARTIFACT_RE.search(text) or ".praxis" in text)
+
+
+def check_gitignore(hook_input, path: str, tool_input: dict) -> None:
+    """In someone else's repo, praxis's paths do not go in their `.gitignore`.
+
+    `.gitignore` is a committed file: adding `.claude/.praxis/` to it is proposing
+    praxis's setup to the whole project, which is exactly what contributor mode
+    exists to avoid.
+
+    Narrow on purpose, twice over. Only an edit that carries a praxis path is
+    refused, so an ordinary ignore rule still goes through. And only an edit that
+    *introduces* one: a repo whose `.gitignore` already lists these paths must
+    stay editable, and removing a praxis path is the correct cleanup rather than
+    a violation, so what the file already says is subtracted first.
+    """
+    if not _GITIGNORE_RE.search(path.replace("\\", "/")):
+        return
+    added = " ".join(str(tool_input.get(k, "")) for k in
+                     ("content", "new_string", "new_str", "edits"))
+    if not _mentions_praxis_path(added):
+        return
+    try:
+        existing = Path(path).read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        existing = ""
+    # Lines the file already had are not this edit's doing.
+    novel = [ln for ln in added.splitlines()
+             if _mentions_praxis_path(ln) and ln.strip() not in existing]
+    if not novel:
+        return
+    if not common.is_contributor(common.project_dir(hook_input)):
+        return
+    common.block(
+        f"[praxis] Blocked: this would add a praxis path to {path}, which is a "
+        "committed file in a repository that is not ours.\n"
+        f"Adding: {'; '.join(ln.strip() for ln in novel[:5])}\n"
+        + _GITIGNORE_REMEDY
+    )
+
+
+#: A shell write into a `.gitignore`: redirection, or an in-place editor.
+_GITIGNORE_WRITE_RE = re.compile(
+    r">>?\s*\S*\.gitignore\b|\b(?:sed|perl|awk)\b[^|&;#]*-i[^|&;#]*\.gitignore\b"
+    r"|\btee\b[^|&;#]*\.gitignore\b", re.IGNORECASE)
+
+
+def check_gitignore_shell(hook_input, command: str) -> None:
+    """The same rule as `check_gitignore`, for the shell route into the file.
+
+    `check_gitignore` only sees Edit/Write. `echo '.claude/.praxis/' >>
+    .gitignore` reaches the identical outcome through Bash, and a rule that holds
+    for one tool and not the other is not a rule.
+    """
+    if not _GITIGNORE_WRITE_RE.search(command):
+        return
+    if not _mentions_praxis_path(command):
+        return
+    if not common.is_contributor(common.project_dir(hook_input)):
+        return
+    common.block(
+        "[praxis] Blocked: this would add a praxis path to a `.gitignore` that "
+        "belongs to a repository we do not own.\n"
+        f"Command: {command.strip()[:400]}\n"
+        + _GITIGNORE_REMEDY
+    )
+
+
+def check_file_tool(hook_input, tool_input: dict) -> None:
     path = (
         tool_input.get("file_path")
         or tool_input.get("path")
@@ -165,6 +429,7 @@ def check_file_tool(tool_input: dict) -> None:
             "Reading or editing secrets risks leaking them into context or git. "
             "Work against a redacted template (e.g. .env.example) instead."
         )
+    check_gitignore(hook_input, path, tool_input)
     common.allow()
 
 
@@ -176,7 +441,7 @@ def main() -> None:
     if tool == "Bash":
         check_bash(data, tool_input.get("command", ""))
     elif tool in ("Read", "Edit", "Write", "MultiEdit"):
-        check_file_tool(tool_input)
+        check_file_tool(data, tool_input)
     common.allow()
 
 

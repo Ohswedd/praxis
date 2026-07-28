@@ -25,6 +25,28 @@ Out of the box, praxis:
 It does **not** merge to the integration branch. You stay in the loop for the one
 irreversible step.
 
+## Contributing to a repository that is not yours
+
+When the workspace mode is `contributor` (see [MODES.md](MODES.md)), the
+maintainers own the standards and the merge button, and delivery changes shape:
+
+- **The commit carries your change and nothing else.** Praxis's own artifacts
+  (`CLAUDE.local.md`, `.claude/settings.local.json`, `.claude/.praxis/`) are
+  excluded from git and the PreToolUse guard refuses to stage them, so a
+  `git add -A` cannot sweep your setup into their pull request.
+- **Their conventions win.** `CONTRIBUTING.md`, the PR template, the shape of the
+  last several merged commits, their changelog expectation, their sign-off
+  requirement. Praxis follows what it finds, even where that is not Conventional
+  Commits. The house rules that only ever *remove* noise (no AI attribution, no
+  em dashes) still hold, because they never conflict with a project's style.
+- **Fork or branch as the project expects**, push to your fork when you lack
+  write access, and never push to their default branch.
+- **Auto-merge does not apply.** Whatever the local toggle says, Praxis opens the
+  PR and stops: merging someone else's project is not its decision to make.
+- **It says where the knowledge went.** If the project keeps no changelog and the
+  entry landed in local knowledge, the report says so rather than implying the PR
+  updated one.
+
 ## The toggle: autonomous review-and-merge
 
 Turn on auto-merge and praxis also reviews and merges its own PR, but only after

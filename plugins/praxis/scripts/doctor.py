@@ -4,7 +4,9 @@ praxis doctor (utility invoked by /praxis:doctor).
 
 Read-only self-check. Reports:
   * installed praxis plugin version (from plugin.json)
-  * repo management state and setup completeness
+  * the workspace mode, and therefore which files praxis is entitled to write
+  * repo management state and setup completeness, checked where this mode
+    actually keeps each artifact
   * the settings actually in force (not their defaults)
   * documentation drift: docs that contradict the live config or reference
     something that no longer exists
@@ -39,33 +41,56 @@ def checks(root: Path):
     out = []
     ok = lambda b: "OK" if b else "MISSING"
 
-    claude_md = (root / "CLAUDE.md").exists()
-    settings = (root / ".claude" / "settings.json").exists()
-    gitignore = root / ".gitignore"
-    ignores_state = False
-    if gitignore.exists():
-        try:
-            ignores_state = ".praxis" in gitignore.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
-            pass
+    mode, source = common.workspace_mode_reason(root)
+    contributor = mode == common.CONTRIBUTOR
+    brief = common.brief_path(root)
+    settings = common.settings_path(root)
 
-    out.append(("CLAUDE.md present", ok(claude_md)))
-    out.append((".claude/settings.json present", ok(settings)))
-    out.append(("/docs present", ok((root / "docs").is_dir())))
-    out.append(("CHANGELOG.md present", ok((root / "CHANGELOG.md").exists())))
-    out.append((".gitignore covers .claude/.praxis", ok(ignores_state)))
+    out.append((f"workspace mode (from {source})", mode))
+    out.append((f"{brief.name} present", ok(brief.exists())))
+    out.append((f"{settings.relative_to(root)} present", ok(settings.exists())))
+    out.append(("praxis setup state", common.repo_state(root)))
+
+    # Living knowledge is checked where this mode actually keeps it. Reporting
+    # "/docs MISSING" for a repository we only contribute to would be advice to
+    # add a directory the project never asked for.
+    if contributor:
+        out.append(("/docs (repo, updated only if present)",
+                    "present" if (root / "docs").is_dir() else "absent, kept local"))
+        out.append(("CHANGELOG.md (repo, updated only if present)",
+                    "present" if (root / "CHANGELOG.md").exists() else "absent, kept local"))
+    else:
+        out.append(("/docs present", ok((root / "docs").is_dir())))
+        out.append(("CHANGELOG.md present", ok((root / "CHANGELOG.md").exists())))
+
+    # Ask git, not `.gitignore`: in contributor mode the correct source is the
+    # per-clone exclude file, and a check that only reads the committed one would
+    # report a real, working exclusion as missing. Every artifact is asked about,
+    # not just the state directory: a hand-trimmed block that still covers
+    # `.claude/.praxis/` while leaving `CLAUDE.local.md` exposed is exactly the
+    # case a diagnostic exists to catch, and checking one path would call it OK.
+    if common.is_git_repo(root):
+        exposed = [a for a in common.LOCAL_ARTIFACTS
+                   if (root / a).exists() and not common.git_is_ignored(root, a)]
+        tracked = common.tracked_local_artifacts(root)
+        if tracked:
+            verdict = f"TRACKED: {', '.join(tracked)} (git rm --cached them)"
+        elif exposed:
+            verdict = f"EXPOSED: {', '.join(exposed)} would be committed"
+        else:
+            verdict = "OK"
+    else:
+        verdict = "n/a (not a git repository)"
+    out.append(("praxis local artifacts are git-excluded", verdict))
 
     cfg = common.read_config(root)
-    gate_off = (
-        os.environ.get("PRAXIS_GATE", "").lower() in ("off", "0", "false")
-        or (common.state_dir(root) / "skip-gate").exists()
-        or cfg.get("gate.enabled", True) is False
-    )
-    out.append(("quality gate", "DISABLED" if gate_off else "ENABLED"))
+    out.append(("quality gate",
+                "ENABLED" if common.gate_enabled(root) else "DISABLED"))
     out.append(("test evidence required", "yes" if cfg.get("gate.require_tests", True) else "no"))
     out.append(("UI verticals required on UI changes",
                 "yes" if cfg.get("gate.require_ui_verticals", True) else "no"))
     out.append(("auto-pilot", "ON" if common.autopilot_on(root) else "OFF"))
+    out.append(("auto-bootstrap", "ON" if common.bootstrap_auto(root) else "OFF"))
     if common.is_git_repo(root):
         merge = "auto-merge ON" if common.auto_merge_on(root) else "PR only (human merges)"
         out.append((f"git delivery (base: {common.git_default_branch(root)})", merge))
@@ -137,8 +162,15 @@ def main() -> None:
                      "(docs agree with the live config and every reference resolves)")
 
     lines.append("")
-    lines.append("Run `/praxis:bootstrap` to (re)establish any MISSING items. "
-                 "praxis proposes changes and asks before writing.")
+    if common.bootstrap_required(root):
+        lines.append("This repo is not set up: run the `bootstrap` skill "
+                     "(`/praxis:bootstrap`) to establish every MISSING item. It runs "
+                     "on its own at the start of any session that does real work, so "
+                     "this is the same setup, just asked for explicitly.")
+    else:
+        lines.append("Run `/praxis:bootstrap` to (re)establish any MISSING item. "
+                     "praxis writes what is absent and asks before reconciling a "
+                     "brief it did not author.")
     common.emit_context("\n".join(lines))
     common.allow()
 

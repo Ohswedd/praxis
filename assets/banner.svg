@@ -1,4 +1,4 @@
-<svg width="880" height="220" viewBox="0 0 880 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bt bd">
+<svg width="880" height="220" viewBox="0 0 880 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bt" aria-describedby="bd">
   <title id="bt">Praxis: the disciplined practice of engineering, applied automatically in Claude Code</title>
   <desc id="bd">The Praxis wordmark beside a gate mark, a circle crossed by a threshold bar with a check above it, over the tagline and the pipeline stages: spec, investigate, plan, implement, audit, document, ship.</desc>
 
