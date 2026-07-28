@@ -483,7 +483,9 @@ plugins/praxis/
   output-styles/praxis-quality.md     always-on doctrine
   commands/*.md                      eight entry points (task, audit, docs, ship,
                                      bootstrap, doctor, config, discover)
-  skills/*/SKILL.md                  twelve reasoning workflows: task-orchestrator,
+  skills/*/SKILL.md                  twelve reasoning workflows plus review-scope
+                                     (shared content the auditors preload, not a
+                                     routed workflow): task-orchestrator,
                                      prompt-architect, best-practices, code-craft,
                                      quality-rubric, docs-living, claudemd-living,
                                      frontend-pipeline, repo-audit, git-delivery,

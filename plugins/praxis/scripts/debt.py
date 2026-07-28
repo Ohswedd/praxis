@@ -170,7 +170,10 @@ def paid(root, args) -> int:
 
     at, end = block
     body = text[at:end]
-    by = common.cli_opt(args, "--by", "")
+    # Flattened for the same reason a title is: the replacement below is
+    # line-anchored, so a note spanning lines would leave its own tail behind
+    # when it was later replaced.
+    by = " ".join((common.cli_opt(args, "--by", "") or "").split())
 
     new_body, count = re.subn(r"(?m)^- Status: open$",
                               f"- Status: repaid {_dt.date.today().isoformat()}",

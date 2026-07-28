@@ -12,6 +12,9 @@ All notable changes to praxis are documented here. The format follows
 ### Changed
 - The auditors' scoping rules live in one place. They were copied into ten agent briefs on the belief that agent files have no include mechanism; they do, the skills frontmatter field, which preloads a skill's full content into a subagent at startup. The rules are now the review-scope skill, each brief keeps only a byte-checked pointer for the case where a preload is silently skipped, and selfcheck fails on all five ways the wiring can break. Debt entry 1 is repaid, with the false premise corrected in the register rather than quietly dropped.
 
+### Fixed
+- debt.py paid --by flattens the note it records. The removal that replaces a previous note is line-anchored, so a note spanning lines left its own tail orphaned in the entry when it was later replaced.
+
 ## [3.1.0] - 2026-07-28
 
 ### Added

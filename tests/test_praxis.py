@@ -1860,6 +1860,23 @@ class TestDebtRegister(GitRepoCase):
         for expected in ("1. First", "5. Hand-written", "6. Third"):
             self.assertIn(expected, out)
 
+    def test_recording_how_it_was_repaid_replaces_rather_than_accumulates(self):
+        """A multi-line note left its own tail behind: the removal is line-anchored."""
+        self.add_one("Entry")
+        self.debt("paid", "1", "--by", "first note\nsecond line")
+        self.debt("paid", "1", "--by", "corrected note")
+        body = (self.root / "docs" / "DEBT.md").read_text()
+        self.assertEqual(body.count("**Repaid by.**"), 1)
+        self.assertNotIn("second line", body)
+        self.assertIn("corrected note", body)
+
+    def test_an_already_repaid_entry_still_refuses_without_a_note(self):
+        self.add_one("Entry")
+        self.debt("paid", "1")
+        r = self.debt("paid", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("--by", r.stdout)
+
     def test_a_title_cannot_inject_a_heading(self):
         """Flattened to one line, so it cannot become an entry or skew numbering."""
         self.debt("add", "Bad\n## 999. injected", "--interest", "i",
