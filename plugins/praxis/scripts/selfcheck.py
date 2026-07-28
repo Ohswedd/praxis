@@ -167,24 +167,10 @@ def check(require_repo: bool = False):
     except Exception as e:
         fail(f"hooks.json invalid: {e}")
 
-    # Auditors that review a change must say how to scope it. The preamble is
-    # repeated in each brief because agent files have no include mechanism, so
-    # nothing but this check stops one from silently losing it, and an auditor
-    # without it scopes to `git diff`, reads nothing on a branch with commits,
-    # and reports PASS. Recorded as debt in docs/DEBT.md.
-    _NON_DIFF_AGENTS = {"repo-cartographer", "claudemd-verifier", "finding-verifier"}
     for md in sorted((PLUGIN / "agents").glob("*.md")):
         k = _frontmatter_keys(md)
         need(k and {"name", "description"} <= k, f"agent {md.name}: bad/missing frontmatter")
-        if md.stem in _NON_DIFF_AGENTS:
-            continue
-        try:
-            body = md.read_text(encoding="utf-8")
-        except Exception:
-            body = ""
-        need("scripts/scope.py" in body,
-             f"agent {md.name}: reviews a change but never resolves the review "
-             "scope, so on a branch with commits it would audit an empty diff")
+    checks += _review_scope_wiring(PLUGIN, errors)
     for skill in sorted((PLUGIN / "skills").glob("*/SKILL.md")):
         k = _frontmatter_keys(skill)
         need(k and {"name", "description"} <= k,
@@ -258,6 +244,89 @@ def check(require_repo: bool = False):
         checks += _house_style(repo_prose(root), root, errors)
 
     return scope, checks, errors
+
+
+# --------------------------------------------------------------------------- #
+# The shared review scope
+# --------------------------------------------------------------------------- #
+#: The skill that holds the scoping rules, once. Agent bodies never restate them.
+REVIEW_SCOPE_SKILL = "review-scope"
+
+#: Agents that are handed a file list rather than a change, so they have no base
+#: to resolve and the scoping rules do not apply to them.
+NON_REVIEW_AGENTS = {"repo-cartographer", "claudemd-verifier", "finding-verifier"}
+
+#: The pointer every review agent carries, byte for byte. It is a *pointer*, not
+#: a copy: the rules live in the skill, and this exists only so a preload that
+#: silently did not happen cannot leave an auditor with no scoping at all. Agent
+#: files have no include directive, so this line is the smallest thing that has
+#: to be repeated, and asserting it exactly is what stops it drifting.
+REVIEW_SCOPE_BLOCK = """<!-- praxis:review-scope begin (generated, do not edit; see skills/review-scope/SKILL.md) -->
+**Scope the change before you judge it.** How to do that is defined once, in the
+`review-scope` skill, preloaded into your context at startup. If it is not there,
+read `${CLAUDE_PLUGIN_ROOT}/skills/review-scope/SKILL.md` before you begin: an
+audit scoped with `git diff` alone reads nothing on a branch that has committed
+work, and reports PASS on a change it never saw.
+<!-- praxis:review-scope end -->"""
+
+
+def _review_scope_wiring(plugin: Path, errors: list) -> int:
+    """Assert the scoping rules exist once and reach every auditor. Returns checks.
+
+    Three failures are possible and all of them are silent at runtime, which is
+    why they are asserted here rather than trusted:
+      * the skill goes missing, and every preload is skipped with only a debug-log
+        warning;
+      * an agent stops preloading it, or never did;
+      * an agent's pointer drifts from the canonical one, so the two disagree
+        about where the rules live.
+    Any of them ends with an auditor scoping to `git diff`, reading nothing on a
+    branch that has committed work, and reporting PASS.
+    """
+    checks = 0
+    skill = plugin / "skills" / REVIEW_SCOPE_SKILL / "SKILL.md"
+
+    checks += 1
+    if not skill.is_file():
+        errors.append(f"the {REVIEW_SCOPE_SKILL} skill is missing: every agent that "
+                      "preloads it would be skipped with only a debug-log warning")
+        return checks
+
+    # A skill that cannot be invoked by the model cannot be preloaded either.
+    checks += 1
+    try:
+        if "disable-model-invocation: true" in skill.read_text(encoding="utf-8"):
+            errors.append(f"skill {REVIEW_SCOPE_SKILL}: sets disable-model-invocation, "
+                          "which makes it impossible to preload into an agent")
+    except Exception as exc:
+        errors.append(f"skill {REVIEW_SCOPE_SKILL}: unreadable ({exc})")
+
+    for md in sorted((plugin / "agents").glob("*.md")):
+        try:
+            body = md.read_text(encoding="utf-8")
+        except Exception:
+            body = ""
+        front = body.split("---")[1] if body.count("---") >= 2 else ""
+        declared = f"praxis:{REVIEW_SCOPE_SKILL}" in front
+        has_block = REVIEW_SCOPE_BLOCK in body
+
+        if md.stem in NON_REVIEW_AGENTS:
+            checks += 1
+            if declared or has_block:
+                errors.append(f"agent {md.name}: is handed a file list, not a change, "
+                              "so the review-scope wiring does not belong to it")
+            continue
+
+        checks += 2
+        if not declared:
+            errors.append(f"agent {md.name}: reviews a change but does not preload "
+                          f"the {REVIEW_SCOPE_SKILL} skill, so it would scope to "
+                          "`git diff` and audit an empty diff on a branch")
+        if not has_block:
+            errors.append(f"agent {md.name}: its review-scope pointer is missing or "
+                          "has drifted from the canonical block in selfcheck.py; "
+                          "replace it verbatim rather than rewording it")
+    return checks
 
 
 def _house_style(files, root: Path, errors: list) -> int:

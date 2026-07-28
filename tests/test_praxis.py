@@ -1945,6 +1945,71 @@ class TestGateSurvivesMalformedState(GitRepoCase):
         self.assertEqual(r.returncode, 2)
 
 
+class TestReviewScopeWiring(unittest.TestCase):
+    """The scoping rules exist once, and every auditor is wired to them.
+
+    Each assertion below stands for a failure that is silent at runtime: the
+    auditor still runs, still returns a verdict, and the verdict is worthless
+    because it was formed against an empty diff.
+    """
+
+    AGENTS = PLUGIN / "agents"
+    SKILL = PLUGIN / "skills" / "review-scope" / "SKILL.md"
+    NON_REVIEW = {"repo-cartographer", "claudemd-verifier", "finding-verifier"}
+
+    def agents(self):
+        return sorted(self.AGENTS.glob("*.md"))
+
+    def test_the_rules_exist_exactly_once(self):
+        self.assertTrue(self.SKILL.is_file())
+        rules = "scope.py"
+        restating = [p.name for p in self.agents()
+                     if rules in p.read_text(encoding="utf-8")]
+        self.assertEqual(restating, [], "no agent restates what the skill defines")
+
+    def test_the_skill_can_actually_be_preloaded(self):
+        """A skill the model may not invoke cannot be injected at startup."""
+        self.assertNotIn("disable-model-invocation: true",
+                         self.SKILL.read_text(encoding="utf-8"))
+
+    def test_every_review_agent_preloads_it_and_carries_the_pointer(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "praxis_selfcheck", SCRIPTS / "selfcheck.py")
+        sc = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(sc)
+
+        for p in self.agents():
+            body = p.read_text(encoding="utf-8")
+            front = body.split("---")[1]
+            if p.stem in self.NON_REVIEW:
+                self.assertNotIn("praxis:review-scope", body, p.name)
+                continue
+            self.assertIn("praxis:review-scope", front,
+                          f"{p.name} does not preload the skill")
+            self.assertIn(sc.REVIEW_SCOPE_BLOCK, body,
+                          f"{p.name}'s pointer has drifted from the canonical block")
+
+    def test_selfcheck_rejects_a_drifted_pointer(self):
+        """The enforcement itself is tested, not just its current result."""
+        errors = []
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = Path(tmp)
+            shutil.copytree(PLUGIN / "agents", fake / "agents")
+            shutil.copytree(PLUGIN / "skills" / "review-scope",
+                            fake / "skills" / "review-scope")
+            target = fake / "agents" / "edge-case-hunter.md"
+            target.write_text(target.read_text().replace(
+                "reports PASS on a change it never saw.", "reports PASS."))
+            import importlib.util
+            spec = importlib.util.spec_from_file_location(
+                "praxis_selfcheck2", SCRIPTS / "selfcheck.py")
+            sc = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(sc)
+            sc._review_scope_wiring(fake, errors)
+        self.assertTrue(any("drifted" in e for e in errors), errors)
+
+
 class TestLedgerMigration(GitRepoCase):
     def test_a_ledger_predating_a_dimension_does_not_certify_coverage(self):
         env = {**os.environ, "CLAUDE_PROJECT_DIR": str(self.root)}
