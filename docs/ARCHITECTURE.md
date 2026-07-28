@@ -113,6 +113,31 @@ the character. `[style] ban_em_dash` and `[style] ban_ai_attribution` turn each
 off per repo. `selfcheck.py` holds praxis's own content to both rules, so the
 plugin cannot ship what it refuses elsewhere.
 
+## Self-check: two scopes
+
+`selfcheck.py` answers two different questions and must not confuse them.
+
+**Plugin scope** is everything that travels inside the installed plugin: the
+manifest parses, hooks point at scripts that exist, frontmatter is valid YAML,
+every script compiles, every `/praxis:` and `scripts/` reference resolves, and
+the shipped text obeys the house style. This is what `/praxis:doctor` asks on a
+user's machine.
+
+**Repo scope** adds what exists only in the source checkout: the enclosing
+marketplace manifest, its version agreement with the plugin, its source paths,
+and the repo prose (README, CONTRIBUTING, `/docs`) held to the same house style.
+This is what CI asks before publishing.
+
+Scope is detected from whether a marketplace manifest that *actually publishes
+this plugin* sits above it, not from a file merely existing two levels up: a
+plugin unpacked inside an unrelated repository must not be cross-checked against
+that repository's marketplace. `--require-repo` turns the detection into an
+assertion, which is what `make check` and CI use, so the check cannot silently
+fall back to the smaller scope and report OK for a tree whose marketplace is
+missing, unreadable, or no longer lists the plugin. Both the self-check and the
+doctor name the scope they covered, because an unqualified OK would imply
+coverage that was never attempted.
+
 ## Documentation drift
 
 Documentation rots in one predictable way: it states as a constant something that

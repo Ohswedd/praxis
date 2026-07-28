@@ -2,18 +2,35 @@
 """
 Praxis self-check: validates the plugin's own integrity.
 
-Verifies the things that would silently break the plugin at load time:
-  * all JSON manifests parse; plugin/marketplace versions agree
-  * hooks.json references scripts that actually exist
-  * every agent, skill (SKILL.md), command, and the output style has YAML
-    frontmatter with the required keys, and frontmatter that actually parses
-    (unquoted scalars containing ': ' are rejected: YAML silently drops them)
-  * every Python script byte-compiles
-  * every `${CLAUDE_PLUGIN_ROOT}/scripts/...` and `/praxis:<command>` reference in
-    the plugin's own content resolves to something that exists, so a renamed or
-    merged command cannot leave the instructions pointing at nothing
-  * the plugin's own text obeys the house style it enforces on everyone else: no
-    em dashes, no AI attribution
+Two scopes, because the plugin is checked from two very different places.
+
+  * **plugin scope** covers everything that travels inside the installed plugin:
+    the plugin manifest parses, hooks point at scripts that exist, frontmatter is
+    valid YAML, every script compiles, every `/praxis:<command>` and
+    `scripts/<name>.py` reference resolves, and the shipped text obeys the house
+    style praxis enforces on everyone else. This is what `/praxis:doctor` asks on
+    a user's machine.
+  * **repo scope** adds what exists only in the source checkout: the enclosing
+    marketplace manifest, its version agreement with the plugin, its source
+    paths, and the repo prose (README, CONTRIBUTING, `/docs`) held to the same
+    house style. This is what CI asks before publishing.
+
+The distinction is not cosmetic. An installed plugin has no marketplace beside
+it, so demanding one made `/praxis:doctor` report PROBLEM on every healthy
+install. A permanent false alarm is worse than no check at all: it teaches the
+reader to ignore the one line that would matter when something really is broken.
+
+Scope is detected from whether a marketplace manifest that actually publishes
+THIS plugin sits above it, rather than from a file merely existing two levels up:
+a plugin unpacked inside some unrelated repository must not be cross-checked
+against that repository's marketplace. `--require-repo` turns the detection into
+an assertion, so CI cannot silently fall back to the smaller scope and report OK
+for a tree whose marketplace is missing, unreadable, or no longer lists the
+plugin.
+
+Usage:
+    selfcheck.py                 # detect the scope and report it
+    selfcheck.py --require-repo  # fail unless the full repo scope is available
 
 Exit code 0 if healthy, 1 if any problem, so it can gate CI. Run it directly, or
 via `/praxis:doctor`.
@@ -22,13 +39,11 @@ via `/praxis:doctor`.
 from __future__ import annotations
 
 import json
-import py_compile
 import re
 import sys
 from pathlib import Path
 
-PLUGIN = Path(__file__).resolve().parent.parent   # plugins/praxis
-ROOT = PLUGIN.parent.parent                        # repo root
+PLUGIN = Path(__file__).resolve().parent.parent   # .../plugins/praxis
 
 sys.path.insert(0, str(PLUGIN / "scripts" / "lib"))
 import common  # noqa: E402
@@ -37,7 +52,50 @@ import common  # noqa: E402
 CONTENT_AREAS = ("skills", "commands", "output-styles", "agents")
 
 #: Repo-level prose held to the same house style as the plugin's own content.
+#: These live beside the plugin in the source tree and are absent from an install.
 REPO_TEXT = ("README.md", "CONTRIBUTING.md", "SECURITY.md", "PRIVACY.md")
+
+SCOPE_REPO = "repo"
+SCOPE_PLUGIN = "plugin"
+
+
+def enclosing_marketplace(plugin: Path):
+    """(root, manifest, parsed) for the marketplace that publishes `plugin`.
+
+    None when the plugin stands alone, which is exactly how it is installed: the
+    cache holds the plugin directory and nothing above it.
+
+    A manifest that exists but cannot be parsed returns `parsed=None` rather than
+    None, because in a source repo an unreadable marketplace is a failure to
+    report, not a reason to quietly check less.
+    """
+    root = plugin.parent.parent
+    manifest = root / ".claude-plugin" / "marketplace.json"
+    if not manifest.is_file():
+        return None
+    try:
+        data = json.loads(manifest.read_text(encoding="utf-8"))
+    except Exception:
+        return root, manifest, None
+    # A manifest can parse and still not be a marketplace: a bare list, a string,
+    # a `plugins` key holding a number. Treat any of those as "does not publish
+    # this plugin" rather than letting the checker die on a traceback.
+    entries = data.get("plugins") if isinstance(data, dict) else None
+    for entry in entries if isinstance(entries, list) else []:
+        try:
+            if (root / str(entry.get("source", ""))).resolve() == plugin:
+                return root, manifest, data
+        except Exception:
+            continue
+    return None
+
+
+def _rel(path: Path, base: Path) -> str:
+    """`path` relative to `base`, or its absolute form when it lies outside."""
+    try:
+        return str(path.relative_to(base))
+    except ValueError:
+        return str(path)
 
 
 def _frontmatter_keys(md: Path):
@@ -69,7 +127,8 @@ def _frontmatter_keys(md: Path):
     return keys
 
 
-def check():
+def check(require_repo: bool = False):
+    """Run every applicable check. Returns (scope, checks_run, errors)."""
     errors, checks = [], 0
 
     def need(cond, msg):
@@ -78,60 +137,58 @@ def check():
         if not cond:
             errors.append(msg)
 
-    # manifests
-    plugin_json = PLUGIN / ".claude-plugin" / "plugin.json"
-    market_json = ROOT / ".claude-plugin" / "marketplace.json"
+    def fail(msg):
+        """A check that has already been decided against."""
+        need(False, msg)
+
+    market = enclosing_marketplace(PLUGIN)
+    scope = SCOPE_REPO if market else SCOPE_PLUGIN
+    root = market[0] if market else PLUGIN
+
+    if require_repo and not market:
+        fail("--require-repo was given but no marketplace manifest publishing this "
+             f"plugin was found above {PLUGIN}. Run this from the source checkout.")
+
+    # ----- plugin scope: everything that ships inside the plugin --------------
+    pj = {}
     try:
-        pj = json.loads(plugin_json.read_text())
+        pj = json.loads((PLUGIN / ".claude-plugin" / "plugin.json").read_text())
         need("name" in pj and "version" in pj, "plugin.json missing name/version")
     except Exception as e:
-        pj = {}
-        errors.append(f"plugin.json invalid: {e}")
-    try:
-        mj = json.loads(market_json.read_text())
-        mv = mj.get("metadata", {}).get("version")
-        need(mv == pj.get("version"),
-             f"version mismatch: plugin={pj.get('version')} marketplace={mv}")
-    except Exception as e:
-        errors.append(f"marketplace.json invalid: {e}")
+        fail(f"plugin.json invalid: {e}")
 
-    # hooks reference existing scripts
     try:
         hooks = json.loads((PLUGIN / "hooks" / "hooks.json").read_text())
-        refs = re.findall(r"scripts/([A-Za-z0-9_]+\.py)", json.dumps(hooks))
-        for r in refs:
-            need((PLUGIN / "scripts" / r).exists(), f"hook references missing script: {r}")
+        for ref in re.findall(r"scripts/([A-Za-z0-9_]+\.py)", json.dumps(hooks)):
+            need((PLUGIN / "scripts" / ref).exists(),
+                 f"hook references missing script: {ref}")
     except Exception as e:
-        errors.append(f"hooks.json invalid: {e}")
+        fail(f"hooks.json invalid: {e}")
 
-    # frontmatter on agents / skills / commands / output styles
-    for md in (PLUGIN / "agents").glob("*.md"):
+    for md in sorted((PLUGIN / "agents").glob("*.md")):
         k = _frontmatter_keys(md)
         need(k and {"name", "description"} <= k, f"agent {md.name}: bad/missing frontmatter")
-    for skill in (PLUGIN / "skills").glob("*/SKILL.md"):
+    for skill in sorted((PLUGIN / "skills").glob("*/SKILL.md")):
         k = _frontmatter_keys(skill)
         need(k and {"name", "description"} <= k,
              f"skill {skill.parent.name}: bad/missing frontmatter")
-    for cmd in (PLUGIN / "commands").glob("*.md"):
+    for cmd in sorted((PLUGIN / "commands").glob("*.md")):
         k = _frontmatter_keys(cmd)
         need(k and "description" in k, f"command {cmd.name}: missing description frontmatter")
-    for style in (PLUGIN / "output-styles").glob("*.md"):
+    for style in sorted((PLUGIN / "output-styles").glob("*.md")):
         k = _frontmatter_keys(style)
         need(k and {"name", "description"} <= k, f"output-style {style.name}: bad frontmatter")
 
-    # python compiles
-    for py in (PLUGIN / "scripts").rglob("*.py"):
+    for py in sorted((PLUGIN / "scripts").rglob("*.py")):
+        checks += 1
         try:
-            py_compile.compile(str(py), doraise=True)
-            checks += 1
+            compile(py.read_text(encoding="utf-8"), str(py), "exec")
         except Exception as e:
             errors.append(f"compile error in {py.name}: {e}")
 
-    # agent references (@praxis:name) must resolve to real agents
+    # Agent references (@praxis:name) must resolve to a real agent.
     agent_names = set()
-    for md in (PLUGIN / "agents").glob("*.md"):
-        k = _frontmatter_keys(md)
-        # read the name value
+    for md in sorted((PLUGIN / "agents").glob("*.md")):
         try:
             for line in md.read_text(encoding="utf-8").splitlines():
                 mm = re.match(r"^name:\s*(\S+)", line)
@@ -139,34 +196,25 @@ def check():
                     agent_names.add(mm.group(1))
                     break
         except Exception:
-            pass
+            continue
     referenced = set()
     for area in ("skills", "commands", "output-styles"):
         for md in (PLUGIN / area).rglob("*.md"):
             try:
-                referenced |= set(re.findall(r"@praxis:([a-z0-9-]+)", md.read_text(encoding="utf-8")))
+                referenced |= set(re.findall(r"@praxis:([a-z0-9-]+)",
+                                             md.read_text(encoding="utf-8")))
             except Exception:
-                pass
+                continue
     for ref in sorted(referenced):
         need(ref in agent_names, f"dangling agent reference @praxis:{ref}")
-
-    # marketplace source paths resolve to a plugin
-    try:
-        mj = json.loads(market_json.read_text())
-        for pl in mj.get("plugins", []):
-            src = (ROOT / pl.get("source", "")).resolve()
-            need((src / ".claude-plugin" / "plugin.json").exists(),
-                 f"marketplace source has no plugin.json: {pl.get('source')}")
-    except Exception:
-        pass
 
     # Instructions that point at a command or script which no longer exists are
     # worse than missing instructions: they read as authoritative and send the
     # session somewhere that cannot work. Merging or renaming a command must
-    # therefore fail CI until every reference follows.
+    # therefore fail until every reference follows.
     commands = {p.stem for p in (PLUGIN / "commands").glob("*.md")}
-    for md, text in _content_files():
-        rel = md.relative_to(ROOT)
+    for md, text in plugin_content():
+        rel = _rel(md, root)
         for ref in sorted(set(re.findall(r"/praxis:([a-z0-9-]+)", text))):
             need(ref in commands, f"{rel}: references /praxis:{ref}, which does not exist")
         for script in sorted(set(re.findall(r"scripts/([A-Za-z0-9_]+\.py)", text))):
@@ -174,27 +222,42 @@ def check():
                  f"{rel}: references scripts/{script}, which does not exist")
 
     # praxis bans em dashes and AI attribution in every project it touches; its
-    # own text is the first place that has to hold.
-    for md, text in _content_files(include_repo_text=True):
-        rel = md.relative_to(ROOT)
+    # own shipped text is the first place that has to hold.
+    checks += _house_style(plugin_content(), root, errors)
+
+    # ----- repo scope: the source checkout only -------------------------------
+    if market:
+        _, manifest, mj = market
+        if mj is None:
+            fail(f"marketplace.json invalid: {_rel(manifest, root)} does not parse")
+        else:
+            need(mj.get("metadata", {}).get("version") == pj.get("version"),
+                 f"version mismatch: plugin={pj.get('version')} "
+                 f"marketplace={mj.get('metadata', {}).get('version')}")
+            for entry in mj.get("plugins", []):
+                src = (root / str(entry.get("source", ""))).resolve()
+                need((src / ".claude-plugin" / "plugin.json").exists(),
+                     f"marketplace source has no plugin.json: {entry.get('source')}")
+        checks += _house_style(repo_prose(root), root, errors)
+
+    return scope, checks, errors
+
+
+def _house_style(files, root: Path, errors: list) -> int:
+    """Append a house-style error per offending line. Returns the files checked."""
+    seen = 0
+    for path, text in files:
+        seen += 1
+        rel = _rel(path, root)
         for lineno, line in enumerate(text.splitlines(), 1):
-            if "praxis:ack" in line:
+            if common.is_acked(line):
                 continue
             for name in common.scan_banned_dashes(line) + common.scan_ai_attribution(line):
-                need(False, f"{rel}:{lineno}: house style, {name}")
+                errors.append(f"{rel}:{lineno}: house style, {name}")
+    return seen
 
-    return checks, errors
 
-
-def _content_files(include_repo_text: bool = False):
-    """(path, text) for the plugin's instruction content, and optionally repo prose."""
-    paths = []
-    for area in CONTENT_AREAS:
-        paths.extend(sorted((PLUGIN / area).rglob("*.md")))
-    if include_repo_text:
-        paths.extend(ROOT / name for name in REPO_TEXT)
-        paths.extend(sorted((ROOT / "docs").glob("*.md")))
-        paths.extend(sorted(PLUGIN.glob("templates/*.tpl")))
+def _read(paths):
     for p in paths:
         try:
             yield p, p.read_text(encoding="utf-8")
@@ -202,14 +265,43 @@ def _content_files(include_repo_text: bool = False):
             continue
 
 
-def main() -> int:
-    checks, errors = check()
+def plugin_content():
+    """(path, text) for the instruction content and templates that ship."""
+    paths = []
+    for area in CONTENT_AREAS:
+        paths.extend(sorted((PLUGIN / area).rglob("*.md")))
+    paths.extend(sorted((PLUGIN / "templates").glob("*.tpl")))
+    return _read(paths)
+
+
+def repo_prose(root: Path):
+    """(path, text) for the source-tree prose that never ships with the plugin."""
+    paths = [root / name for name in REPO_TEXT]
+    paths.extend(sorted((root / "docs").rglob("*.md")))
+    return _read(paths)
+
+
+def main(argv=None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    require_repo = "--require-repo" in argv
+    unknown = [a for a in argv if a != "--require-repo"]
+    if unknown:
+        print(f"praxis selfcheck: unknown argument(s): {' '.join(unknown)}")
+        print("usage: selfcheck.py [--require-repo]")
+        return 2
+
+    scope, checks, errors = check(require_repo)
+    detail = ("repo scope: the plugin, its marketplace, and the repo prose"
+              if scope == SCOPE_REPO else
+              "installed-plugin scope: the marketplace and repo prose are not part "
+              "of an installed plugin, so they are not checked here")
     if errors:
-        print(f"praxis selfcheck: {len(errors)} problem(s) across {checks} checks:")
+        print(f"praxis selfcheck: {len(errors)} problem(s) across {checks} checks "
+              f"({detail}):")
         for e in errors:
             print(f"  ✗ {e}")
         return 1
-    print(f"praxis selfcheck: OK ({checks} checks passed).")
+    print(f"praxis selfcheck: OK ({checks} checks passed, {detail}).")
     return 0
 
 

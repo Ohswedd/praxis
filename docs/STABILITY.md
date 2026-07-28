@@ -23,7 +23,8 @@ Versioning (breaking changes → a new MAJOR).
   `autopilot`, `auto-merge`.
 - **Helper CLIs** (stable flags): `task_state.py`, `report.py`, `changelog.py`,
   `adr.py`, `workspaces.py`, `config.py`, `doctor.py`, `drift.py`,
-  `scan_placeholders.py`, `scan_style.py`, `selfcheck.py`, `repo_scan.py`.
+  `scan_placeholders.py`, `scan_style.py`, `selfcheck.py` (including
+  `--require-repo`), `repo_scan.py`.
 
 - **Install identifier:** marketplace `ohswedd-praxis`, plugin `praxis`, i.e.
   `/plugin install praxis@ohswedd-praxis`. Owner-scoped deliberately: a

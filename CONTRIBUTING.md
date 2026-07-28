@@ -22,7 +22,7 @@ Thanks for improving Praxis. It holds itself to the standards it enforces.
 Run the same checks CI runs:
 
 ```bash
-python plugins/praxis/scripts/selfcheck.py        # plugin integrity + house style
+python plugins/praxis/scripts/selfcheck.py --require-repo   # integrity + house style
 python plugins/praxis/scripts/drift.py            # docs vs live config and references
 python -m unittest discover -s tests -v           # test suite
 python -m compileall plugins/praxis/scripts       # compiles

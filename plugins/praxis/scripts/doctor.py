@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -76,19 +77,48 @@ def checks(root: Path):
     return out
 
 
+def _integrity() -> str:
+    """The self-check verdict, with the scope it actually covered.
+
+    Naming the scope matters here: doctor usually runs against an installed
+    plugin, where the marketplace and the repo prose are simply not present. A
+    bare OK would imply they were examined, and the honest line is the one that
+    says which question was answered.
+    """
+    here = Path(__file__).resolve().parent
+    try:
+        sc = subprocess.run(
+            [sys.executable, str(here / "selfcheck.py")],
+            capture_output=True, text=True, timeout=30,
+            # A diagnostic must not write to the directory it is diagnosing. The
+            # self-check imports a module, and an import caches bytecode beside
+            # it, which for an installed plugin means mutating the plugin cache.
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+    except Exception as exc:
+        return f"unknown ({exc.__class__.__name__})"
+
+    scope = ("full source tree" if "repo scope" in sc.stdout
+             else "installed plugin" if "installed-plugin scope" in sc.stdout
+             else "unrecognised scope")
+    if sc.returncode == 0:
+        return f"OK ({scope})"
+    problems = [ln.strip().lstrip("✗ ") for ln in sc.stdout.splitlines()
+                if ln.strip().startswith("✗")]
+    if not problems:
+        return f"PROBLEM ({scope}), see `selfcheck.py` for the detail"
+    # Name the first problem and say where the rest are: a bare count is a dead
+    # end for a reader who cannot see the subprocess output.
+    rest = (f" (+{len(problems) - 1} more, run "
+            "`python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/selfcheck.py\"`)"
+            if len(problems) > 1 else "")
+    return f"PROBLEM ({scope}): {problems[0]}{rest}"
+
+
 def main() -> None:
     data = common.read_hook_input()
     root = common.project_dir(data)
     lines = [f"## praxis doctor  (plugin v{plugin_version()})", ""]
-    # plugin self-integrity
-    try:
-        import subprocess
-        here = Path(__file__).resolve().parent
-        sc = subprocess.run([sys.executable, str(here / "selfcheck.py")],
-                            capture_output=True, text=True, timeout=30)
-        lines.append(f"- plugin integrity: **{'OK' if sc.returncode == 0 else 'PROBLEM'}**")
-    except Exception:
-        lines.append("- plugin integrity: **unknown**")
+    lines.append(f"- plugin integrity: **{_integrity()}**")
     for name, status in checks(root):
         lines.append(f"- {name}: **{status}**")
 
