@@ -5,35 +5,60 @@
 - **Start in any repo.** The `SessionStart` audit classifies it and injects a
   health report + standing directives. If it reports `new`, `uninitialised`, or
   `legacy`, run `/praxis:bootstrap`.
-- **Just ask.** Type a normal request — *"fix the pagination bug"*, *"integrate
-  Stripe checkout"*, *"refactor the auth module"* (English or Italian) — and pick
+- **Just ask.** Type a normal request: *"fix the pagination bug"*, *"integrate
+  Stripe checkout"*, *"refactor the auth module"* (English or Italian), and pick
   your effort level. The always-on directive applies the full pipeline to
   implementation work automatically (restructure → investigate → plan → implement
   → audit → report), and for multi-step tasks praxis's Stop gate keeps the
   session working until the task is done. You can also invoke it explicitly with
-  `/praxis:task <request>`, or just get the spec with `/praxis:spec <request>`.
+  `/praxis:task <request>`, or just get the spec with `/praxis:task spec: <request>`.
 - **Plan-first.** For anything non-trivial praxis presents a plan (plan mode)
   before touching files; approve or adjust it, then it implements.
 - **Finish a change.** When you stop with unreviewed code, the Stop gate asks you
-  to run `/praxis:audit`, which dispatches the vertical auditors — including the
+  to run `/praxis:audit`, which dispatches the vertical auditors, including the
   completeness auditor that guarantees no placeholders/stubs and no silently
-  dropped scope — loops until green, then records the pass.
-- **Audit a whole repo.** `/praxis:scan` runs the repo-wide scanner on an
+  dropped scope: loops until green, then records the pass.
+- **Audit a whole repo.** `/praxis:audit repo` runs the repo-wide scanner on an
   existing codebase: a shard ledger inventories every file, every vertical
   dimension runs on every shard, each finding is adversarially reverse-audited,
   and confirmed findings are fixed (or deferred with a plan). Coverage-honest
   reports, resumable across sessions; `--report-only` to skip fixes. See
   [`SCAN.md`](SCAN.md).
-- **Build a front-end.** `/praxis:frontend <request>` (or just ask — the skill
+- **Build a front-end.** `/praxis:frontend <request>` (or just ask, the skill
   auto-invokes on UI work) runs the front-end pipeline for any niche: business
   research → story-first wireframes → design system → development →
   optimization, proportional to the task, with the design artifacts kept in
   `docs/design/` and UI changes audited on the accessibility and
   design-consistency verticals. See [`FRONTEND.md`](FRONTEND.md).
-- **Memory upkeep.** After conventions change, `/praxis:sync` updates the
-  CLAUDE.md hierarchy with regression verification.
+- **Knowledge upkeep.** `/praxis:docs` reconciles all of it in one pass: `/docs`,
+  `CHANGELOG.md`, ADRs, and the CLAUDE.md hierarchy with regression verification.
+  It starts by running the drift check, so a document that contradicts the repo's
+  live settings, or points at a command or file that no longer exists, is found
+  rather than remembered.
+- **Deliver it.** `/praxis:ship` writes the Conventional Commit, branches, and
+  opens the PR; `/praxis:ship release` cuts a SemVer release from the changelog
+  and the commit history.
+- **Change a setting.** `/praxis:config` prints every switch, its value, and the
+  source that decided it; `/praxis:config autopilot on` (or `auto-merge`, or
+  `gate`) toggles one.
 - **Missing a tool.** `/praxis:discover` finds or creates the capability,
   reusing an existing one first.
+
+## What it will refuse to hand back
+
+The Stop gate is not a reminder, and these are not judgement calls:
+
+- unfinished work in the change, including in files you have not staged yet;
+- deferral prose in a comment ("for now", "in a real implementation");  <!-- praxis:ack -->
+- a report whose tests praxis did not run itself;
+- a change touching markup, styles, or components without the accessibility and
+  design-consistency verdicts, whatever the request called the work;
+- an em dash, anywhere in the text of the change;
+- a commit or PR carrying an AI co-author trailer or a "generated with" credit,
+  which is refused at the command rather than at the turn.
+
+`praxis:ack` on a line records a genuine exception; `.praxis.toml` turns any of
+these off for a repo that wants them off.
 
 ## Why it stays on your subscription
 
@@ -50,12 +75,18 @@ ever want to dial a specific auditor down, change its `model`/`effort` frontmatt
 
 ## Escape hatches
 
-- Disable the Stop gate for one repo: `touch .claude/.praxis/skip-gate`
-- Disable it for a session: set `PRAXIS_GATE=off`
-- Re-enable: delete the file / unset the variable.
+- Disable the Stop gate for one repo: `/praxis:config gate off` (which writes
+  `.claude/.praxis/skip-gate`).
+- Disable it for a session: set `PRAXIS_GATE=off`.
+- Re-enable: `/praxis:config gate on`, or unset the variable.
+- `/praxis:config` with no argument shows every switch and, importantly, the
+  source that decided it: clearing a toggle that an environment variable still
+  forces prints a warning instead of quietly reporting success.
+- Per-repo opt-outs live in `.praxis.toml`: `gate.require_tests`,
+  `gate.require_ui_verticals`, `style.ban_em_dash`, `style.ban_ai_attribution`.
 
 The guardrail hooks (secret + destructive-command blocks) are intentionally not
-disableable via those switches — remove or edit `hooks/hooks.json` if you must.
+disableable via those switches: remove or edit `hooks/hooks.json` if you must.
 
 ## Tuning
 
@@ -64,14 +95,24 @@ disableable via those switches — remove or edit `hooks/hooks.json` if you must
 - **Auditor depth:** edit each agent's `model` / `effort` frontmatter.
 - **Formatters:** extend the table in `scripts/post_edit.py`.
 - **Sensitive paths / secret patterns:** extend `scripts/lib/common.py`.
+- **House style:** `style.ban_em_dash` and `style.ban_ai_attribution` in
+  `.praxis.toml`; `praxis:ack` on a line for a one-off exception.
+- **UI surface detection:** the suffix and path sets in `scripts/lib/common.py`
+  (`UI_SUFFIXES`, `UI_FILENAME_RE`, `UI_PATH_RE`).
 
 ## Troubleshooting
 
 - Hooks not firing → `/reload-plugins` or restart; confirm `python3` is on PATH.
 - Gate never fires → it only fires with a dirty git tree; commit or check
   `/praxis:doctor`.
-- Gate too eager → it prompts once per change signature per session; if you
-  edited after a green audit, that is expected (re-audit).
+- Gate too eager → a green report is keyed to the exact change state, so an edit
+  after a green audit re-arms it. That is expected; re-audit.
+- Gate blocking on the UI verticals → the change touched a file praxis reads as
+  user-facing surface. Run the two UI auditors, or set
+  `require_ui_verticals = false` under `[gate]` if the repo genuinely does not
+  want them.
+- Docs and behaviour disagree → run `/praxis:doctor`; the drift section names the
+  line and the setting it contradicts.
 
 ## Uninstall & cleanup
 
@@ -79,4 +120,4 @@ disableable via those switches — remove or edit `hooks/hooks.json` if you must
   `/plugin marketplace remove praxis` if you added it locally).
 - Per-repo state lives in `.claude/.praxis/` (git-ignored); delete it to reset
   Praxis's memory for that repo. Your `/docs`, `CHANGELOG.md`, ADRs, and
-  `CLAUDE.md` are yours — they stay.
+  `CLAUDE.md` are yours: they stay.

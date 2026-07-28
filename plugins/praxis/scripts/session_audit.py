@@ -7,6 +7,9 @@ is injected into Claude's context, so this is where praxis orients the model:
 
   * classifies the repo state (new / un-initialised / legacy CLAUDE.md / managed)
   * surfaces a concise health report (secrets, missing setup, drift, TODOs)
+  * states the repo's **live** configuration, so no turn ever reasons from a
+    default that the repo has overridden. Documentation goes stale; the resolved
+    value cannot.
   * points Claude at the right entry command
 
 It is intentionally read-only, fast, and offline-safe. It never blocks.
@@ -22,6 +25,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 import common  # noqa: E402
 
 PRAXIS_MARK = "<!-- praxis:managed -->"
+
+#: Drift findings shown inline before the rest is summarised as a count.
+DRIFT_PREVIEW = 5
 
 
 def classify(root: Path) -> str:
@@ -64,7 +70,7 @@ def quick_secret_scan(root: Path, cap: int = 400) -> list:
     hits = []
     files = common.tracked_files(root, limit=cap) or []
     if not files:
-        # not a git repo yet — scan shallow with a pruning walk (skips node_modules etc.)
+        # not a git repo yet: scan shallow with a pruning walk (skips node_modules etc.)
         import os as _os
         visited = 0
         for dirpath, dirnames, filenames in _os.walk(root):
@@ -97,6 +103,39 @@ def _is_tracked_or_present(fp: Path) -> bool:
         return False
 
 
+def live_config(root: Path) -> list:
+    """The settings actually in force, resolved from env + toggles + .praxis.toml.
+
+    This block exists because of a specific, repeated failure: a session reads a
+    document that states a default ("praxis opens the PR and a human merges"),
+    the repo has since overridden it, and the session confidently acts on and
+    repeats the stale policy. A resolved value stated every session cannot go
+    stale, so the resolved value wins over any prose.
+    """
+    cfg = common.read_config(root)
+    gate_off = (
+        os.environ.get("PRAXIS_GATE", "").lower() in ("off", "0", "false")
+        or (common.state_dir(root) / "skip-gate").exists()
+        or cfg.get("gate.enabled", True) is False
+    )
+    items = [
+        f"quality gate: **{'OFF' if gate_off else 'ON'}**",
+        f"test evidence required: **{'yes' if cfg.get('gate.require_tests', True) else 'no'}**",
+        f"UI verticals required on UI changes: "
+        f"**{'yes' if cfg.get('gate.require_ui_verticals', True) else 'no'}**",
+        f"auto-pilot: **{'ON' if common.autopilot_on(root) else 'OFF'}**",
+    ]
+    if common.is_git_repo(root):
+        merge = "ON (praxis reviews and merges its own PRs after a green audit)" \
+            if common.auto_merge_on(root) else "OFF (praxis opens the PR; a human merges)"
+        items.append(f"auto-merge: **{merge}**, base branch `{common.git_default_branch(root)}`")
+    items.append(
+        f"house style: em dashes **{'banned' if cfg.get('style.ban_em_dash', True) else 'allowed'}**, "
+        f"AI attribution in commits/PRs "
+        f"**{'banned' if cfg.get('style.ban_ai_attribution', True) else 'allowed'}**")
+    return items
+
+
 def nested_claude_md(root: Path) -> list:
     out = []
     try:
@@ -116,11 +155,11 @@ def build_report(root: Path) -> str:
     intro = {
         "new": "This looks like a **new / empty project**. Offer to run `/praxis:bootstrap` to establish a top-tier Claude Code setup from scratch.",
         "uninitialised": "This is an **existing repo with no Claude Code setup**. Recommend `/praxis:bootstrap` to analyse the codebase and generate a CLAUDE.md + guardrails.",
-        "legacy": "This repo has a **CLAUDE.md not managed by praxis** (legacy or from another tool). Recommend `/praxis:bootstrap` — it will reconcile and migrate the existing file through the verifier so nothing valuable is lost.",
+        "legacy": "This repo has a **CLAUDE.md not managed by praxis** (legacy or from another tool). Recommend `/praxis:bootstrap`, it will reconcile and migrate the existing file through the verifier so nothing valuable is lost.",
         "partial": "This repo has **partial Claude Code config**. Recommend `/praxis:doctor` to reconcile it.",
         "managed": "This repo is **managed by praxis**. Continuous quality gates are active.",
     }.get(state, "")
-    lines.append(f"**State:** `{state}` — {intro}")
+    lines.append(f"**State:** `{state}`, {intro}")
     lines.append("")
 
     # Health signals
@@ -140,9 +179,26 @@ def build_report(root: Path) -> str:
                      "their directories; keep them consistent with the root file.")
         lines.append("")
 
+    lines.append("**Live configuration (resolved now; it outranks anything a doc says):**")
+    for item in live_config(root):
+        lines.append(f"  - {item}")
     test_cmd = common.detect_test_command(root)
-    if test_cmd:
-        lines.append(f"**Detected test command:** `{test_cmd}`")
+    lines.append(f"  - test command: `{test_cmd}`" if test_cmd
+                 else "  - test command: **none detected** (say so when you report coverage)")
+    lines.append("")
+
+    drift = common.run_scanner("drift.py", root)
+    if drift:
+        lines.append(f"**⚠️ Documentation drift: {len(drift)} finding(s).** The docs "
+                     "contradict the live configuration or reference something that no "
+                     "longer exists. Fix them as part of the next change (`/praxis:docs`), "
+                     "and never repeat a claim from a drifted line:")
+        for f in drift[:DRIFT_PREVIEW]:
+            lines.append(f"  - {f.get('file')}:{f.get('line')}, {f.get('detail')}")
+        if len(drift) > DRIFT_PREVIEW:
+            lines.append(f"  - ... and {len(drift) - DRIFT_PREVIEW} more "
+                         "(`python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/drift.py\"`)")
+        lines.append("")
 
     # Monorepo / workspace awareness
     workspaces = common.detect_workspaces(root)
@@ -150,7 +206,7 @@ def build_report(root: Path) -> str:
         kinds = sorted({w["kind"] for w in workspaces})
         sample = ", ".join(w["path"] for w in workspaces[:5])
         lines.append(f"**Monorepo detected:** {len(workspaces)} package(s) "
-                     f"({'/'.join(kinds)}) — e.g. {sample}. Run and audit the tests of the "
+                     f"({'/'.join(kinds)}): e.g. {sample}. Run and audit the tests of the "
                      "specific package(s) you change, not just the root.")
 
     # Living-knowledge health
@@ -162,13 +218,13 @@ def build_report(root: Path) -> str:
             missing.append("/docs")
         if not has_changelog:
             missing.append("CHANGELOG.md")
-        lines.append(f"**Living knowledge missing:** {', '.join(missing)} — scaffold via "
+        lines.append(f"**Living knowledge missing:** {', '.join(missing)}, scaffold via "
                      "`/praxis:bootstrap` (or the `docs-living` skill); every repo should have both.")
 
     if common.is_git_repo(root):
         dirty = common.git_status_porcelain(root)
         if dirty:
-            lines.append(f"**Uncommitted changes:** {len(dirty)} file(s) — the quality "
+            lines.append(f"**Uncommitted changes:** {len(dirty)} file(s), the quality "
                          "gate will require a passing `/praxis:audit` before the turn "
                          "can finish while code is unreviewed.")
     lines.append("")
@@ -195,15 +251,23 @@ def build_report(root: Path) -> str:
                  "user; mark `done` only when every criterion is met and the audit is green. "
                  "The Stop gate keeps you working until then.")
     lines.append("- Apply the best-practices relevant to the change (use the `best-practices` "
-                 "skill: SOLID/DDD/REST/OWASP/ACID-CAP/testing as the domains require) — the "
+                 "skill: SOLID/DDD/REST/OWASP/ACID-CAP/testing as the domains require), the "
                  "minimal fitting set, matched to repo conventions; don't cargo-cult.")
-    lines.append("- Front-end/UI work runs the `frontend-pipeline` skill, proportional to the "
-                 "task: business research → story-first wireframes → design system → "
-                 "development → optimization. Read its `reference/craft.md` before writing "
-                 "markup or styles — generic defaults (centered everything, gradient hero, "
-                 "three equal cards, stock icons, lorem ipsum, invented testimonials) are "
-                 "defects, not taste. UI-touching changes are audited on the accessibility "
-                 "and design-consistency verticals in addition to the seven.")
+    lines.append("- Any change that adds or alters user-facing surface (markup, styles, "
+                 "components, `docs/design/`) IS front-end work, however it was phrased, and "
+                 "runs the `frontend-pipeline` skill proportionally: business research → "
+                 "story-first wireframes → design system → development → optimization. Read "
+                 "its `reference/craft.md` before writing markup or styles: generic defaults "
+                 "(centered everything, gradient hero, three equal cards, stock icons, lorem "
+                 "ipsum, invented testimonials) are defects, not taste. The gate enforces "
+                 "this: a UI diff is not green without `accessibility=pass` and "
+                 "`design-consistency=pass` in the report.")
+    lines.append("- House style, enforced deterministically, so do not test it: **no em "
+                 "dashes** anywhere you write (a colon, a comma, parentheses, or two "
+                 "sentences say it better) and **no AI attribution**, no `Co-Authored-By: "
+                 "Claude`, no \"generated with\" credit, no robot emoji, in any commit, tag, "
+                 "PR, release, or issue. The PreToolUse guard blocks the command; the Stop "
+                 "gate blocks the turn. Both apply to your replies too, not only to files.")
     if common.autopilot_on(root):
         lines.append("- **AUTO-PILOT IS ON:** do not ask the user design/approach questions. "
                      "Do your own QA and decide by the best-practice that fits, recording "
@@ -219,14 +283,15 @@ def build_report(root: Path) -> str:
                  "no debug leftovers, no commented-out or dead code.")
     lines.append("- You are not building an MVP: unless the user asked for a prototype, "
                  "deliver the finished product. No placeholders/TODOs/stubs, no deferral "
-                 "language ('for now', 'in a real implementation', 'you can extend this'), "
-                 "no silently narrowed scope — error handling and the states you know are "
-                 "needed are in scope, not follow-ups. State anything genuinely out-of-scope "
-                 "explicitly in the report. The Stop gate blocks on unfinished markers found "
-                 "in your own diff.")
+                 "language ('for now', 'in a real implementation', 'you can extend this', "
+                 "'future work will'), no silently narrowed scope: error handling and the "
+                 "states you know are needed are in scope, not follow-ups. Everything in "
+                 "scope is finished in THIS change; 'Out of scope / follow-ups' is for what "
+                 "the user excluded, not for what you ran out of patience for. The Stop gate "
+                 "scans your own diff AND your new untracked files for unfinished markers.")
     lines.append("- After any non-trivial change, run the quality rubric (`/praxis:audit`) "
-                 "— vertical auditors (doc-reference, duplication, regression, adversarial, "
-                 "edge-case, performance, completeness) + a horizontal pass — and fix every "
+                 "(vertical auditors: doc-reference, duplication, regression, adversarial, "
+                 "edge-case, performance, completeness, plus a horizontal pass) and fix every "
                  "finding before declaring done.")
     lines.append("- praxis is effort-agnostic: it works identically at `/effort high` or "
                  "`/effort ultracode`; higher effort only deepens execution. Auditors are "

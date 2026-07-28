@@ -4,7 +4,7 @@ Praxis ADR maintainer (operates on the *target project's* docs/adr/).
 
 Architecture Decision Records capture *why* a significant or autonomous decision
 was made, so the knowledge survives. In auto-pilot, every non-trivial autonomous
-decision should also be persisted here — not only in the report.
+decision should also be persisted here, not only in the report.
 
 Usage:
     adr.py new "Use optimistic locking for order updates" \
@@ -81,7 +81,7 @@ def new(root, args) -> None:
     if alternatives:
         body += f"\n## Alternatives considered\n{alternatives}\n"
     (d / fname).write_text(body, encoding="utf-8")
-    print(f"praxis: ADR created — docs/adr/{fname}")
+    print(f"praxis: ADR created, docs/adr/{fname}")
 
 
 def list_adrs(root) -> None:

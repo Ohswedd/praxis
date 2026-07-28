@@ -1,6 +1,6 @@
 ---
 name: task-orchestrator
-description: The end-to-end workflow for any implementation or change request. Use this WHENEVER the user asks to fix, add, implement, integrate, refactor, update, migrate, optimize, or otherwise change the code-base — even from a one-line prompt like "fix this" or "integrate X". It restructures the request into a spec, investigates the code-base, plans before coding, implements to production standard, runs the full audit (including completeness/no-regression), and returns a precise structured report. Use this instead of jumping straight to editing files.
+description: The end-to-end workflow for any implementation or change request. Use this WHENEVER the user asks to fix, add, implement, integrate, refactor, update, migrate, optimize, or otherwise change the code-base, even from a one-line prompt like "fix this" or "integrate X". It restructures the request into a spec, investigates the code-base, plans before coding, implements to production standard, runs the full audit (including completeness/no-regression), and returns a precise structured report. Use this instead of jumping straight to editing files.
 ---
 
 # Task Orchestrator
@@ -11,36 +11,61 @@ not skip ahead to editing. Prioritise correctness and completeness over speed.
 
 The golden rule: **nothing may be silently dropped, stubbed, or left
 out-of-scope.** If something cannot be done, it is stated explicitly in the
-report — never hidden behind a placeholder.
+report, never hidden behind a placeholder.
+
+"Out of scope / follow-ups" is for what the user excluded or what genuinely
+belongs to another change. It is not a place to move work you started and did not
+finish, and it is not a way to hand back a first pass. Everything the spec puts in
+scope, including the error paths, the empty and failure states, the validation,
+and the tests, ships in this change.
+
+Two house rules apply to every phase, and both are enforced deterministically, so
+they are not worth testing: **no em dashes** in anything you write (code,
+comments, docs, commit messages, or your reply to the user), and **no AI
+attribution** in the project's record. Use a colon, a comma, parentheses, or two
+sentences instead of the dash, and never add a co-author trailer or a "generated
+with" credit.
 
 ---
 
-## Phase 1 — Restructure the request (spec)
+## Phase 1: Restructure the request (spec)
 Use the **prompt-architect** skill to convert the request into an explicit spec:
-- **Goal** — the outcome, in one or two sentences.
-- **In scope** — concrete deliverables.
-- **Out of scope / non-goals** — what you will deliberately not do (surface this;
+- **Goal**: the outcome, in one or two sentences.
+- **In scope**: concrete deliverables.
+- **Out of scope / non-goals**: what you will deliberately not do (surface this;
   never narrow scope silently).
-- **Acceptance criteria** — testable conditions for "done".
-- **Affected areas** — files/subsystems likely touched (fill after Phase 2).
-- **Assumptions** — anything you inferred that the user did not state.
-- **Open questions** — genuine ambiguities. Ask them now if they block correct
+- **Acceptance criteria**: testable conditions for "done".
+- **Affected areas**: files/subsystems likely touched (fill after Phase 2).
+- **Assumptions**: anything you inferred that the user did not state.
+- **Open questions**: genuine ambiguities. Ask them now if they block correct
   work; otherwise state the assumption you will proceed under.
 
 Keep the spec tight. Show it to the user when the request was ambiguous or large;
 for small unambiguous asks, state the spec briefly and proceed.
 
-**User-facing UI work** (site, storefront, lead page, app screens, CRM/CMS,
-admin panel, dashboard): run the **frontend-pipeline** skill — business
-research → story-first wireframes → design system, proportional to the task —
-around these phases. Its artifacts (`docs/design/BRIEF.md`, `WIREFRAMES.md`,
-`DESIGN-SYSTEM.md`) become part of the spec, and the audit gains the
-accessibility and design-consistency verticals.
+**User-facing UI work** runs the **frontend-pipeline** skill around these phases:
+business research → story-first wireframes → design system, proportional to the
+task. Its artifacts (`docs/design/BRIEF.md`, `WIREFRAMES.md`, `DESIGN-SYSTEM.md`)
+become part of the spec, and the audit gains the accessibility and
+design-consistency verticals.
 
-## Phase 2 — Investigate (read before you write)
+Decide this from the *surface the change touches*, not from how the request was
+phrased. If the work will add or alter markup, templates, components, styles,
+design tokens, or `docs/design/`, it is front-end work even when the prompt said
+"fix the checkout bug" or named only a file path. The gate resolves the same
+question from the changed file list and rejects the report without both UI
+verdicts, so deciding late costs a full re-audit.
+
+## Phase 2: Investigate (read before you write)
 - Confirm the **CLAUDE.md** hierarchy exists and is accurate. If the session
   audit flagged `new/uninitialised/legacy`, run **bootstrap** first. If memory is
   stale, run **claudemd-living**.
+- **Trust the resolved configuration over any document.** The SessionStart audit
+  prints the live values (gate, auto-pilot, auto-merge, base branch, house style);
+  `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config.py" status` reprints them on
+  demand. Where a doc contradicts them, the doc is the bug: run
+  `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/drift.py"` and fix what it reports as
+  part of Phase 5b.
 - **Read the actual code** in the affected areas. Dispatch
   `@praxis:repo-cartographer` for unfamiliar code and
   `@praxis:doc-reference-finder` to pin the authoritative docs and existing
@@ -48,9 +73,9 @@ accessibility and design-consistency verticals.
 - Fill in **Affected areas** and refine acceptance criteria with what you learned.
 - If this is a **monorepo**, identify which package(s) the change belongs to
   (`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workspaces.py"`) and use that package's
-  build/test commands — not just the repo root's.
+  build/test commands, not just the repo root's.
 
-## Phase 3 — Plan first (plan mode)
+## Phase 3: Plan first (plan mode)
 Produce a concrete, ordered plan: the steps, the files each touches, the tests to
 add/update, and the risks. **Enter plan mode and do not modify files until the
 plan is set.** For anything non-trivial, present the plan to the user for
@@ -59,23 +84,23 @@ approval; for trivial changes, state the plan in a sentence or two and continue.
 A good plan names: the change per file, the new/updated tests, the rollback/road
 if something fails, and how each acceptance criterion will be met.
 
-## Phase 4 — Implement to the plan
+## Phase 4: Implement to the plan
 - Follow the plan; if reality forces a deviation, note it and update the plan
   rather than drifting.
 - Apply the **best-practices** relevant to this change (use the `best-practices`
-  skill's selection table — REST / DDD / OWASP / ACID-CAP / testing / performance
+  skill's selection table: REST / DDD / OWASP / ACID-CAP / testing / performance
   as the domains require): the minimal fitting set, consistent with existing repo
   patterns, no cargo-culting.
 - Apply **code-craft** standards: self-documenting names, comments that explain
   *why* (not *what*), no debug leftovers, no commented-out code, consistent style
   with the surrounding file.
 - Reuse existing utilities (no reinvention/duplication), and add only what this
-  change needs — no speculative abstractions, parameters, config, or unused
-  surface (KISS/YAGNI). Handle the edge cases and errors that are in scope — do not
+  change needs, no speculative abstractions, parameters, config, or unused
+  surface (KISS/YAGNI). Handle the edge cases and errors that are in scope: do not
   stub them.
 - Add or update tests alongside the change.
 
-## Phase 5 — Audit (prove it's done)
+## Phase 5: Audit (prove it's done)
 Run the **quality-rubric** skill in full:
 - vertical auditors: doc-reference, duplication, regression, adversarial,
   edge-case, performance, **and completeness** (`@praxis:completeness-auditor`
@@ -85,10 +110,14 @@ Run the **quality-rubric** skill in full:
 - confirm the test command passes and no regression was introduced;
 - confirm **zero** unacknowledged placeholders/TODOs/stubs and **zero** silently
   narrowed scope;
+- run the three deterministic scanners and clear every finding:
+  `scan_placeholders.py` (unfinished work, including in untracked new files),
+  `scan_style.py` (em dashes, AI attribution), `drift.py` (docs that this change
+  just made untrue);
 - confirm the relevant best-practices were actually applied (not just cited).
 Record the green quality report so the Stop gate can pass.
 
-## Phase 5b — Update the living knowledge (mandatory)
+## Phase 5b: Update the living knowledge (mandatory)
 Documentation is part of "done". Using the `docs-living` skill:
 - Update or create the relevant docs under `/docs` for anything this change
   touched (read/search them first; no regression). Seed `/docs` if the repo lacks
@@ -99,7 +128,7 @@ Documentation is part of "done". Using the `docs-living` skill:
   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/adr.py" new "<title>" --status accepted --context "..." --decision "..." --consequences "..."`.
 - Keep `docs/README.md` indexed.
 
-## Phase 6 — Report (precise, linear, structured)
+## Phase 6: Report (precise, linear, structured)
 End with the canonical praxis report. Keep it scannable and complete:
 
 ```
@@ -122,11 +151,14 @@ End with the canonical praxis report. Keep it scannable and complete:
 | performance     | PASS    | ...                      |
 | completeness    | PASS    | no placeholders/stubs    |
 
+(Add `accessibility` and `design-consistency` rows whenever the change touched
+user-facing surface. The report is not green without them.)
+
 ### Best-practices applied
 - <family> → <how it was applied> (e.g. "REST idempotency → POST uses an idempotency key")
 
 ### Decisions taken autonomously
-- <decision> → <chosen option> — <one-line best-practice rationale>
+- <decision> → <chosen option>: <one-line best-practice rationale>
   (this section is where auto-pilot records what it would otherwise have asked;
    empty if the user was consulted)
 
@@ -146,29 +178,31 @@ End with the canonical praxis report. Keep it scannable and complete:
 ```
 
 If any item could not be completed, it goes under **Out of scope / follow-ups**
-with the reason — explicitly, never as a hidden gap.
+with the reason: explicitly, never as a hidden gap.
 
-## Phase 7 — Deliver (optional, only when needed)
-Delivery is a separate, explicit step — praxis does not commit or push on every
+## Phase 7: Deliver (optional, only when needed)
+Delivery is a separate, explicit step: praxis does not commit or push on every
 edit. When the change is complete and its audit is green, use the `git-delivery`
 skill (or `/praxis:ship`) to turn it into a Conventional Commit and a pull request.
-By default the merge is **human-in-the-loop**: praxis opens the PR and hands it
-back. Only when auto-merge is enabled (`.praxis.toml [git] auto_merge`, env
-`PRAXIS_AUTO_MERGE`, or `git_delivery.py on`) does praxis review and merge its own
-PR — and never without a green audit and passing checks, never by force-pushing
-the base branch.
+
+Resolve the merge policy rather than recalling it: `config.py status` reports the
+value in force and where it came from. With auto-merge off the merge is
+human-in-the-loop and praxis stops at the PR; with it on, praxis self-reviews and
+merges, but never without a green audit and passing checks, and never by
+force-pushing the base branch. No commit, tag, PR, or release carries an AI
+co-author trailer or a "generated with" credit; the guard blocks the command.
 
 ---
 
-## Autonomous execution — praxis drives the loop, not you
+## Autonomous execution: praxis drives the loop, not you
 
 The user states the idea and picks an effort level; everything else is automatic.
 Own the whole lifecycle: self-question, investigate, plan, implement, QA, audit,
-regression-check, report — without asking the user to drive each step. Interrupt
+regression-check, report, without asking the user to drive each step. Interrupt
 **only** at a genuine decision point.
 
 **For any multi-step task, open a praxis task at spec time.** This is what makes
-the session self-drive to completion — it is praxis's built-in equivalent of
+the session self-drive to completion: it is praxis's built-in equivalent of
 `/goal`, enforced deterministically by the Stop gate. You do **not** ask the user
 to run `/goal`.
 
@@ -183,11 +217,11 @@ task is open, the Stop gate keeps you working turn after turn. Then:
 - **Genuine decision point** (real ambiguity, irreversible choice, conflicting
   requirements): run `task_state.py waiting`, then stop and ask the user. Resume
   with `task_state.py resume` after they answer.
-  - **In auto-pilot** (`autopilot.py status` / env `PRAXIS_AUTOPILOT`): do NOT
+  - **In auto-pilot** (`config.py status` / env `PRAXIS_AUTOPILOT`): do NOT
     stop to ask. Resolve the decision yourself with the `best-practices` decision
     procedure, record it under "Decisions taken autonomously", and continue.
     Reserve `waiting` for a hard external blocker you cannot resolve at all (e.g.
-    a missing credential) — and even then state the assumption you'd proceed under.
+    a missing credential), and even then state the assumption you'd proceed under.
 - **Finished**: only when EVERY criterion is met and the praxis audit is green,
   run `task_state.py done`. This releases the loop.
 
@@ -196,14 +230,14 @@ so it can never trap the session.
 
 **`/goal` is optional and manual.** The native `/goal` command is a separate
 power-tool for handing off a very long, cross-session autonomous run, and can be
-paired with auto mode. You never need it for normal work — praxis's task loop
+paired with auto mode. You never need it for normal work: praxis's task loop
 already provides the continuation. Only mention it if the user explicitly wants an
 unattended multi-hour run.
 
 ## Notes
 - Language- and framework-agnostic: derive commands, patterns, and idioms from
   the repo itself.
-- **Effort:** praxis is effort-agnostic — it behaves identically whether the
+- **Effort:** praxis is effort-agnostic, it behaves identically whether the
   session is at `/effort high` or `/effort ultracode`; higher effort only deepens
   execution. The vertical auditors are pinned to Opus / high in their frontmatter,
   so audits stay deep regardless. Do not change the user's effort setting.

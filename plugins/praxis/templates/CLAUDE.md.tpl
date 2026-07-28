@@ -30,4 +30,17 @@ for subsystems instead of duplicating their detail here.>
 - Commit secrets or edit .env / credential files.
 
 ## Integration points
-- <datastores / external services / APIs, configured via which env vars — no secrets here>
+- <datastores / external services / APIs, configured via which env vars, no secrets here>
+
+<!--
+Writing note for whoever maintains this file, praxis included.
+
+State behaviour that a setting controls *as* conditional, and name the setting:
+"with auto-merge off, which is the default, praxis stops at the PR" survives the
+toggle being flipped, while "praxis never merges" becomes a confident lie the
+moment someone turns it on, and every later session repeats it.
+
+`/praxis:doctor` prints the settings actually in force and reports any line here
+that contradicts them. Prefer pointing at that command over restating a value.
+-->
+

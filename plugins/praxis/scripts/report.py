@@ -2,7 +2,7 @@
 """
 Praxis quality-report writer (evidence-backed).
 
-Records the green quality report the Stop gate reads — but with *evidence*
+Records the green quality report the Stop gate reads, but with *evidence*
 rather than a bare pass flag: the per-vertical verdicts, and a test run this
 script performs **itself**.
 
@@ -22,7 +22,7 @@ adversarial=pass,edge-case=pass,performance=pass,completeness=pass"
 --tests defaults to the repo's detected test command. Overriding it is recorded
 as a substitution, because running *a* command proves nothing while running the
 project's suite proves something: the gate does not accept a substituted run on
-its own (a legitimate override — one package of a monorepo — should be stated to
+its own (a legitimate override, one package of a monorepo, should be stated to
 the user). If the repo has no detectable test command and none is given, the
 report is recorded without a test requirement, and the missing coverage should be
 reported. A report with no vertical verdicts attests to nothing and is 'fail'.
@@ -71,7 +71,7 @@ def run_tests(root, cmd: str, timeout: int):
     Output goes to a temp file rather than a pipe: a verbose suite can emit
     hundreds of megabytes over a long timeout, and only the tail is ever kept.
     The shell runs in its own process group so a timeout kills the whole test
-    tree — killing just the shell would leave the real test process holding the
+    tree: killing just the shell would leave the real test process holding the
     output handle, and the wait would never return.
     """
     with tempfile.TemporaryFile(mode="w+", encoding="utf-8", errors="replace") as out:
@@ -116,7 +116,7 @@ def _tail(fh) -> str:
     kept = []
     for line in lines:
         found = common.scan_secrets_in_text(line)
-        kept.append(f"[praxis: redacted — {', '.join(found)}]" if found else line)
+        kept.append(f"[praxis: redacted, {', '.join(found)}]" if found else line)
     return "\n".join(kept)
 
 
@@ -128,8 +128,8 @@ def record(root, args) -> None:
     # Running *a* command proves nothing; running the project's tests does. A
     # substituted command (`--tests true`, `pytest || true`) would otherwise buy
     # a green report for a suite that never ran, which is the exact loophole this
-    # script exists to close. Overriding is still legitimate — a monorepo package,
-    # a narrower selection — so it is recorded rather than refused, and the gate
+    # script exists to close. Overriding is still legitimate: a monorepo package,
+    # a narrower selection, so it is recorded rather than refused, and the gate
     # decides whether to accept it.
     substituted = bool(detected) and tests.strip() != detected.strip()
     if substituted:
@@ -151,10 +151,10 @@ def record(root, args) -> None:
     # saying so is better than silently ignoring an argument the caller believes
     # is taking effect.
     if common.cli_opt(args, "--tests-exit", None) is not None:
-        print("praxis: --tests-exit is ignored — report.py runs the tests and "
+        print("praxis: --tests-exit is ignored, report.py runs the tests and "
               "records the real exit code.")
 
-    # The report's whole value is that it is evidence, not a claim — so the test
+    # The report's whole value is that it is evidence, not a claim, so the test
     # run happens HERE, and its real exit code is what gets recorded.
     tests_exit, tests_output, verified = None, "", False
     if tests:
@@ -171,10 +171,21 @@ def record(root, args) -> None:
     # record` produced a green report attesting to nothing at all.
     all_pass = bool(verticals) and all(v == "pass" for v in verticals.values())
     if not verticals:
-        print("praxis: no --verticals given — a report attests to the auditors that "
+        print("praxis: no --verticals given, a report attests to the auditors that "
               "actually ran, so this is recorded as 'fail'.")
+
+    # The gate rejects a UI change with no UI verdicts anyway. Saying so here,
+    # right after the auditors were supposed to run, turns a confusing Stop-time
+    # refusal into an actionable one.
+    ui_missing = common.missing_ui_verticals(root, verticals)
+    if ui_missing:
+        touched = common.ui_files_in_change(root)
+        print(f"praxis: this change touches user-facing files "
+              f"({', '.join(touched[:3])}{'...' if len(touched) > 3 else ''}), so it "
+              f"needs the UI verticals. Missing: {', '.join(ui_missing)}.")
+
     tests_ok = (tests_exit == 0) if tests else True
-    status = "pass" if (all_pass and tests_ok) else "fail"
+    status = "pass" if (all_pass and tests_ok and not ui_missing) else "fail"
 
     report = {
         "signature": common.change_signature(root),
@@ -193,11 +204,11 @@ def record(root, args) -> None:
         },
     }
     common.write_state(root, NAME, report)
-    print(f"praxis: quality report recorded — status={status}, "
+    print(f"praxis: quality report recorded, status={status}, "
           f"tests={tests or 'none'} exit={tests_exit}, "
           f"verticals={'all pass' if all_pass else 'NOT all pass'}")
     if status != "pass":
-        print("praxis: status is 'fail' — the Stop gate will keep you working until green.")
+        print("praxis: status is 'fail', the Stop gate will keep you working until green.")
         if not all_pass:
             failed = sorted(k for k, v in verticals.items() if v != "pass")
             print(f"praxis: failing vertical(s): {', '.join(failed)}")

@@ -8,7 +8,7 @@ Deterministic, cheap, language-agnostic hygiene after each edit:
 
 PostToolUse cannot undo an edit, so this reacts rather than prevents; prevention
 lives in guard_paths.py. Formatter discovery is by capability, not by a fixed
-language list — if the tool isn't available, we skip quietly.
+language list, if the tool isn't available, we skip quietly.
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ def _which(name: str) -> bool:
     return shutil.which(name) is not None
 
 
-# Formatters whose output is a single canonical style — always safe to run.
+# Formatters whose output is a single canonical style, always safe to run.
 _CANONICAL = {"gofmt", "rustfmt"}
 
 

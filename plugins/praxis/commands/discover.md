@@ -5,8 +5,8 @@ argument-hint: "[what you need, e.g. 'query the database']"
 
 Use the `capability-discovery` skill.
 
-Name the missing capability precisely ${ARGUMENTS:+($ARGUMENTS)}. Search first —
-already configured, in a marketplace, or a repo script — before scaffolding
+Name the missing capability precisely ${ARGUMENTS:+($ARGUMENTS)}. Search first:
+already configured, in a marketplace, or a repo script, before scaffolding
 anything. If nothing fits, create the smallest right primitive (command / skill /
 subagent / MCP / hook), keep it lean, reference secrets via environment variables,
 and offer to promote it to a shared plugin if broadly useful.

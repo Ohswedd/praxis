@@ -6,19 +6,19 @@ description: Restructure a vague or terse request into an explicit, actionable e
 # Prompt Architect
 
 Most defects start as misunderstood requests. This skill converts a loose prompt
-into a spec precise enough to execute against and to verify against — without
+into a spec precise enough to execute against and to verify against, without
 inventing scope the user did not ask for.
 
 ## Method
 
 1. **Extract the true intent.** State, in one or two sentences, the outcome the
-   user actually wants — not a literal restatement of their words. If their
+   user actually wants, not a literal restatement of their words. If their
    phrasing and their apparent goal diverge, note both.
 
 2. **Draw the scope boundary.**
    - *In scope*: the concrete deliverables that satisfy the intent.
    - *Out of scope / non-goals*: adjacent things you will NOT do. This is the most
-     important part — it prevents both over-reach and silent under-delivery. If
+     important part: it prevents both over-reach and silent under-delivery. If
      you must exclude something the user might expect, say so explicitly.
 
 3. **Write acceptance criteria.** Testable, observable conditions for "done"
@@ -35,17 +35,17 @@ inventing scope the user did not ask for.
 
 6. **Right-size the output.** For a big or ambiguous task, present the full spec
    and confirm before proceeding. For a small, unambiguous task, compress it to a
-   sentence or two and move on — do not bureaucratise trivial work.
+   sentence or two and move on: do not bureaucratise trivial work.
 
 ## Auto-pilot: decide, don't ask
-When auto-pilot is on (`autopilot.py status` / env `PRAXIS_AUTOPILOT`), do **not**
+When auto-pilot is on (`config.py status` / env `PRAXIS_AUTOPILOT`), do **not**
 emit questions to the user. Convert every open question into an **autonomous
 decision**: resolve it with the `best-practices` decision procedure
 (correctness/safety → applicable best-practice → repo consistency → simplicity →
 reversibility), then record it under "Decisions taken autonomously" with a
 one-line rationale. Proceed without pausing. The only permitted stop is an
 external blocker you genuinely cannot resolve yourself (e.g. a credential the user
-must provide) — and even then, state the assumption you'd use if told to continue.
+must provide), and even then, state the assumption you'd use if told to continue.
 
 ## Output shape
 
@@ -56,7 +56,7 @@ must provide) — and even then, state the assumption you'd use if told to conti
 **Acceptance criteria:**
 - ...
 **Assumptions:** ...
-**Open questions:** ... (or "none — proceeding")
+**Open questions:** ... (or "none: proceeding")
 ```
 
 ## Anti-patterns to avoid

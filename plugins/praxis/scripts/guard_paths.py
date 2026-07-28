@@ -2,7 +2,7 @@
 """
 praxis PreToolUse guard.
 
-Blocks two categories of action deterministically, and — crucially — keeps
+Blocks two categories of action deterministically, and, crucially, keeps
 working even under `--dangerously-skip-permissions`, because PreToolUse hooks
 run before the permission-mode check:
 
@@ -12,6 +12,13 @@ run before the permission-mode check:
   2. Catastrophic / irreversible shell commands (rm -rf on broad paths,
      disk wipes, forced pushes (any branch), `curl | sh`, fork bombs,
      destructive SQL).
+  3. AI attribution in anything published to the project's record: a commit
+     message, tag, pull request, release, or issue carrying a
+     `Co-Authored-By: Claude` trailer or a "generated with" credit. Unlike the  # praxis:ack
+     other two this is a house-style rule rather than a safety one, but it needs
+     the same deterministic enforcement: it is stated in the doctrine, complied
+     with in the abstract, and forgotten at the moment of committing. Once the
+     commit exists the credit is in the history for good.
 
 Exit 2 blocks the tool and feeds the reason back to Claude.
 """
@@ -45,14 +52,14 @@ DANGEROUS_COMMAND_PATTERNS = [
     (r"\bmkfs\.", "Filesystem format"),
     (r"\bdd\b.*\bof=/dev/(sd|nvme|disk)", "Raw disk overwrite"),
     (r">\s*/dev/(sd|nvme|disk)", "Redirect over a raw disk device"),
-    # Force-push in any form — long/bundled flag or the '+refspec' syntax, on any
+    # Force-push in any form: long/bundled flag or the '+refspec' syntax, on any
     # branch, with or without --force-with-lease. It rewrites remote history, so a
     # human runs it; praxis never does it unattended. The leading [\s'"] also catches
     # a quoted flag/refspec (`git push "--force"`, `git push origin '+main'`).
     (_GIT_PUSH + r"""[\s'"](--force|-[a-zA-Z]*f[a-zA-Z]*)\b""",
-     "Force-push (irreversible — run it yourself)"),
+     "Force-push (irreversible: run it yourself)"),
     (_GIT_PUSH + r"""[\s'"]\+[^\s|&;]""",
-     "Force-push via +refspec (irreversible — run it yourself)"),
+     "Force-push via +refspec (irreversible: run it yourself)"),
     (r"\bgit\s+(reset\s+--hard|clean\s+-[a-z]*f)", "Destructive git state reset"),
     (r"\bgh\s+pr\s+merge\b.*\s--admin\b",
      "Merging a PR with --admin (bypasses branch protection)"),
@@ -70,10 +77,50 @@ DANGEROUS_COMMAND_PATTERNS = [
 
 _DANGEROUS = [(re.compile(p), why) for p, why in DANGEROUS_COMMAND_PATTERNS]
 
+# Commands that write to the project's permanent record. Text they carry is
+# published: rewriting it afterwards means rewriting history or editing a PR that
+# reviewers have already read.
+_PUBLISHING_RE = re.compile(
+    r"\bgit\s+(commit|tag|merge|revert|cherry-pick|notes)\b"
+    r"|\bgh\s+(pr|issue|release)\s+(create|edit|comment|merge)\b",
+    re.IGNORECASE,
+)
 
-def check_bash(command: str) -> None:
+
+def check_attribution(hook_input, command: str) -> None:
+    """Refuse to publish an AI co-author or generated-by credit.
+
+    Ordered cheapest-first, and the repo root is resolved only once both regexes
+    have already matched: this runs before *every* Bash call, and `project_dir`
+    can cost a `git rev-parse`.
+    """
+    if not _PUBLISHING_RE.search(command):
+        return
+    found = common.scan_ai_attribution(command)
+    if not found:
+        return
+    if not common.read_config(common.project_dir(hook_input)).get(
+            "style.ban_ai_attribution", True):
+        return
+    common.block(
+        f"[praxis] Blocked: this command publishes an AI attribution "
+        f"({', '.join(found)}).\n"
+        "praxis never credits the tool in a project's record. Remove the "
+        "`Co-Authored-By:` trailer, the \"generated with\" footer, and any robot "
+        "emoji credit from the message or body, then run it again.\n"
+        "Naming the platform in prose is fine (\"praxis is a Claude Code "
+        "plugin\"); crediting authorship is not. If the text is genuinely about "
+        "the rule itself, put it in a file rather than in a commit message.\n"
+        "Opt out for this repo with `ban_ai_attribution = false` under `[style]` "
+        "in .praxis.toml."
+    )
+
+
+def check_bash(hook_input, command: str) -> None:
     if not command:
         common.allow()
+    # Safety before style: a command that is both destructive and badly credited
+    # should be refused for the destructive part, which is the reason that matters.
     for rx, why in _DANGEROUS:
         if rx.search(command):
             common.block(
@@ -83,6 +130,7 @@ def check_bash(command: str) -> None:
                 "or narrow the command. praxis will not run irreversible "
                 "operations unattended."
             )
+    check_attribution(hook_input, command)
     # Catch reads of sensitive files via shell readers. The sensitive path may be
     # any argument (e.g. `grep SECRET .env` has it last), so scan all tokens of
     # each command segment whose first word is a known reader.
@@ -126,7 +174,7 @@ def main() -> None:
     tool_input = data.get("tool_input", {}) or {}
 
     if tool == "Bash":
-        check_bash(tool_input.get("command", ""))
+        check_bash(data, tool_input.get("command", ""))
     elif tool in ("Read", "Edit", "Write", "MultiEdit"):
         check_file_tool(tool_input)
     common.allow()

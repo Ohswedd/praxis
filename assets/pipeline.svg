@@ -4,7 +4,7 @@
 
   <defs>
     <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0 0 10 5 0 10z" fill="#8A929E"/>
+      <path d="M0 0 10 5 0 10z" fill="#6B7482"/>
     </marker>
     <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0 0 10 5 0 10z" fill="#B4501C"/>
@@ -14,7 +14,7 @@
   <rect x="1" y="1" width="898" height="298" rx="14" fill="#FAF8F4" stroke="#D8D1C3" stroke-width="1.5"/>
 
   <text x="60" y="46" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
-        font-size="13" font-weight="600" letter-spacing="1.6" fill="#6B7482">ANY PROMPT — TYPED, NOT COMMANDED</text>
+        font-size="13" font-weight="600" letter-spacing="1.6" fill="#4A5462">ANY PROMPT: TYPED, NOT COMMANDED</text>
   <text x="60" y="70" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
         font-size="15" font-style="italic" fill="#12161D">“fix the pagination bug”</text>
 
@@ -38,7 +38,7 @@
     </g>
   </g>
 
-  <g stroke="#8A929E" stroke-width="1.6" marker-end="url(#ah)">
+  <g stroke="#6B7482" stroke-width="1.6" marker-end="url(#ah)">
     <line x1="158" y1="118" x2="170" y2="118"/>
     <line x1="272" y1="118" x2="284" y2="118"/>
     <line x1="386" y1="118" x2="398" y2="118"/>
@@ -54,7 +54,7 @@
         font-size="12.5" font-weight="600" fill="#B4501C">not green → keep working</text>
 
   <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5">
-    <text x="60" y="205" font-weight="600" letter-spacing="1.4" fill="#6B7482">THE GATE REFUSES</text>
+    <text x="60" y="205" font-weight="600" letter-spacing="1.4" fill="#4A5462">THE GATE REFUSES</text>
     <text x="60" y="228" fill="#4A5462">a TODO or “for now” in your own diff</text>
     <text x="60" y="249" fill="#4A5462">a test suite that was never run</text>
     <text x="60" y="270" fill="#4A5462">scope quietly narrowed and not reported</text>

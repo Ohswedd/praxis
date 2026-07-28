@@ -6,6 +6,9 @@
 enabled = true
 # Require passing test evidence in the green report when the repo has a test command.
 require_tests = true
+# Require the accessibility and design-consistency verdicts when the change touches
+# user-facing surface (markup, styles, components, docs/design/).
+require_ui_verticals = true
 
 [autopilot]
 # Start sessions in auto-pilot (no questions; decide by best-practice, log decisions).
@@ -17,7 +20,15 @@ depth = "high"
 
 [git]
 # Auto-review and merge praxis's own PRs after a green audit. Off (default) opens
-# the PR and hands it to a human to review and merge — the loop stays gated.
+# the PR and hands it to a human to review and merge: the loop stays gated.
 auto_merge = false
 # PR base branch. Empty auto-detects from origin/HEAD, then main/master.
 default_branch = ""
+
+[style]
+# Refuse em dashes in authored text. A colon, a comma, parentheses, or two
+# sentences always say it more precisely.
+ban_em_dash = true
+# Refuse AI co-author trailers and "generated with" credits in commits, tags,
+# PRs, releases, and issues. The history belongs to the project.
+ban_ai_attribution = true

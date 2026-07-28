@@ -23,7 +23,7 @@ you by a repo-wide scan), enumerate and check:
    leave a consistent state? Are error messages accurate and actionable?
 6. **Encoding & locale.** Unicode, normalization, case-folding, locale-specific
    formatting.
-7. **The small things.** Types, return values, naming, comments, and messages —
+7. **The small things.** Types, return values, naming, comments, and messages:
    these are correctness, not polish.
 8. **Real use cases.** Walk the actual user scenarios end-to-end, not just the
    canonical example.

@@ -4,7 +4,7 @@ praxis UserPromptSubmit router.
 
 The gap this closes: praxis's discipline used to be announced once, at
 SessionStart. Skill selection then depended on the model spontaneously matching
-a skill description against the prompt — which works for `/praxis:task` but
+a skill description against the prompt, which works for `/praxis:task` but
 degrades badly for a bare prompt like "add rate limiting" ten turns into a long
 session, when the SessionStart block is far behind in the context.
 
@@ -13,11 +13,11 @@ and injects a short, explicit routing directive naming the exact skills to
 invoke for that request, so the pipeline engages without the user having to type
 a command. It is deliberately:
 
-  * silent for conversational prompts (questions, explanations, chit-chat) —
+  * silent for conversational prompts (questions, explanations, chit-chat):
     routing noise on "what does this file do?" would be worse than useless;
-  * short (a routing block, not a re-statement of the doctrine) — the output
+  * short (a routing block, not a re-statement of the doctrine): the output
     style already carries the principles, this only carries the *routing*;
-  * additive — it never blocks and never rewrites the prompt.
+  * additive: it never blocks and never rewrites the prompt.
 
 Classification is keyword/shape based and errs toward routing: a false positive
 costs a few lines of context, a false negative costs the whole pipeline.
@@ -54,15 +54,34 @@ improve|enhance|extend|finish|complete|make
 _IMPLEMENT_RE = re.compile(r"\b(" + _IMPLEMENT_VERBS + r")\b", re.IGNORECASE | re.VERBOSE)
 
 # User-facing interface surface. Deliberately broad: the cost of running the
-# front-end pipeline's `patch` route on a non-UI change is one skill read.
+# front-end pipeline's `patch` route on a non-UI change is one skill read, while
+# the cost of missing a UI change is a page that was built without a brief, a
+# story, or a design system, which is exactly how generic output happens.
 _UI_RE = re.compile(
-    r"\b(ui|ux|front[\s-]?end|frontend|interface|design|redesign|styling|styles?|"
-    r"css|tailwind|scss|sass|theme|dark\s*mode|responsive|layout|"
-    r"page|pages|landing|homepage|hero|website|site|storefront|shop|checkout|"
-    r"dashboard|admin\s*panel|cms|crm|screen|screens|view|"
-    r"component|components|button|form|modal|nav|navbar|menu|sidebar|table|card|"
-    r"typography|font|fonts|colou?r|colou?rs|palette|spacing|animation|"
-    r"react|vue|svelte|next\.?js|nuxt|astro|remix|angular|html)\b",
+    r"\b(ui|ux|front[\s-]?end|frontend|interface|design|redesign|restyle|styling|styles?|"
+    r"css|tailwind|scss|sass|less|styled[\s-]?components|shadcn|mui|chakra|bootstrap|"
+    r"theme|dark\s*mode|light\s*mode|responsive|layout|breakpoints?|viewport|mobile|"
+    r"page|pages|landing|homepage|hero|website|site|web\s*app|storefront|shop|store|"
+    r"checkout|cart|pricing|portfolio|blog|marketing|lead\s*(page|form)|onboarding|"
+    r"dashboard|admin\s*panel|back[\s-]?office|cms|crm|screen|screens|view|views|"
+    r"component|components|widget|button|buttons|form|forms|input|modal|dialog|drawer|"
+    r"nav|navbar|navigation|menu|sidebar|header|footer|table|card|cards|tabs?|toast|"
+    r"tooltip|carousel|accordion|banner|badge|avatar|skeleton|spinner|empty\s*state|"
+    r"typography|font|fonts|colou?r|colou?rs|palette|spacing|icon|icons|logo|favicon|"
+    r"animation|transition|micro[\s-]?interaction|chart|charts|graph|visuali[sz]ation|"
+    r"accessibility|a11y|wcag|aria|contrast|keyboard\s*nav|screen\s*reader|"
+    r"design\s*system|design\s*tokens?|style\s*guide|wireframes?|mockups?|figma|brand|"
+    r"react|vue|svelte|next\.?js|nuxt|astro|remix|angular|solid[\s-]?js|qwik|htmx|"
+    r"storybook|html|jsx|tsx)\b",
+    re.IGNORECASE,
+)
+
+# A file the prompt names directly. "fix src/components/Header.tsx" is UI work no
+# matter which words surround it, and this catches the case where the prompt
+# carries a path instead of a noun.
+_UI_PATH_RE = re.compile(
+    r"[\w./-]+\.(html?|css|s[ca]ss|less|jsx|tsx|vue|svelte|astro|mdx|"
+    r"njk|hbs|ejs|pug|liquid|erb|twig)\b",
     re.IGNORECASE,
 )
 
@@ -92,7 +111,7 @@ _DOCS_RE = re.compile(
 # Prompts that ask for information rather than for work. An opening
 # interrogative wins over any verb in the sentence: "how do I add caching?" is a
 # question about adding caching, not an instruction to add it. Polite-modal
-# requests ("can you fix…", "could you add…") are deliberately NOT in this list —
+# requests ("can you fix…", "could you add…") are deliberately NOT in this list:
 # they are ordinary requests wearing a question mark.
 _INFO_QUESTION_RE = re.compile(
     # An optional politeness/vocative opener, so "please explain how X works" is
@@ -114,7 +133,7 @@ _READ_ONLY_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Slash-command prompts route themselves — the command file is the instruction.
+# Slash-command prompts route themselves: the command file is the instruction.
 _SLASH_RE = re.compile(r"^\s*/\S")
 
 # Trivially short acknowledgements ("yes", "go ahead", "thanks").
@@ -151,7 +170,7 @@ def classify(prompt: str) -> dict:
     else:
         return decision
 
-    decision["ui"] = bool(_UI_RE.search(text))
+    decision["ui"] = bool(_UI_RE.search(text) or _UI_PATH_RE.search(text))
     decision["docs"] = bool(_DOCS_RE.search(text))
     return decision
 
@@ -173,7 +192,7 @@ def render(decision: dict, root) -> str:
     if route == "implement":
         lines += [
             "This is an **implementation request**. Do not start editing files. Run the "
-            "`task-orchestrator` skill — it is mandatory here, not optional:",
+            "`task-orchestrator` skill: it is mandatory here, not optional:",
             "1. `prompt-architect` → spec (goal, scope, non-goals, acceptance criteria).",
             "2. Investigate: read the affected code and the authoritative docs "
             "(`doc-reference-finder`) before writing anything.",
@@ -181,33 +200,33 @@ def render(decision: dict, root) -> str:
             "4. Implement with `best-practices` + `code-craft`. **Production-complete, "
             "not an MVP**: no TODOs, no stubs, no \"for now\", no \"in a real "
             "implementation\". If something is genuinely out of scope, say so in the "
-            "report — never leave it implied in the code.",
+            "report, never leave it implied in the code.",
             "5. `quality-rubric` (all verticals) → fix every finding.",
             "6. `docs-living`: /docs + CHANGELOG [Unreleased] + ADR if the decision was "
             "significant or taken autonomously.",
-            "7. Record the report LAST — it is keyed to the change signature, so any "
+            "7. Record the report LAST: it is keyed to the change signature, so any "
             "file written after it invalidates the audit.",
             f"Open a praxis task first if this is multi-step: `{_TASK_CMD}`.",
         ]
     elif route == "review":
         lines += [
-            "This is a **review request**. Run the `quality-rubric` skill in full — "
+            "This is a **review request**. Run the `quality-rubric` skill in full: "
             "dispatch the vertical auditors as subagents rather than eyeballing the "
             "diff yourself, then the horizontal pass, then record the report.",
         ]
     elif route == "scan":
         lines += [
             "This is a **repo-wide** request. Run the `repo-audit` skill "
-            "(`/praxis:scan`): shard the repo into a coverage ledger, audit every shard, "
-            "adversarially verify each finding with `@praxis:finding-verifier` before "
-            "acting on it, and report coverage honestly — never imply coverage you "
+            "(`/praxis:audit repo`): shard the repo into a coverage ledger, audit every "
+            "shard, adversarially verify each finding with `@praxis:finding-verifier` "
+            "before acting on it, and report coverage honestly, never imply coverage you "
             "did not achieve.",
         ]
     elif route == "deliver":
         lines += [
             "This is a **delivery request**. Run the `git-delivery` skill: Conventional "
-            "Commit, branch, PR. Do not merge unless auto-merge is on, and never "
-            "without a green audit.",
+            "Commit, branch, PR.",
+            _delivery_policy(root),
         ]
 
     if decision["ui"]:
@@ -215,10 +234,12 @@ def render(decision: dict, root) -> str:
             "",
             "**This request touches user-facing UI** → the `frontend-pipeline` skill is "
             "mandatory (Phase 0 sizes it: `full` / `feature` / `patch`). Read its "
-            "`reference/craft.md` before writing any markup or styles — it is what "
-            "separates a designed interface from generic AI output. The audit gains the "
-            "`accessibility` and `design-consistency` verticals; the report is not green "
-            "without them.",
+            "`reference/craft.md` before writing any markup or styles: it is what "
+            "separates a designed interface from generic AI output: name the focal "
+            "element of each screen, derive every token from the brief, write real copy, "
+            "and design the empty/loading/error states. The gate enforces the rest: the "
+            "report is not green without `accessibility=pass` and "
+            "`design-consistency=pass`.",
         ]
     if decision["docs"]:
         lines += [
@@ -238,7 +259,34 @@ def render(decision: dict, root) -> str:
     except Exception:
         pass
 
+    lines += [
+        "",
+        "**House style:** no em dashes in anything you write, including this reply "
+        "(use a colon, a comma, parentheses, or two sentences); no AI co-author "
+        "trailer or \"generated with\" credit in any commit, PR, tag, or release. "
+        "Both are checked deterministically, not by trust.",
+    ]
     return "\n".join(lines)
+
+
+def _delivery_policy(root) -> str:
+    """The merge policy actually in force, resolved rather than recalled.
+
+    The router states this instead of the model inferring it from a doc, because
+    documentation of a toggle goes stale the moment the toggle is flipped and the
+    resulting confident-but-wrong statement is exactly what this closes.
+    """
+    try:
+        if common.auto_merge_on(root):
+            return ("Auto-merge is **ON** for this repo: after a green audit and passing "
+                    "checks, self-review the diff and merge with "
+                    "`gh pr merge --squash --delete-branch` (or `--auto` while checks "
+                    "run). Never bypass branch protection.")
+        return ("Auto-merge is **OFF** for this repo: open the PR, report its URL, and "
+                "leave the merge to a human. Do not merge.")
+    except Exception:
+        return ("Check the merge policy with `config.py status` before merging "
+                "anything; never merge without a green audit.")
 
 
 def main() -> None:

@@ -5,7 +5,9 @@ praxis doctor (utility invoked by /praxis:doctor).
 Read-only self-check. Reports:
   * installed praxis plugin version (from plugin.json)
   * repo management state and setup completeness
-  * drift between the current repo config and praxis expectations
+  * the settings actually in force (not their defaults)
+  * documentation drift: docs that contradict the live config or reference
+    something that no longer exists
   * whether the quality gate is currently enabled
 
 Offline-safe. Prints a human-readable report; the doctor command's skill decides
@@ -52,15 +54,24 @@ def checks(root: Path):
     out.append(("CHANGELOG.md present", ok((root / "CHANGELOG.md").exists())))
     out.append((".gitignore covers .claude/.praxis", ok(ignores_state)))
 
+    cfg = common.read_config(root)
     gate_off = (
         os.environ.get("PRAXIS_GATE", "").lower() in ("off", "0", "false")
         or (common.state_dir(root) / "skip-gate").exists()
+        or cfg.get("gate.enabled", True) is False
     )
     out.append(("quality gate", "DISABLED" if gate_off else "ENABLED"))
+    out.append(("test evidence required", "yes" if cfg.get("gate.require_tests", True) else "no"))
+    out.append(("UI verticals required on UI changes",
+                "yes" if cfg.get("gate.require_ui_verticals", True) else "no"))
     out.append(("auto-pilot", "ON" if common.autopilot_on(root) else "OFF"))
     if common.is_git_repo(root):
-        merge = "auto" if common.auto_merge_on(root) else "PR only (human merges)"
+        merge = "auto-merge ON" if common.auto_merge_on(root) else "PR only (human merges)"
         out.append((f"git delivery (base: {common.git_default_branch(root)})", merge))
+    out.append(("house style: em dashes",
+                "banned" if cfg.get("style.ban_em_dash", True) else "allowed"))
+    out.append(("house style: AI attribution",
+                "banned" if cfg.get("style.ban_ai_attribution", True) else "allowed"))
     out.append((".praxis.toml config", "present" if (root / ".praxis.toml").exists() else "defaults"))
     return out
 
@@ -80,6 +91,21 @@ def main() -> None:
         lines.append("- plugin integrity: **unknown**")
     for name, status in checks(root):
         lines.append(f"- {name}: **{status}**")
+
+    drift = common.run_scanner("drift.py", root)
+    lines.append("")
+    if drift:
+        lines.append(f"### Documentation drift: {len(drift)} finding(s)")
+        for f in drift[:15]:
+            lines.append(f"- `{f.get('file')}:{f.get('line')}` {f.get('detail')}")
+        if len(drift) > 15:
+            lines.append(f"- ... and {len(drift) - 15} more")
+        lines.append("Fix with `/praxis:docs`, which routes CLAUDE.md edits through the "
+                     "regression verifier rather than overwriting them.")
+    else:
+        lines.append("- documentation drift: **none** "
+                     "(docs agree with the live config and every reference resolves)")
+
     lines.append("")
     lines.append("Run `/praxis:bootstrap` to (re)establish any MISSING items. "
                  "praxis proposes changes and asks before writing.")

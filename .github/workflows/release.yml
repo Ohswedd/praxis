@@ -49,6 +49,9 @@ jobs:
       - name: Plugin self-integrity check
         run: python plugins/praxis/scripts/selfcheck.py
 
+      - name: Documentation drift check
+        run: python plugins/praxis/scripts/drift.py
+
       - name: Run test suite
         run: python -m unittest discover -s tests -v
 
@@ -101,7 +104,7 @@ jobs:
           echo "version=$a.$b.$c" >> "$GITHUB_OUTPUT"
           echo "release=true" >> "$GITHUB_OUTPUT"
 
-      - name: Preflight — confirm this job may write to main
+      - name: Preflight, confirm this job may write to main
         if: steps.bump.outputs.release == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -109,7 +112,7 @@ jobs:
         run: |
           # Fail BEFORE anything is stamped or tagged. A push rejected halfway
           # leaves manifests bumped locally, no tag on the remote, and a release
-          # step that then fails on --verify-tag — a confusing state to unpick.
+          # step that then fails on --verify-tag: a confusing state to unpick.
           # Only rules that actually block a direct push count; a repo can carry
           # benign rulesets (tag rules, linear history) that this must not trip on.
           blocking=$(gh api "repos/${GITHUB_REPOSITORY}/rules/branches/${GITHUB_REF_NAME}" \
@@ -122,8 +125,8 @@ jobs:
           if [ "$blocking" -gt 0 ] && [ "$HAS_RELEASE_TOKEN" != "true" ]; then
             echo "::error::${GITHUB_REF_NAME} requires pull requests, but no RELEASE_TOKEN secret is set." \
                  "This job must push the chore(release) commit and tag directly." \
-                 "Fix by either (a) adding a RELEASE_TOKEN secret — a PAT or GitHub App token" \
-                 "allowed to bypass the rule — or (b) permitting github-actions[bot] to bypass it." \
+                 "Fix by either (a) adding a RELEASE_TOKEN secret: a PAT or GitHub App token" \
+                 "allowed to bypass the rule, or (b) permitting github-actions[bot] to bypass it." \
                  "See CONTRIBUTING.md section Releases."
             exit 1
           fi
@@ -163,7 +166,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Tagging alone leaves no release page — v1.2.0 and v1.2.1 were tagged
+          # Tagging alone leaves no release page: v1.2.0 and v1.2.1 were tagged
           # but never published, because this step used to be a manual one.
           v="${{ steps.bump.outputs.version }}"
           notes=$(python3 - "$v" <<'PY'

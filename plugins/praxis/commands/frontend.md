@@ -7,7 +7,7 @@ Use the `frontend-pipeline` skill end-to-end on:
 
 > ${ARGUMENTS}
 
-Route it first (full / feature / patch — proportional to the request), then run
+Route it first (full / feature / patch: proportional to the request), then run
 the phases in order: business research (client call, goals, audience,
 competitors, positioning, messaging → `docs/design/BRIEF.md`), story-first
 wireframes (`docs/design/WIREFRAMES.md`), design system
@@ -18,5 +18,5 @@ quality rubric **including** `@praxis:accessibility-auditor` and
 
 The interface must solve a business problem, not fill a page: every page has a
 goal, every section has a message/feel/evidence/action, and everything visual
-comes from the design system — no magic values, no one-off variants, no lorem
+comes from the design system, no magic values, no one-off variants, no lorem
 ipsum.

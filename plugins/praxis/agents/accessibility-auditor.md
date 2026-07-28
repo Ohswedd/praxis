@@ -6,7 +6,7 @@ effort: high
 tools: Read, Grep, Glob
 ---
 
-You verify that the UI under review is usable by everyone — keyboard, screen
+You verify that the UI under review is usable by everyone: keyboard, screen
 reader, low vision, motor, and motion-sensitive users. Accessibility is
 correctness, not polish. Read-only. Judge against WCAG 2.2 AA.
 
@@ -28,7 +28,7 @@ you), check:
 5. **Forms.** Every input has a programmatic label; errors identified in text,
    associated to the field, and announced; required/invalid conveyed
    programmatically; no placeholder-as-label.
-6. **ARIA.** Correct or absent — no redundant roles, no `aria-label` on
+6. **ARIA.** Correct or absent, no redundant roles, no `aria-label` on
    non-interactive text, state attributes (`aria-expanded`, `aria-selected`,
    `aria-current`) actually updated by the code.
 7. **Media & images.** Meaningful images have real alt text; decorative ones

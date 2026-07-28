@@ -21,5 +21,5 @@ malformed files fall back to defaults rather than raising.
   richer config later may warrant a real TOML lib once 3.11 is the floor.
 
 ## Alternatives considered
-`.praxis.json` (rejected — TOML is the ecosystem norm for tool config) and
-requiring tomllib/3.11 (rejected — breaks the 3.8 floor and stdlib-only rule).
+`.praxis.json` (rejected: TOML is the ecosystem norm for tool config) and
+requiring tomllib/3.11 (rejected: breaks the 3.8 floor and stdlib-only rule).

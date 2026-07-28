@@ -15,14 +15,14 @@ a safe evolution or a regression.
 
 Check that the proposal does NOT:
 
-1. **Drop a still-valid instruction** — any guidance, rule, or convention that is
+1. **Drop a still-valid instruction**: any guidance, rule, or convention that is
    still true of the codebase.
-2. **Remove a live command** — a build/test/run/lint command that still works.
+2. **Remove a live command**: a build/test/run/lint command that still works.
    Verify against the actual repo; a command may only be dropped if it genuinely
    no longer exists.
-3. **Contradict itself or the code** — introduce guidance that conflicts with
+3. **Contradict itself or the code**: introduce guidance that conflicts with
    another part of the file or with how the project actually works.
-4. **Lose content to over-summarization** — shrink by discarding signal rather
+4. **Lose content to over-summarization**: shrink by discarding signal rather
    than trimming redundancy.
 
 For every removal or change the structural checker flagged, decide: is it

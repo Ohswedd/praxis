@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Praxis repo-scan ledger — the deterministic backbone of /praxis:scan.
+Praxis repo-scan ledger: the deterministic backbone of /praxis:audit repo.
 
 A repo-wide audit lives or dies on coverage honesty: on a large codebase it is
 easy for an LLM pass to quietly sample "the interesting files" and report the
@@ -81,7 +81,7 @@ def _load(root):
     try:
         return common.read_state_strict(root, NAME)
     except Exception:
-        print(f"praxis repo-scan: {NAME} exists but cannot be parsed — likely a "
+        print(f"praxis repo-scan: {NAME} exists but cannot be parsed, likely a "
               "partial write from an interrupted session. Inspect/restore "
               f".claude/.praxis/{NAME}, or discard it with 'clear --force'.")
         sys.exit(1)
@@ -137,7 +137,7 @@ def _inventory(root, scope: str, max_files: int):
     `scope` must already be normalised ('.' or a clean relative path).
     Fetches one file beyond max_files so truncation is *detectable*: an
     overflow reason ('' | 'files' | 'dirs') is returned to the caller instead
-    of silently dropping the tail — a truncated inventory would forge
+    of silently dropping the tail: a truncated inventory would forge
     full-coverage claims.
     """
     fetch = max_files + 1
@@ -209,7 +209,7 @@ def _finding_by_id(data, fid):
 
 
 def _next_finding_num(data) -> int:
-    """Next id from the max recorded, not the count — survives any merge/edit."""
+    """Next id from the max recorded, not the count: survives any merge/edit."""
     nums = []
     for f in data.get("findings", []):
         try:
@@ -224,11 +224,11 @@ def _refuse_secret_text(text: str) -> bool:
 
     Defense-in-depth: the ledger is persisted and echoed into reports/chat, so
     a credential pasted into --title/--detail/--note must be rejected at the
-    door — findings about secrets reference the file path only.
+    door: findings about secrets reference the file path only.
     """
     hits = common.scan_secrets_in_text(text or "")
     if hits:
-        print(f"praxis repo-scan: refusing to record — text matches a secret "
+        print(f"praxis repo-scan: refusing to record, text matches a secret "
               f"signature ({hits[0]}). Reference the file path only; never store "
               "secret values in the ledger.")
         return True
@@ -237,10 +237,10 @@ def _refuse_secret_text(text: str) -> bool:
 
 def cmd_init(root, args) -> int:
     if _load(root).get("shards") and "--force" not in args:
-        print("praxis repo-scan: a scan ledger already exists — resume it "
+        print("praxis repo-scan: a scan ledger already exists, resume it "
               "(status/shard/mark), or re-init with --force to discard it.")
         return 1
-    # normpath collapses './src', 'src/', 'a/./b' — a git pathspec of './src'
+    # normpath collapses './src', 'src/', 'a/./b': a git pathspec of './src'
     # would otherwise filter against unprefixed git output and match nothing.
     scope = os.path.normpath((common.cli_opt(args, "--scope", ".") or ".").strip()) or "."
     if os.path.isabs(scope) or scope == ".." or scope.startswith(".." + os.sep):
@@ -259,13 +259,13 @@ def cmd_init(root, args) -> int:
         return 1
     kept, excluded, overflow = _inventory(root, scope, max_files)
     if overflow == "files":
-        print(f"praxis repo-scan: more than {max_files} files in scope '{scope}' — "
+        print(f"praxis repo-scan: more than {max_files} files in scope '{scope}', "
               "refusing to build a silently-truncated inventory. Narrow the scan "
               "with --scope, or raise --max-files to cover everything.")
         return 1
     if overflow == "dirs":
         print(f"praxis repo-scan: the directory walk hit its cap before listing "
-              f"scope '{scope}' completely (non-git fallback) — refusing a "
+              f"scope '{scope}' completely (non-git fallback): refusing a "
               "truncated inventory. Narrow the scan with --scope, or initialise "
               "git so the inventory can come from 'git ls-files'.")
         return 1
@@ -284,7 +284,7 @@ def cmd_init(root, args) -> int:
         "baseline": {},
     })
     excl = ", ".join(f"{k}={v}" for k, v in sorted(excluded.items())) or "none"
-    print(f"praxis repo-scan: initialised — {len(kept)} files / {total_lines} lines "
+    print(f"praxis repo-scan: initialised, {len(kept)} files / {total_lines} lines "
           f"in {len(shards)} shards (scope '{scope}'). Excluded: {excl}.")
     print(f"Dimensions per shard: {', '.join(DIMENSIONS)}.")
     return 0
@@ -293,7 +293,7 @@ def cmd_init(root, args) -> int:
 def cmd_baseline(root, args) -> int:
     data = _load(root)
     if not data.get("shards"):
-        print("praxis repo-scan: no scan ledger — run 'repo_scan.py init' first.")
+        print("praxis repo-scan: no scan ledger, run 'repo_scan.py init' first.")
         return 1
     tests = common.cli_opt(args, "--tests")
     exit_raw = common.cli_opt(args, "--exit")
@@ -309,15 +309,15 @@ def cmd_baseline(root, args) -> int:
         return 1
     data["baseline"] = {"command": tests, "exit": code, "ts": time.time()}
     _save(root, data)
-    state = "green" if code == 0 else f"RED (exit {code} — pre-existing failures are findings)"
-    print(f"praxis repo-scan: baseline recorded — '{tests}' {state}.")
+    state = "green" if code == 0 else f"RED (exit {code}: pre-existing failures are findings)"
+    print(f"praxis repo-scan: baseline recorded, '{tests}' {state}.")
     return 0
 
 
 def cmd_status(root, args) -> int:
     data = _load(root)
     if not data.get("shards"):
-        print("praxis repo-scan: no scan ledger — run 'repo_scan.py init' first.")
+        print("praxis repo-scan: no scan ledger, run 'repo_scan.py init' first.")
         return 1
     if "--json" in args:
         print(json.dumps(data, indent=2))
@@ -348,7 +348,7 @@ def cmd_status(root, args) -> int:
 def cmd_shard(root, args) -> int:
     data = _load(root)
     if not data.get("shards"):
-        print("praxis repo-scan: no scan ledger — run 'repo_scan.py init' first.")
+        print("praxis repo-scan: no scan ledger, run 'repo_scan.py init' first.")
         return 1
     if not args:
         print("usage: repo_scan.py shard <id>")
@@ -362,7 +362,7 @@ def cmd_shard(root, args) -> int:
         return 0
     remaining = [d for d in data["dimensions"] if d not in sh["done"]]
     print(f"{sh['id']} ({sh['group']}, {len(sh['files'])} files, {sh['lines']} lines) "
-          f"— remaining dimensions: {', '.join(remaining) or 'none'}")
+          f"| remaining dimensions: {', '.join(remaining) or 'none'}")
     for f in sh["files"]:
         print(f"  {f}")
     return 0
@@ -371,7 +371,7 @@ def cmd_shard(root, args) -> int:
 def cmd_mark(root, args) -> int:
     data = _load(root)
     if not data.get("shards"):
-        print("praxis repo-scan: no scan ledger — run 'repo_scan.py init' first.")
+        print("praxis repo-scan: no scan ledger, run 'repo_scan.py init' first.")
         return 1
     if len(args) < 2:
         print("usage: repo_scan.py mark <shard-id> <dimension>")
@@ -390,14 +390,14 @@ def cmd_mark(root, args) -> int:
     _save(root, data)
     remaining = [d for d in data["dimensions"] if d not in sh["done"]]
     state = "fully audited" if not remaining else f"remaining: {', '.join(remaining)}"
-    print(f"praxis repo-scan: {sh['id']} × {dim} recorded — {state}.")
+    print(f"praxis repo-scan: {sh['id']} × {dim} recorded, {state}.")
     return 0
 
 
 def cmd_finding(root, args) -> int:
     data = _load(root)
     if not data.get("shards"):
-        print("praxis repo-scan: no scan ledger — run 'repo_scan.py init' first.")
+        print("praxis repo-scan: no scan ledger, run 'repo_scan.py init' first.")
         return 1
     if not args:
         print("usage: repo_scan.py finding add|verify|fix|defer|list ...")
@@ -445,7 +445,7 @@ def cmd_finding(root, args) -> int:
             return 0
         for f in rows:
             print(f"{f['id']} [{f['status']:<9}] {f['severity']:<8} {f['dimension']:<14} "
-                  f"{f['file']} — {f['title']}")
+                  f"{f['file']}: {f['title']}")
         return 0
 
     if not rest:
@@ -479,7 +479,7 @@ def cmd_finding(root, args) -> int:
     elif sub == "fix":
         note = common.cli_opt(rest, "--note", f.get("note", ""))
         if f["status"] != "confirmed":
-            print(f"praxis repo-scan: {f['id']} is '{f['status']}' — only a confirmed "
+            print(f"praxis repo-scan: {f['id']} is '{f['status']}', only a confirmed "
                   "finding can be fixed (verify it first).")
             return 1
         if _refuse_secret_text(note):
@@ -492,7 +492,7 @@ def cmd_finding(root, args) -> int:
             print("usage: repo_scan.py finding defer <fid> --reason \"...\"")
             return 1
         if f["status"] != "confirmed":
-            print(f"praxis repo-scan: {f['id']} is '{f['status']}' — only a confirmed "
+            print(f"praxis repo-scan: {f['id']} is '{f['status']}', only a confirmed "
                   "finding can be deferred.")
             return 1
         if _refuse_secret_text(reason):
@@ -511,7 +511,7 @@ def cmd_finding(root, args) -> int:
 def cmd_report(root, args) -> int:
     data = _load(root)
     if not data.get("shards"):
-        print("praxis repo-scan: no scan ledger — run 'repo_scan.py init' first.")
+        print("praxis repo-scan: no scan ledger, run 'repo_scan.py init' first.")
         return 1
     if "--json" in args:
         print(json.dumps(data, indent=2))
@@ -523,7 +523,7 @@ def cmd_report(root, args) -> int:
     files = sum(len(s["files"]) for s in shards)
     lines = sum(s["lines"] for s in shards)
     print(f"# Repo scan report (scope '{data.get('scope', '.')}')\n")
-    print(f"**Coverage:** {len(audited)}/{len(shards)} shards fully audited — "
+    print(f"**Coverage:** {len(audited)}/{len(shards)} shards fully audited, "
           f"{files} files, {lines} lines across {len(dims)} dimensions.")
     excl = ", ".join(f"{k}={v}" for k, v in sorted(data.get("excluded", {}).items()))
     print(f"**Excluded from inventory:** {excl or 'none'}.")
@@ -533,7 +533,7 @@ def cmd_report(root, args) -> int:
     print()
     if len(audited) < len(shards):
         gaps = [s["id"] for s in shards if set(s["done"]) < dimset]
-        print(f"**INCOMPLETE — unaudited shards:** {', '.join(gaps)}. "
+        print(f"**INCOMPLETE: unaudited shards:** {', '.join(gaps)}. "
               "This report does not certify the whole repo.\n")
     print("| Status | Count |\n| --- | --- |")
     order = ("open", "confirmed", "fixed", "deferred", "refuted")
@@ -549,13 +549,13 @@ def cmd_report(root, args) -> int:
             for f in unresolved:
                 if f["severity"] == sev:
                     print(f"- {f['id']} [{f['severity']}/{f['dimension']}] "
-                          f"{f['file']} — {f['title']} ({f['status']})")
+                          f"{f['file']}: {f['title']} ({f['status']})")
     deferred = [f for f in findings if f["status"] == "deferred"]
     if deferred:
         print("\n**Deferred (needs a human decision):**")
         for f in deferred:
             print(f"- {f['id']} [{f['severity']}/{f['dimension']}] "
-                  f"{f['file']} — {f['title']}: {f['note']}")
+                  f"{f['file']}: {f['title']}: {f['note']}")
     return 0
 
 
@@ -586,7 +586,7 @@ def main() -> int:
         except Exception:
             existing = {"shards": "unreadable"}  # corrupt still needs --force
         if (existing.get("shards") or existing.get("findings")) and "--force" not in rest:
-            print("praxis repo-scan: a ledger with recorded work exists — clearing "
+            print("praxis repo-scan: a ledger with recorded work exists, clearing "
                   "erases its coverage and findings. Re-run with 'clear --force'.")
             return 1
         common.write_state_strict(root, NAME, {})

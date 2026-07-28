@@ -231,8 +231,19 @@ class TestDeferralMarkers(GitRepoCase):
         for body in ("# in a real implementation you would validate\n",
                      "// you can extend this later\n",
                      "// error handling omitted for brevity\n",
-                     "# temporary workaround\n"):
+                     "# temporary workaround\n",
+                     "# out of scope for this\n",
+                     "# future work will cover it\n",
+                     "# this is not production-ready\n",
+                     "# we'll fix this later\n",
+                     "# we will fix this later\n"):
             self.assertTrue(self.scan("x.py", body), f"missed deferral: {body!r}")
+
+    def test_deferral_patterns_do_not_over_match(self):
+        """The spelled-out 'we will' form must not make 'well' a deferral."""
+        for body in ("# well add the totals and this is fine\n",
+                     "# returns a well-formed later value\n"):
+            self.assertFalse(self.scan("x.py", body), f"false positive: {body!r}")
 
     def test_ignores_non_comment_and_prose_and_acked(self):
         self.assertFalse(self.scan("x.py", 'log("processing for now")\n'),
@@ -312,7 +323,7 @@ class TestEvidenceReport(GitRepoCase):
     """report.py must measure the evidence, not accept it.
 
     The fixture gives the repo a Makefile `test` target, so the command praxis
-    detects is the same one it runs — the substitution path is exercised
+    detects is the same one it runs: the substitution path is exercised
     separately, because a substituted command is precisely what must NOT satisfy
     the gate.
     """
@@ -362,7 +373,7 @@ class TestEvidenceReport(GitRepoCase):
         self.assertEqual(self.report()["status"], "fail")
 
     def test_substituted_command_does_not_satisfy_the_gate(self):
-        """`--tests true` exits 0 without running anything — it must not buy green."""
+        """`--tests true` exits 0 without running anything: it must not buy green."""
         self.record("--tests", "exit 0")
         ev = self.report()["evidence"]
         self.assertTrue(ev["test_substituted"])
@@ -596,15 +607,269 @@ class TestGitDelivery(GitRepoCase):
             del os.environ["PRAXIS_AUTO_MERGE"]
 
     def test_toggle_cli(self):
-        sh([sys.executable, str(SCRIPTS / "git_delivery.py"), "on"], env=self.env())
+        sh([sys.executable, str(SCRIPTS / "config.py"), "auto-merge", "on"], env=self.env())
         self.assertTrue(common.auto_merge_on(self.root))
-        sh([sys.executable, str(SCRIPTS / "git_delivery.py"), "off"], env=self.env())
+        sh([sys.executable, str(SCRIPTS / "config.py"), "auto-merge", "off"], env=self.env())
         self.assertFalse(common.auto_merge_on(self.root))
 
     def test_default_branch(self):
         self.assertEqual(common.git_default_branch(self.root), "main")
         (self.root / ".praxis.toml").write_text('[git]\ndefault_branch = "develop"\n')
         self.assertEqual(common.git_default_branch(self.root), "develop")
+
+
+class TestSettings(GitRepoCase):
+    """config.py is the single answer to "what is in force here"."""
+
+    def env(self, **extra):
+        return {**os.environ, "CLAUDE_PROJECT_DIR": str(self.root), **extra}
+
+    def run_cfg(self, *args, **extra_env):
+        return sh([sys.executable, str(SCRIPTS / "config.py"), *args],
+                  env=self.env(**extra_env))
+
+    def test_status_reports_every_switch_and_its_source(self):
+        out = self.run_cfg("status").stdout
+        for switch in ("autopilot", "auto-merge", "gate"):
+            self.assertIn(switch, out)
+        self.assertIn("from default", out)
+
+    def test_gate_toggle_is_inverted_but_behaves_normally(self):
+        """`gate off` must disable the gate even though its flag file is skip-gate."""
+        self.run_cfg("gate", "off")
+        self.assertTrue((common.state_dir(self.root) / "skip-gate").exists())
+        (self.root / "a.py").write_text("x = 1\ny = 2\n")
+        self.assertEqual(run_script("quality_gate.py", self.payload(), self.root).returncode, 0)
+        self.run_cfg("gate", "on")
+        self.assertEqual(run_script("quality_gate.py", self.payload(), self.root).returncode, 2)
+
+    def test_env_override_is_reported_not_silently_ignored(self):
+        """Clearing a toggle an env var still forces must not look like success."""
+        r = self.run_cfg("auto-merge", "off", PRAXIS_AUTO_MERGE="on")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("still forces ON", r.stdout)
+
+    def test_gate_env_var_is_not_inverted(self):
+        """Only the toggle FILE records the off state; PRAXIS_GATE reads normally."""
+        self.assertIn("ON", self.run_cfg("gate", PRAXIS_GATE="on").stdout)
+        self.assertIn("OFF", self.run_cfg("gate", PRAXIS_GATE="off").stdout)
+        # And the reported value must agree with what the hook actually does.
+        (self.root / "a.py").write_text("x = 1\ny = 2\n")
+        env = {"PRAXIS_GATE": "off"}
+        self.assertEqual(
+            run_script("quality_gate.py", self.payload(), self.root, env).returncode, 0)
+
+    def test_unknown_setting_is_rejected(self):
+        self.assertEqual(self.run_cfg("nonsense", "on").returncode, 1)
+
+
+class TestAttributionGuard(GitRepoCase):
+    """No commit, tag, PR, or release may credit the tool that typed it."""
+
+    def block(self, cmd):
+        return run_script("guard_paths.py",
+                          {"tool_name": "Bash", "tool_input": {"command": cmd}},
+                          self.root).returncode
+
+    def test_blocks_co_author_trailer_in_commit(self):
+        self.assertEqual(
+            self.block('git commit -m "feat: x\n\nCo-Authored-By: Claude <noreply@anthropic.com>"'),  # praxis:ack: the fixture must carry the shape under test
+            2)
+
+    def test_blocks_generated_with_credit_in_pr_body(self):
+        self.assertEqual(
+            self.block('gh pr create --title t --body "Generated with Claude Code"'), 2)  # praxis:ack: the fixture must carry the shape under test
+
+    def test_blocks_robot_emoji_credit(self):
+        self.assertEqual(self.block('gh release create v1 --notes "\U0001F916 Generated by a bot"'), 2)
+
+    def test_allows_a_clean_commit(self):
+        self.assertEqual(self.block('git commit -m "feat: add the thing"'), 0)
+
+    def test_allows_naming_the_platform_without_crediting_it(self):
+        for cmd in [
+            'git commit -m "docs: explain that praxis is a Claude Code plugin"',
+            'git commit -m "fix: handle files created by claude sessions"',
+            'git commit -m "chore: drop co-authored-by trailer support"',
+        ]:
+            self.assertEqual(self.block(cmd), 0, cmd)
+
+    def test_safety_outranks_style_when_a_command_is_both(self):
+        """A destructive command is refused for being destructive, not for its wording."""
+        r = run_script("guard_paths.py",
+                       {"tool_name": "Bash", "tool_input": {"command":
+                        'git push --force origin main -m "Co-Authored-By: Claude <a@b.c>"'}},  # praxis:ack: the fixture must carry the shape under test
+                       self.root)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("Force-push", r.stderr)
+
+    def test_only_publishing_commands_are_checked(self):
+        """A non-publishing command mentioning the trailer is not the guard's business."""
+        self.assertEqual(self.block('grep -r "Co-Authored-By: Claude" .'), 0)  # praxis:ack: the fixture must carry the shape under test
+
+    def test_repo_can_opt_out(self):
+        (self.root / ".praxis.toml").write_text("[style]\nban_ai_attribution = false\n")
+        self.assertEqual(
+            self.block('git commit -m "x\n\nCo-Authored-By: Claude <a@b.c>"'), 0)  # praxis:ack: the fixture must carry the shape under test
+
+
+class TestHouseStyleScanner(GitRepoCase):
+    def scan(self, name, body):
+        f = self.root / name
+        f.write_text(body, encoding="utf-8")
+        r = sh([sys.executable, str(SCRIPTS / "scan_style.py"), "--json", str(f)],
+               env={**os.environ, "CLAUDE_PROJECT_DIR": str(self.root)})
+        return json.loads(r.stdout)["findings"]
+
+    def test_detects_em_dash(self):
+        found = self.scan("a.md", f"A sentence {common.EM_DASH} and its aside.\n")
+        self.assertEqual([f["marker"] for f in found], ["em dash"])
+
+    def test_detects_spaced_en_dash_but_allows_a_numeric_range(self):
+        self.assertTrue(self.scan("a.md", f"A sentence {common.EN_DASH} an aside.\n"))
+        self.assertFalse(self.scan("b.md", f"Test at 320px{common.EN_DASH}1440px.\n"),
+                         "an en dash between numbers is a range, not punctuation")
+
+    def test_detects_ai_attribution(self):
+        found = self.scan("c.md", "Co-Authored-By: Claude <noreply@anthropic.com>\n")  # praxis:ack: the fixture must carry the shape under test
+        self.assertEqual([f["category"] for f in found], ["attribution"])
+
+    def test_ack_exempts_a_deliberate_case(self):
+        self.assertFalse(
+            self.scan("d.py", f'DASH = "{common.EM_DASH}"  # praxis:ack fixture\n'))
+
+    def test_config_can_disable_the_checks(self):
+        (self.root / ".praxis.toml").write_text(
+            "[style]\nban_em_dash = false\nban_ai_attribution = false\n")
+        self.assertFalse(self.scan("e.md", f"A sentence {common.EM_DASH} an aside.\n"))
+
+    def test_gate_reports_style_violations_in_the_diff(self):
+        (self.root / "a.py").write_text(f"x = 1\n# note {common.EM_DASH} an aside\n")
+        r = run_script("quality_gate.py", self.payload(), self.root)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("house-style violation", r.stderr)
+
+
+class TestChangeCollection(GitRepoCase):
+    """The scanners must see the whole change, not just the unstaged diff."""
+
+    def test_untracked_file_is_part_of_the_change(self):
+        (self.root / "new.py").write_text("def f():\n    pass  # TODO later\n")  # praxis:ack: fixture
+        pairs = common.added_line_pairs(self.root)
+        self.assertTrue(any(f == "new.py" for f, _, _ in pairs),
+                        "a brand-new file is invisible to `git diff`; it must still be scanned")
+
+    def test_staged_and_unstaged_changes_are_both_collected(self):
+        (self.root / "staged.py").write_text("a = 1\n")
+        sh(["git", "add", "staged.py"], cwd=self.tmp)
+        (self.root / "a.py").write_text("x = 1\nunstaged = 2\n")
+        files = {f for f, _, _ in common.added_line_pairs(self.root)}
+        self.assertEqual({"staged.py", "a.py"} & files, {"staged.py", "a.py"})
+
+    def test_praxis_state_is_never_part_of_the_change(self):
+        common.write_state(self.root, "scratch.json", {"x": 1})
+        self.assertFalse(any(f.startswith(".claude/.praxis")
+                             for f in common.changed_files(self.root)))
+
+    def test_placeholder_scan_finds_a_marker_in_an_untracked_file(self):
+        (self.root / "fresh.py").write_text("def f():\n    raise NotImplementedError\n")  # praxis:ack: fixture
+        r = sh([sys.executable, str(SCRIPTS / "scan_placeholders.py")],
+               cwd=self.tmp, env={**os.environ, "CLAUDE_PROJECT_DIR": str(self.root)})
+        self.assertEqual(r.returncode, 1, r.stdout)
+
+
+class TestUIVerticals(GitRepoCase):
+    """A change to user-facing surface is design work, resolved from the files."""
+
+    def env(self):
+        return {**os.environ, "CLAUDE_PROJECT_DIR": str(self.root),
+                "CLAUDE_PLUGIN_ROOT": str(PLUGIN)}
+
+    def touch_ui(self):
+        (self.root / "page.tsx").write_text("export const Page = () => <main>hi</main>;\n")
+
+    def record(self, verticals):
+        return sh([sys.executable, str(SCRIPTS / "report.py"), "record",
+                   "--verticals", verticals], env=self.env())
+
+    def test_ui_paths_are_recognised(self):
+        for path in ("src/App.tsx", "styles/main.css", "tailwind.config.js",
+                     "docs/design/BRIEF.md", "views/home.erb"):
+            self.assertTrue(common.is_ui_path(path), path)
+        for path in ("src/server.py", "README.md", "Makefile"):
+            self.assertFalse(common.is_ui_path(path), path)
+
+    def test_report_without_ui_verdicts_is_not_green(self):
+        self.touch_ui()
+        self.record("regression=pass,completeness=pass")
+        rep = common.read_state(self.root, "quality_report.json")
+        self.assertEqual(rep["status"], "fail")
+
+    def test_report_with_ui_verdicts_is_green(self):
+        self.touch_ui()
+        self.record("regression=pass,completeness=pass,"
+                    "accessibility=pass,design-consistency=pass")
+        self.assertEqual(common.read_state(self.root, "quality_report.json")["status"], "pass")
+
+    def test_gate_names_the_missing_ui_verticals(self):
+        self.touch_ui()
+        self.record("regression=pass,completeness=pass")
+        r = run_script("quality_gate.py", self.payload(), self.root)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("design-consistency", r.stderr)
+
+    def test_non_ui_change_needs_no_ui_verdicts(self):
+        (self.root / "a.py").write_text("x = 1\ny = 2\n")
+        self.record("regression=pass,completeness=pass")
+        self.assertEqual(common.read_state(self.root, "quality_report.json")["status"], "pass")
+
+    def test_repo_can_opt_out(self):
+        self.touch_ui()
+        (self.root / ".praxis.toml").write_text("[gate]\nrequire_ui_verticals = false\n")
+        self.record("regression=pass,completeness=pass")
+        self.assertEqual(common.read_state(self.root, "quality_report.json")["status"], "pass")
+
+
+class TestDrift(GitRepoCase):
+    """Docs that contradict the live config, or point at what no longer exists."""
+
+    def drift(self, **extra_env):
+        r = sh([sys.executable, str(SCRIPTS / "drift.py"), "--json"],
+               env={**os.environ, "CLAUDE_PROJECT_DIR": str(self.root), **extra_env})
+        return json.loads(r.stdout)["findings"]
+
+    def write_claude_md(self, body):
+        (self.root / "CLAUDE.md").write_text(body, encoding="utf-8")
+
+    def test_detects_a_doc_that_contradicts_the_live_merge_policy(self):
+        self.write_claude_md("# P\n\nPraxis opens the PR and leaves the merge to you.\n")
+        self.assertFalse(self.drift(), "with auto-merge off the statement is true")
+        found = self.drift(PRAXIS_AUTO_MERGE="on")
+        self.assertEqual([f["setting"] for f in found], ["git.auto_merge"])
+
+    def test_a_conditional_sentence_is_not_drift(self):
+        """Docs are supposed to explain both states of a toggle."""
+        self.write_claude_md(
+            "# P\n\nWith auto-merge off (the default), praxis never merges.\n")
+        self.assertFalse(self.drift(PRAXIS_AUTO_MERGE="on"))
+
+    def test_detects_a_documented_command_that_no_longer_exists(self):
+        (self.root / "package.json").write_text('{"scripts":{"test":"jest"}}\n')
+        self.write_claude_md("# P\n\nRun `npm run verify` to check.\n")
+        self.assertEqual([f["subkind"] for f in self.drift()], ["npm script"])
+
+    def test_detects_a_broken_link(self):
+        self.write_claude_md("# P\n\nSee [notes](docs/GONE.md).\n")
+        self.assertEqual([f["subkind"] for f in self.drift()], ["link"])
+
+    def test_a_prose_mention_of_make_is_not_a_target_reference(self):
+        (self.root / "Makefile").write_text("test:\n\t@exit 0\n")
+        self.write_claude_md("# P\n\nWe make design decisions explicitly.\n")
+        self.assertFalse(self.drift(), "only code spans carry commands")
+
+    def test_clean_docs_report_nothing(self):
+        self.write_claude_md("# P\n\nA description of the project.\n")
+        self.assertFalse(self.drift())
 
 
 if __name__ == "__main__":

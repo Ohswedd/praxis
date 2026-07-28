@@ -2,7 +2,7 @@
 
 Reference for the `frontend-pipeline` skill. Use the section matching the phase
 you are executing. Everything here is a starting structure to adapt to the
-project — never paste it verbatim into a deliverable without filling it with
+project, never paste it verbatim into a deliverable without filling it with
 the project's reality.
 
 ---
@@ -32,7 +32,7 @@ questions; never interrogate one-by-one.
 **Brand & content**
 - Existing brand assets? (logo, colors, fonts, photography, tone)
 - Existing copy, testimonials, case studies, numbers we can use as proof?
-- Sites/products whose look-and-feel you admire — and any you hate?
+- Sites/products whose look-and-feel you admire: and any you hate?
 
 **Technical**
 - Existing stack/hosting/CMS? Integrations (payments, CRM, analytics, email)?
@@ -71,12 +71,12 @@ For each of 1–3 primary personas:
 
 For each of 3–5 competitors/alternatives, capture:
 
-- Their headline promise — what do they lead with?
-- Page structure — which sections, in what order?
-- Proof — what social proof/numbers do they show?
+- Their headline promise: what do they lead with?
+- Page structure: which sections, in what order?
+- Proof: what social proof/numbers do they show?
 - Offer & pricing presentation.
-- Weaknesses — what is confusing, generic, or missing?
-- **Opportunity** — what can we say or show that they cannot?
+- Weaknesses: what is confusing, generic, or missing?
+- **Opportunity**: what can we say or show that they cannot?
 
 Output one line per competitor plus a short "gaps we will exploit" list.
 
@@ -87,7 +87,7 @@ into deliverables.
 ## 5. Positioning formula (Phase 1.5)
 
 > For **[audience]** who **[need/situation]**, **[product]** is the
-> **[category]** that **[key differentiator]** — unlike **[main alternative]**,
+> **[category]** that **[key differentiator]**, unlike **[main alternative]**,
 > which **[its limitation]**.
 
 Test it: is the differentiator specific, provable, and something the audience
@@ -96,21 +96,21 @@ test; "migrates your data in one afternoon" passes.
 
 ## 6. Messaging hierarchy (Phase 1.6)
 
-1. **Headline** — the value proposition in the visitor's words (outcome, not
+1. **Headline**: the value proposition in the visitor's words (outcome, not
    feature). Passes the 5-second test: what is it, for whom, why care?
-2. **Subheadline** — how it works / for whom, one sentence.
-3. **Supporting points** — 3–5 benefit statements, each backed by a feature.
-4. **Proof** — testimonials, numbers, logos, case studies (from the call).
-5. **Objection handling** — one answer per objection from §3 (FAQ, guarantee,
+2. **Subheadline**: how it works / for whom, one sentence.
+3. **Supporting points**: 3–5 benefit statements, each backed by a feature.
+4. **Proof**: testimonials, numbers, logos, case studies (from the call).
+5. **Objection handling**: one answer per objection from §3 (FAQ, guarantee,
    comparison).
-6. **Voice & tone** — 3 adjectives + a "we say / we never say" pair.
+6. **Voice & tone**: 3 adjectives + a "we say / we never say" pair.
 
 ## 7. Narrative arcs per surface (Phase 2)
 
 **Conversion arc (marketing, landing, lead pages):**
 hero → problem (name their pain) → solution (the shift you offer) → benefits
 (outcomes, not features) → social proof → objections/FAQ → pricing/offer →
-final CTA. Cut or merge sections the goal doesn't need — a lead page may be
+final CTA. Cut or merge sections the goal doesn't need: a lead page may be
 hero → benefits → proof → CTA.
 
 **Storefront arc:** collection (scan & filter) → product page (desire + trust:
@@ -139,12 +139,12 @@ the message) · *action* (the CTA, if any).
 Low-fi markdown; hierarchy and priority, not pixels:
 
 ```
-# Page: <name> — goal: <the one conversion/task>
+# Page: <name>   |   goal: <the one conversion/task>
 ## Section: HERO
 - message: "<headline draft>"
-- feel: instant clarity — "this is for me"
+- feel: instant clarity, "this is for me"
 - evidence: subheadline + product visual
-- action: [Primary CTA — "<verb phrase>"]  (secondary: "<low-commitment alt>")
+- action: [Primary CTA, "<verb phrase>"]  (secondary: "<low-commitment alt>")
 - content: headline / subheadline / CTA pair / hero visual / trust strip (logos)
 ## Section: PROBLEM
 - message: ...
@@ -177,7 +177,7 @@ still be reachable in one scroll-scan (headings carry the story on their own).
   filters for admin/CRM; product cards, price display, badges, cart drawer for
   storefronts; stat tiles and chart tokens for dashboards.
 - **Motion:** durations (fast ~150ms / base ~250ms), easing, and a
-  `prefers-reduced-motion` policy — decorative motion is removable.
+  `prefers-reduced-motion` policy: decorative motion is removable.
 
 ## 10. Artifact templates (Phases 1–3)
 
@@ -185,7 +185,7 @@ Keep each artifact short enough to be read before every later change.
 
 **`docs/design/BRIEF.md`**
 ```
-# Design brief — <project>
+# Design brief: <project>
 ## Business & offer          <what is sold, to whom, at what price>
 ## Goals                     <primary metric + per-page goals>
 ## Audience                  <personas from §3>
@@ -196,10 +196,10 @@ Keep each artifact short enough to be read before every later change.
 ## Assumptions               <everything inferred, for the user to verify>
 ```
 
-**`docs/design/WIREFRAMES.md`** — page map (page · audience · goal · arc) +
+**`docs/design/WIREFRAMES.md`**: page map (page · audience · goal · arc) +
 one §8 spec per page.
 
-**`docs/design/DESIGN-SYSTEM.md`** — the §9 decisions with actual values, a
+**`docs/design/DESIGN-SYSTEM.md`**: the §9 decisions with actual values, a
 pointer to the token source-of-truth in code, and the component inventory with
 implemented states.
 
@@ -220,5 +220,5 @@ implemented states.
   canonical, Open Graph, structured data where it genuinely fits.
 - Tokens everywhere: a hard-coded color/size where a token exists is a
   design-consistency FAIL, not a nit.
-- States shipped with the component: loading, empty, error, disabled — a
+- States shipped with the component: loading, empty, error, disabled, a
   component without them is incomplete, not "MVP".

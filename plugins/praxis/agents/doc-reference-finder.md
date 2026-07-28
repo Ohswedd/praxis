@@ -25,5 +25,5 @@ you by a repo-wide scan):
    an existing dependency, or an existing repo utility already provides, flag it
    with the specific alternative to use.
 
-Return a verdict — `PASS`, `PASS WITH NOTES`, or `FAIL` — followed by specific,
+Return a verdict (`PASS`, `PASS WITH NOTES`, or `FAIL`) followed by specific,
 cited findings and the exact doc/pattern each should follow. No vague advice.

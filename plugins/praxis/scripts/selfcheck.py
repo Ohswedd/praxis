@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
 """
-Praxis self-check — validates the plugin's own integrity.
+Praxis self-check: validates the plugin's own integrity.
 
 Verifies the things that would silently break the plugin at load time:
   * all JSON manifests parse; plugin/marketplace versions agree
   * hooks.json references scripts that actually exist
   * every agent, skill (SKILL.md), command, and the output style has YAML
-    frontmatter with the required keys — and frontmatter that actually parses
+    frontmatter with the required keys, and frontmatter that actually parses
     (unquoted scalars containing ': ' are rejected: YAML silently drops them)
   * every Python script byte-compiles
+  * every `${CLAUDE_PLUGIN_ROOT}/scripts/...` and `/praxis:<command>` reference in
+    the plugin's own content resolves to something that exists, so a renamed or
+    merged command cannot leave the instructions pointing at nothing
+  * the plugin's own text obeys the house style it enforces on everyone else: no
+    em dashes, no AI attribution
 
-Exit code 0 if healthy, 1 if any problem — so it can gate CI. Run it directly, or
+Exit code 0 if healthy, 1 if any problem, so it can gate CI. Run it directly, or
 via `/praxis:doctor`.
 """
 
@@ -24,6 +29,15 @@ from pathlib import Path
 
 PLUGIN = Path(__file__).resolve().parent.parent   # plugins/praxis
 ROOT = PLUGIN.parent.parent                        # repo root
+
+sys.path.insert(0, str(PLUGIN / "scripts" / "lib"))
+import common  # noqa: E402
+
+#: Content that carries instructions, and so must not contain stale references.
+CONTENT_AREAS = ("skills", "commands", "output-styles", "agents")
+
+#: Repo-level prose held to the same house style as the plugin's own content.
+REPO_TEXT = ("README.md", "CONTRIBUTING.md", "SECURITY.md", "PRIVACY.md")
 
 
 def _frontmatter_keys(md: Path):
@@ -51,7 +65,7 @@ def _frontmatter_keys(md: Path):
         keys.add(mm.group(1))
         value = mm.group(2).strip()
         if value[:1] not in ("", '"', "'") and ": " in value:
-            return None  # unquoted scalar with ': ' — YAML would drop the frontmatter
+            return None  # unquoted scalar with ': ', YAML would drop the frontmatter
     return keys
 
 
@@ -146,7 +160,46 @@ def check():
     except Exception:
         pass
 
+    # Instructions that point at a command or script which no longer exists are
+    # worse than missing instructions: they read as authoritative and send the
+    # session somewhere that cannot work. Merging or renaming a command must
+    # therefore fail CI until every reference follows.
+    commands = {p.stem for p in (PLUGIN / "commands").glob("*.md")}
+    for md, text in _content_files():
+        rel = md.relative_to(ROOT)
+        for ref in sorted(set(re.findall(r"/praxis:([a-z0-9-]+)", text))):
+            need(ref in commands, f"{rel}: references /praxis:{ref}, which does not exist")
+        for script in sorted(set(re.findall(r"scripts/([A-Za-z0-9_]+\.py)", text))):
+            need((PLUGIN / "scripts" / script).exists(),
+                 f"{rel}: references scripts/{script}, which does not exist")
+
+    # praxis bans em dashes and AI attribution in every project it touches; its
+    # own text is the first place that has to hold.
+    for md, text in _content_files(include_repo_text=True):
+        rel = md.relative_to(ROOT)
+        for lineno, line in enumerate(text.splitlines(), 1):
+            if "praxis:ack" in line:
+                continue
+            for name in common.scan_banned_dashes(line) + common.scan_ai_attribution(line):
+                need(False, f"{rel}:{lineno}: house style, {name}")
+
     return checks, errors
+
+
+def _content_files(include_repo_text: bool = False):
+    """(path, text) for the plugin's instruction content, and optionally repo prose."""
+    paths = []
+    for area in CONTENT_AREAS:
+        paths.extend(sorted((PLUGIN / area).rglob("*.md")))
+    if include_repo_text:
+        paths.extend(ROOT / name for name in REPO_TEXT)
+        paths.extend(sorted((ROOT / "docs").glob("*.md")))
+        paths.extend(sorted(PLUGIN.glob("templates/*.tpl")))
+    for p in paths:
+        try:
+            yield p, p.read_text(encoding="utf-8")
+        except Exception:
+            continue
 
 
 def main() -> int:

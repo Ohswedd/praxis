@@ -9,7 +9,7 @@
 
 ## Context
 The Stop gate accepted a "green" report if it existed and matched the change
-signature — it trusted that the audit and tests had actually passed. For a tool
+signature: it trusted that the audit and tests had actually passed. For a tool
 that gates "done", that trust was the weakest link (noted in ADR-0001 and the
 self-audit).
 
@@ -30,6 +30,6 @@ coverage).
   proof was judged disproportionate (see ROADMAP for coverage-aware regression).
 
 ## Alternatives considered
-Executing tests inside the hook (rejected — Stop hooks shouldn't run long/mutating
+Executing tests inside the hook (rejected: Stop hooks shouldn't run long/mutating
 commands, and it couldn't know the right per-package command reliably) and leaving
-the report trust-based (rejected — the whole point of v1.0 is to close this gap).
+the report trust-based (rejected: the whole point of v1.0 is to close this gap).

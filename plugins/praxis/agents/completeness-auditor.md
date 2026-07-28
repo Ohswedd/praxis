@@ -1,6 +1,6 @@
 ---
 name: completeness-auditor
-description: "Completeness and scope-fidelity auditor. Invoke during review to prove the change is actually finished: no placeholders/TODOs/stubs, no NotImplemented, no debug leftovers, no dead/commented-out code, and — critically — nothing silently dropped or narrowed relative to the agreed spec. Confirms every acceptance criterion is met. Read-only."
+description: "Completeness and scope-fidelity auditor. Invoke during review to prove the change is actually finished: no placeholders/TODOs/stubs, no NotImplemented, no debug leftovers, no dead/commented-out code, and, critically, nothing silently dropped or narrowed relative to the agreed spec. Confirms every acceptance criterion is met. Read-only."  # praxis:ack: the description must name the marker it hunts for
 model: opus
 effort: high
 tools: Read, Grep, Glob
@@ -20,7 +20,7 @@ repo-wide scan) and (if available) the task spec/acceptance criteria, verify:
    accepted? Report file:line for every real one.
 
 2. **No unfinished in-scope work.** Every branch, error path, and case that the
-   spec put in scope is actually implemented — not returned as a default, mocked,
+   spec put in scope is actually implemented, not returned as a default, mocked,
    or left to "later".
 
 3. **No silent scope narrowing.** Compare what was delivered to the spec's
@@ -40,7 +40,7 @@ repo-wide scan) and (if available) the task spec/acceptance criteria, verify:
 7. **Living knowledge updated.** For a behaviour/API/config/architecture change:
    the relevant `/docs` were updated (or created), a `CHANGELOG.md` `[Unreleased]`
    entry was added, and any significant/autonomous decision has an ADR under
-   `docs/adr/`. Missing documentation is an incomplete change — flag it.
+   `docs/adr/`. Missing documentation is an incomplete change: flag it.
 
 Return `PASS` only if the change is complete and scope-faithful. Otherwise
 `FAIL` with an itemised, cited list of exactly what is missing or unfinished and

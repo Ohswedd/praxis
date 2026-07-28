@@ -12,8 +12,8 @@ working until done" loop to be reliable regardless of model behaviour.
 
 ## Decision
 Enforce the quality bar and the task-completion loop with a deterministic
-`command`-type Stop hook (`quality_gate.py`) that reads state files — a signed
-green quality report and a `task.json` — rather than an LLM verdict. The LLM
+`command`-type Stop hook (`quality_gate.py`) that reads state files: a signed
+green quality report and a `task.json`, rather than an LLM verdict. The LLM
 reasoning (the vertical audits) is driven by skills and read-only subagents; the
 gate only checks that it happened.
 

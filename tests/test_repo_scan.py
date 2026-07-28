@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for the repo-scan ledger (scripts/repo_scan.py) behind /praxis:scan.
+"""Tests for the repo-scan ledger (scripts/repo_scan.py) behind /praxis:audit repo.
 
 The ledger is the scanner's coverage guarantee, so these tests pin the parts
 that make laziness impossible: full-inventory sharding, per-dimension audit

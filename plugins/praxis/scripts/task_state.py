@@ -10,8 +10,8 @@ records state explicitly, the hook enforces it mechanically.
 Usage:
     task_state.py open "<title>" --criteria "c1" "c2" ... [--max N]
     task_state.py resume          # back to in_progress after a user answer
-    task_state.py waiting         # a genuine decision point — allow stopping to ask
-    task_state.py done            # all criteria met + audit green — close the loop
+    task_state.py waiting         # a genuine decision point: allow stopping to ask
+    task_state.py done            # all criteria met + audit green: close the loop
     task_state.py clear           # abandon the task
     task_state.py status          # print current state (JSON)
 
@@ -74,7 +74,7 @@ def main() -> int:
             "max_iterations": max_iter,
             "session": "",
         })
-        print(f"praxis: task opened — '{title}' (cap {max_iter} turns).")
+        print(f"praxis: task opened, '{title}' (cap {max_iter} turns).")
         return 0
 
     data = load(root)
@@ -89,7 +89,7 @@ def main() -> int:
         print("praxis: task set to waiting_for_user (you may stop to ask).")
     elif cmd == "done":
         data["open"] = False; data["status"] = "done"; save(root, data)
-        print("praxis: task closed — done.")
+        print("praxis: task closed, done.")
     elif cmd == "clear":
         data["open"] = False; data["status"] = "cleared"; save(root, data)
         print("praxis: task cleared.")

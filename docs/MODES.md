@@ -16,36 +16,36 @@ No magic keywords, no deciding when to run `/goal`, no manual orchestration.
 | Write the prompt in chat | Restructure it into a spec, plan, implement |
 | Pick the effort (`high`, `ultracode`, …) | Dispatch the right skills & subagents |
 | Answer at genuine decision points | Run QA / audit / regression / completeness |
-| — | Keep working until the task is done (the loop) |
-| — | Enforce no secrets, no destructive ops, no placeholders |
+|: | Keep working until the task is done (the loop) |
+|: | Enforce no secrets, no destructive ops, no placeholders |
 
 ---
 
-## Effort — the one knob you set
+## Effort: the one knob you set
 
 praxis is **effort-agnostic**: it behaves identically at any level. Effort only
-changes how deeply Claude *executes* the same workflow — it never changes whether
+changes how deeply Claude *executes* the same workflow: it never changes whether
 the workflow, subagents, or gates run.
 
-- `/effort high` — great everyday baseline.
-- `/effort ultracode` — xhigh every turn **plus** Claude's own automatic parallel
+- `/effort high`: great everyday baseline.
+- `/effort ultracode`: xhigh every turn **plus** Claude's own automatic parallel
   sub-agent orchestration. This composes with praxis: you get ultracode's
   parallelism *and* praxis's named vertical auditors. Nothing conflicts.
-- `ultrathink` (a word in one prompt) — max thinking for that single turn only,
+- `ultrathink` (a word in one prompt): max thinking for that single turn only,
   then it reverts. Use it for one unusually hard step.
 
 Whatever you pick, praxis's auditors stay pinned to Opus / high effort in their
-own frontmatter, so audits are always deep — even if your session is lower.
+own frontmatter, so audits are always deep, even if your session is lower.
 
 **So: set `high` or `ultracode` as your habit and forget about it.** Everything
 else still works.
 
 ---
 
-## Autonomy — praxis runs the loop, you don't run `/goal`
+## Autonomy: praxis runs the loop, you don't run `/goal`
 
 Continuation is handled deterministically inside praxis, driven by a task-state
-file (`.claude/.praxis/task.json`) — not by a prompt keyword and not by you
+file (`.claude/.praxis/task.json`), not by a prompt keyword and not by you
 typing `/goal`.
 
 How it works for a multi-step request:
@@ -53,7 +53,7 @@ How it works for a multi-step request:
 1. At spec time Claude opens a task with acceptance criteria and a turn cap
    (`task_state.py open …`).
 2. praxis's **Stop gate** keeps the session working turn after turn while the
-   task is open — self-driving to the finish.
+   task is open: self-driving to the finish.
 3. When Claude hits a **genuine decision point**, it marks the task `waiting` and
    stops to ask you. You answer; it resumes. (So you're never trapped, and you're
    never left out of real decisions.)
@@ -62,16 +62,16 @@ How it works for a multi-step request:
 5. A hard turn cap and the escapes (`skip-gate`, `PRAXIS_GATE=off`) mean the loop
    can never run away.
 
-For a single small change there's no task loop — the per-change quality gate simply
+For a single small change there's no task loop: the per-change quality gate simply
 refuses to let the turn end while the change is unreviewed. Either way you don't
 manage it.
 
-### Is `/goal` ever needed? No — it's optional.
+### Is `/goal` ever needed? No: it's optional.
 
 The native `/goal` command still exists and is a fine power-tool for handing off a
 very long, **unattended, cross-session** run (pair it with auto mode). But for
 normal work you never need it: praxis's task loop already provides the
-continuation. If you *do* use `/goal`, it coexists with praxis — both keep the
+continuation. If you *do* use `/goal`, it coexists with praxis, both keep the
 session going, and praxis feeds its audit results into the transcript the `/goal`
 evaluator reads.
 
@@ -91,16 +91,21 @@ Still include a turn cap in the task and be ready to `Ctrl+C`.
 
 ---
 
-## Delivery — human-in-the-loop by default
+## Delivery: human-in-the-loop by default
 
 Finishing the code and delivering it are separate steps. Praxis never pushes on
 every edit; when a change is complete and audited, `/praxis:ship` turns it into a
-Conventional Commit and a pull request — and stops there for you to review and
+Conventional Commit and a pull request, and stops there for you to review and
 merge. Merging is the one irreversible step praxis leaves to you.
 
 Opt into autonomy with `git.auto_merge` (`.praxis.toml`), `PRAXIS_AUTO_MERGE=on`,
-or `git_delivery.py on`: praxis then reviews and merges its own PR, but only on a
-green audit and passing checks, and never by force-pushing the base branch. See
+or `/praxis:config auto-merge on`: praxis then reviews and merges its own PR, but
+only on a green audit and passing checks, and never by force-pushing the base
+branch.
+
+Whichever way you set it, praxis resolves the policy at the moment it delivers
+rather than repeating what a document says: the session audit and
+`/praxis:config` both print the value in force and where it came from. See
 [DELIVERY.md](DELIVERY.md).
 
 ---
@@ -109,16 +114,19 @@ green audit and passing checks, and never by force-pushing the base branch. See
 
 | Concern | Mechanism | Deterministic? |
 | --- | --- | --- |
-| Does the workflow engage? | always-on directive (SessionStart) + output style + per-prompt router (UserPromptSubmit); enforced by the change/task gate | Yes — the router names the skills each request needs, and the gate is keyed on real file changes |
+| Does the workflow engage? | always-on directive (SessionStart) + output style + per-prompt router (UserPromptSubmit); enforced by the change/task gate | Yes: the router names the skills each request needs, and the gate is keyed on real file changes |
 | Keep working until done | Stop gate + `task.json` (turn cap, `waiting`, `done`) | Yes |
 | No secrets / destructive ops | PreToolUse guard (holds even in auto mode) | Yes |
-| No placeholders / stubs / deferral | `scan_placeholders.py` on the diff (literal markers + deferral prose in comments) | Yes |
+| No placeholders / stubs / deferral | `scan_placeholders.py` over both diffs and every untracked file (literal markers + deferral prose in comments) | Yes |
+| No em dash, no AI attribution | `scan_style.py` at the Stop gate; `guard_paths.py` at the commit/PR command | Yes |
+| UI changes get the UI audits | resolved from the changed file list, not from the request's wording | Yes |
+| Docs match the live configuration | `drift.py` at SessionStart, in the doctor, and in `/praxis:docs` | Yes (detection) |
 | Actually run the audit | Stop gate escalates 3× with increasingly specific instructions before releasing | Yes |
 | Tests really passed | `report.py` executes the test command itself; unverified evidence is rejected | Yes |
 | Depth of reasoning | your `/effort` setting | You choose |
 
 The prompt router reads your request to decide **which skills to name**, but it
-can only ever add context — it never blocks, never rewrites your prompt, and is
+can only ever add context: it never blocks, never rewrites your prompt, and is
 not what makes the workflow apply. That guarantee still comes from the
 always-injected directive and the change-based gates, which are keyed on real
 file changes rather than on your wording. So a request the router misreads still
@@ -127,16 +135,16 @@ for the *right* skills to engage.
 
 ---
 
-## Auto-pilot — zero questions
+## Auto-pilot: zero questions
 
 Turn it on and praxis asks you **nothing** about design or approach. It does its
 own QA and resolves each decision by the best-practice that fits, then records
-every non-trivial choice under **"Decisions taken autonomously"** in the report —
+every non-trivial choice under **"Decisions taken autonomously"** in the report,
 so nothing is hidden; you review after, not during.
 
 ```
-/praxis:autopilot on      # this repo
-/praxis:autopilot off
+/praxis:config autopilot on      # this repo
+/praxis:config autopilot off
 ```
 
 Or pin it globally by exporting `PRAXIS_AUTOPILOT=on` in your shell profile.
@@ -148,9 +156,9 @@ simplicity (KISS/YAGNI) → reversibility.
 Safety is unchanged in auto-pilot: the PreToolUse guard still blocks secrets and
 destructive commands, and the quality/task gate still runs. The only thing praxis
 will ever stop for is a **hard external blocker it cannot resolve itself** (e.g. a
-credential you must provide) — and even then it states the assumption it would use.
+credential you must provide), and even then it states the assumption it would use.
 
-## Best-practices — applied by need
+## Best-practices: applied by need
 
 praxis follows established engineering best-practices, choosing the **minimal
 relevant set** for the change's domains rather than applying everything. The
@@ -163,7 +171,7 @@ report.
 ## The whole workflow, from your side
 
 1. Set your effort once (`/effort high` or `/effort ultracode`).
-2. (Optional) `/praxis:autopilot on` — or set `PRAXIS_AUTOPILOT=on` once.
+2. (Optional) `/praxis:config autopilot on`, or set `PRAXIS_AUTOPILOT=on` once.
 3. Type the idea: *"migra l'intero layer di pagamento a Stripe."*
 4. In auto-pilot: just read the final report (with the decisions it made). Without
    it: answer only genuine questions.
