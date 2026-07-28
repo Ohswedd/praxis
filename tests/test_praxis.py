@@ -1622,7 +1622,8 @@ class TestReviewScope(BranchCase):
 
     def test_a_marker_in_a_committed_file_is_found(self):
         self.branch()
-        self.commit("a.py", "x = 1\n# TODO: finish this\n", "subtask 1")
+        marker = "# TO" + "DO: finish this"   # assembled: a literal here would
+        self.commit("a.py", f"x = 1\n{marker}\n", "subtask 1")  # be its own finding
         findings = common.run_scanner("scan_placeholders.py", self.root)
         self.assertTrue(any(f.get("file") == "a.py" for f in findings), findings)
 
@@ -1641,6 +1642,23 @@ class TestReviewScope(BranchCase):
         self.commit("b.py", "y = 1\n", "subtask 2")
         common._MERGE_BASE_CACHE.pop(str(self.root), None)
         self.assertNotEqual(first, common.change_signature(self.root))
+
+    def test_a_line_fixed_after_being_committed_is_not_still_reported(self):
+        """The scope is the branch's net effect, not a union of its diffs.
+
+        Committing a bad line and then correcting it in the working tree used to
+        report both: the union counted the superseded version, so a scanner
+        flagged a file that no longer contained the problem, and the only way to
+        clear it was to commit again.
+        """
+        self.branch()
+        marker = "# TO" + "DO: finish this"
+        self.commit("a.py", f"x = 1\n{marker}\n", "subtask 1")
+        self.assertTrue(common.run_scanner("scan_placeholders.py", self.root))
+        (self.root / "a.py").write_text("x = 1\n# done\n")
+        common._CHANGED_FILES_CACHE.pop(str(self.root), None)
+        self.assertFalse(common.run_scanner("scan_placeholders.py", self.root),
+                         "the corrected line must not still be a finding")
 
     def test_the_integration_branch_has_no_range(self):
         """No branch, no committed scope: exactly the pre-3.1 behaviour."""
