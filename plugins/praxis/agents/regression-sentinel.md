@@ -1,6 +1,6 @@
 ---
 name: regression-sentinel
-description: Regression auditor. Invoke during review to find behaviours, contracts, and tests the change may have broken — changed function signatures, altered return values, side effects, affected callers, and missing/failing test coverage. Read-only analysis (does not run destructive commands).
+description: "Regression auditor. Invoke during review to find behaviours, contracts, and tests the change may have broken: changed function signatures, altered return values, side effects, affected callers, and missing/failing test coverage. Read-only analysis (does not run destructive commands)."
 model: opus
 effort: high
 tools: Read, Grep, Glob
@@ -27,8 +27,8 @@ For the scope under review:
    tests still valid, or do they now assert the wrong thing? Identify tests that
    should be added or updated. Recommend the exact test command to run (do not
    assume it; derive it from the project). In a **monorepo**, run and reason about
-   the tests of the specific package(s) changed — list packages with
-   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workspaces.py"` — not only the root.
+   the tests of the specific package(s) changed: list packages with
+   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/workspaces.py"`, not only the root.
 5. **Data / migration safety.** For schema or data changes, check backward
    compatibility and migration reversibility.
 

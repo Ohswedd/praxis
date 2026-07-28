@@ -117,7 +117,7 @@ def git_default_branch(root: Path) -> str:
     """The integration branch PRs target.
 
     Config wins; otherwise infer from origin/HEAD, then fall back to whichever of
-    main/master exists locally. Offline-safe — no network probe.
+    main/master exists locally. Offline-safe, no network probe.
     """
     configured = read_config(root).get("git.default_branch")
     if configured:
@@ -151,6 +151,197 @@ def tracked_files(root: Path, limit: int = 5000, pathspec: str = "") -> List[str
     out = _run(cmd, cwd=root)
     files = [f for f in out.splitlines() if f.strip()]
     return files[:limit]
+
+
+def untracked_files(root: Path, limit: int = 2000) -> List[str]:
+    """New files git does not track yet, honouring .gitignore.
+
+    A file created during a change is untracked until it is staged, so it appears
+    in neither `git diff` nor `git diff --staged`. Any scanner that reads only
+    those two is blind to brand-new files, which is exactly where unfinished work
+    tends to land.
+    """
+    out = _run(["git", "ls-files", "--others", "--exclude-standard"], cwd=root)
+    files = [f for f in out.splitlines() if f.strip() and not _is_praxis_state(f)]
+    return files[:limit]
+
+
+def _is_praxis_state(path: str) -> bool:
+    """True for praxis's own state files, which are never part of a change."""
+    norm = path.replace("\\", "/").strip().strip('"')
+    return norm.startswith(".claude/.praxis") or norm in (".claude", ".claude/")
+
+
+# Files whose content is not reviewable text: scanning them yields noise, not signal.
+_BINARY_SUFFIXES = {
+    ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".icns", ".bmp", ".tiff",
+    ".pdf", ".zip", ".gz", ".tar", ".bz2", ".xz", ".7z", ".jar", ".war",
+    ".woff", ".woff2", ".ttf", ".otf", ".eot", ".mp3", ".mp4", ".mov", ".avi",
+    ".wasm", ".so", ".dylib", ".dll", ".exe", ".bin", ".pyc", ".class",
+}
+
+# Generated dependency manifests: authored by a tool, so authoring rules do not
+# apply and their size would swamp any real finding.
+_LOCK_FILES = {
+    "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "poetry.lock",
+    "Cargo.lock", "Gemfile.lock", "composer.lock", "go.sum", "uv.lock",
+}
+
+MAX_SCAN_BYTES = 400_000
+
+
+def is_scannable(root: Path, rel: str) -> bool:
+    p = Path(rel)
+    if p.suffix.lower() in _BINARY_SUFFIXES or p.name in _LOCK_FILES:
+        return False
+    try:
+        return (root / rel).stat().st_size <= MAX_SCAN_BYTES
+    except Exception:
+        return False
+
+
+# Total bytes of untracked content one scan will read. A repo that has not
+# git-ignored its build output can list thousands of untracked files, and the
+# scanners run inside a Stop hook with seconds to spare.
+MAX_UNTRACKED_BYTES = 4_000_000
+
+
+def added_line_pairs(root: Path) -> List[tuple]:
+    """Every line the current change adds, as (file, lineno, text).
+
+    The union of three sources, because a change is spread across all three and
+    auditing only one of them under-reports: the unstaged diff, the staged diff,
+    and the whole content of untracked files. Deduplicated, since a hunk edited
+    after staging appears in both diffs.
+    """
+    seen = set()
+    pairs: List[tuple] = []
+
+    def add(fname, lineno, text):
+        key = (fname, lineno, text)
+        if key not in seen:
+            seen.add(key)
+            pairs.append(key)
+
+    for extra in ([], ["--staged"]):
+        diff = _run(["git", "diff", "--unified=0", "--no-color"] + extra, cwd=root, timeout=20)
+        for fname, lineno, text in _parse_diff_added(diff):
+            if fname and not _is_praxis_state(fname):
+                add(fname, lineno, text)
+
+    budget = MAX_UNTRACKED_BYTES
+    for rel in untracked_files(root):
+        if budget <= 0:
+            break
+        if not is_scannable(root, rel):
+            continue
+        try:
+            body = (root / rel).read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        budget -= len(body)
+        for i, line in enumerate(body.splitlines(), 1):
+            add(rel, i, line)
+    return pairs
+
+
+def _parse_diff_added(diff: str) -> List[tuple]:
+    """(file, new-file lineno, text) for '+' lines in a unified=0 diff."""
+    results: List[tuple] = []
+    cur_file = None
+    new_ln = 0
+    for line in diff.splitlines():
+        if line.startswith("+++ b/"):
+            cur_file = line[6:].strip()
+        elif line.startswith("+++ "):
+            cur_file = None          # /dev/null: a deletion has no added lines
+        elif line.startswith("@@"):
+            m = re.search(r"\+(\d+)", line)
+            new_ln = int(m.group(1)) if m else 0
+        elif line.startswith("+") and not line.startswith("+++"):
+            results.append((cur_file, new_ln, line[1:]))
+            new_ln += 1
+    return results
+
+
+_CHANGED_FILES_CACHE: Dict[str, List[str]] = {}
+
+
+def changed_files(root: Path) -> List[str]:
+    """Repo-relative paths this change touches (modified, staged, or untracked).
+
+    Memoised per process: the Stop gate asks the same question from four places
+    in one run, and each answer costs three git invocations. A hook process is
+    short-lived and never outlives the state it cached.
+    """
+    key = str(root)
+    if key in _CHANGED_FILES_CACHE:
+        return _CHANGED_FILES_CACHE[key]
+    files = set()
+    for extra in ([], ["--staged"]):
+        out = _run(["git", "diff", "--name-only", "--no-color"] + extra, cwd=root, timeout=20)
+        files.update(f.strip() for f in out.splitlines() if f.strip())
+    files.update(untracked_files(root))
+    result = sorted(f for f in files if f and not _is_praxis_state(f))
+    _CHANGED_FILES_CACHE[key] = result
+    return result
+
+
+# --------------------------------------------------------------------------- #
+# User-facing interface surface
+# --------------------------------------------------------------------------- #
+# Suffixes that are markup, styling, or component code: editing one changes what
+# a user sees, so the accessibility and design-consistency verticals apply.
+UI_SUFFIXES = {
+    ".html", ".htm", ".xhtml", ".vue", ".svelte", ".astro", ".jsx", ".tsx",
+    ".css", ".scss", ".sass", ".less", ".styl", ".pcss",
+    ".njk", ".hbs", ".handlebars", ".ejs", ".pug", ".jade", ".liquid",
+    ".erb", ".haml", ".slim", ".twig", ".mustache", ".razor", ".cshtml",
+    ".mdx", ".swiftui", ".xaml",
+}
+
+# Filenames that configure the visual system even though their suffix is generic.
+UI_FILENAME_RE = re.compile(
+    r"(^|/)(tailwind\.config\.[a-z]+|postcss\.config\.[a-z]+|theme\.[a-z]+|"
+    r"tokens\.[a-z]+|design-tokens\.[a-z]+|globals?\.[a-z]*css)$",
+    re.IGNORECASE,
+)
+
+# The design artifacts the front-end pipeline writes; a change to them is design work.
+UI_PATH_RE = re.compile(r"(^|/)docs/design/", re.IGNORECASE)
+
+
+def is_ui_path(path: str) -> bool:
+    if not path:
+        return False
+    norm = path.replace("\\", "/")
+    if Path(norm).suffix.lower() in UI_SUFFIXES:
+        return True
+    return bool(UI_FILENAME_RE.search(norm) or UI_PATH_RE.search(norm))
+
+
+def ui_files_in_change(root: Path) -> List[str]:
+    """Files in the current change that render or style user-facing surface."""
+    return [f for f in changed_files(root) if is_ui_path(f)]
+
+
+#: The verticals a user-facing change cannot be green without. The report writer
+#: and the Stop gate both enforce this, so the list lives here once.
+UI_VERTICALS = ("accessibility", "design-consistency")
+
+
+def missing_ui_verticals(root: Path, verticals: Dict[str, Any]) -> List[str]:
+    """UI verdicts this change owes but `verticals` does not carry.
+
+    Empty when the change touches no user-facing surface, or when the repo has
+    turned the requirement off with `require_ui_verticals = false`.
+    """
+    if not read_config(root).get("gate.require_ui_verticals", True):
+        return []
+    if not ui_files_in_change(root):
+        return []
+    recorded = verticals if isinstance(verticals, dict) else {}
+    return [v for v in UI_VERTICALS if recorded.get(v) != "pass"]
 
 
 def detect_test_command(root: Path) -> str:
@@ -267,7 +458,7 @@ def find_files(root: Path, name: str, limit: int = 500, max_dirs: int = 20000) -
     """Find files named `name`, pruning heavy/noise directories.
 
     Uses os.walk with in-place dir pruning so huge trees (node_modules, .git,
-    build outputs) are never descended — keeping SessionStart fast on large,
+    build outputs) are never descended: keeping SessionStart fast on large,
     enterprise repos. Bounded by `limit` results and `max_dirs` visited.
     """
     found: List[Path] = []
@@ -283,7 +474,7 @@ def walk_files(root: Path, limit: int = 20000, max_dirs: int = 20000):
     """(relative sorted file paths, dir_cap_hit) under `root`, pruning noise dirs.
 
     The non-git counterpart of `git ls-files`, used by the repo-scan inventory.
-    The boolean reports whether the walk stopped at `max_dirs` — a caller that
+    The boolean reports whether the walk stopped at `max_dirs`: a caller that
     claims coverage (the scan ledger) must treat that as truncation, never as a
     complete listing.
     """
@@ -385,6 +576,25 @@ def write_state_strict(root: Path, name: str, data: Dict[str, Any]) -> None:
         raise
 
 
+def run_scanner(script: str, root: Path, timeout: int = 25) -> List[Dict[str, Any]]:
+    """Findings from a sibling `--json` scanner (empty list on any failure).
+
+    Every praxis scanner takes `--json` and prints `{"count": n, "findings": [...]}`,
+    so the hooks that consume them share one runner. Failing open is deliberate:
+    a scanner that crashes must never wedge a session or a Stop gate.
+    """
+    try:
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), script)
+        out = subprocess.run(
+            [sys.executable, path, "--json"],
+            capture_output=True, text=True, timeout=timeout, cwd=str(root),
+        )
+        findings = json.loads(out.stdout or "{}").get("findings", [])
+        return findings if isinstance(findings, list) else []
+    except Exception:
+        return []
+
+
 def cli_opt(args: List[str], name: str, default=None):
     """Value following `name` in a hand-parsed argv list (praxis CLI idiom)."""
     if name in args and args.index(name) + 1 < len(args):
@@ -419,12 +629,15 @@ def auto_merge_on(root: Path) -> bool:
 
 
 _CONFIG_DEFAULTS = {
-    "gate.enabled": True,        # master switch for the Stop gate
-    "gate.require_tests": True,  # require passing test evidence in the green report
-    "autopilot.default": False,  # start sessions in auto-pilot
-    "audit.depth": "high",       # informational hint for the auditors
-    "git.auto_merge": False,     # auto-review and merge PRs; off = PR only, human merges
-    "git.default_branch": "",    # PR base branch ("" = auto-detect)
+    "gate.enabled": True,             # master switch for the Stop gate
+    "gate.require_tests": True,       # require passing test evidence in the green report
+    "gate.require_ui_verticals": True,  # UI diffs need the a11y + design verdicts
+    "autopilot.default": False,       # start sessions in auto-pilot
+    "audit.depth": "high",            # informational hint for the auditors
+    "git.auto_merge": False,          # auto-review and merge PRs; off = PR only, human merges
+    "git.default_branch": "",         # PR base branch ("" = auto-detect)
+    "style.ban_em_dash": True,        # refuse em dashes in authored text
+    "style.ban_ai_attribution": True,  # refuse AI co-author / generated-by credits
 }
 
 
@@ -483,7 +696,7 @@ def change_signature(root: Path) -> str:
         # Praxis's own state dir must never affect the code-change signature,
         # even when the repo hasn't git-ignored it yet.
         path_part = ln[3:].strip().strip('"')
-        if path_part.startswith(".claude/.praxis") or path_part in (".claude/", ".claude"):
+        if _is_praxis_state(path_part):
             continue
         parts.append(ln)
         # include mtime/size so edits to the same path re-key the signature
@@ -557,7 +770,7 @@ def scan_secrets_in_text(text: str) -> List[str]:
     return findings
 
 
-def scan_file_for_secrets(fp: Path, max_bytes: int = 400_000) -> List[str]:
+def scan_file_for_secrets(fp: Path, max_bytes: int = MAX_SCAN_BYTES) -> List[str]:
     try:
         if fp.stat().st_size > max_bytes:
             return []
@@ -565,3 +778,87 @@ def scan_file_for_secrets(fp: Path, max_bytes: int = 400_000) -> List[str]:
     except Exception:
         return []
     return scan_secrets_in_text(text)
+
+
+# --------------------------------------------------------------------------- #
+# House style: AI attribution and banned typography
+# --------------------------------------------------------------------------- #
+# Credits that hand a project's authorship to the tool that typed it. The history,
+# the pull request, and the release notes belong to the project; a co-author
+# trailer or a "generated with" footer is noise the maintainers did not ask for.
+# Naming the platform ("praxis is a Claude Code plugin") is description, not
+# attribution, so only the credit shapes below are matched.
+AI_ATTRIBUTION_PATTERNS = {
+    "AI co-author trailer": r"(?i)co[-\s]?authored[-\s]?by:\s*[^\n]*\b("
+                            r"claude|anthropic|copilot|chatgpt|openai|gpt-|gemini|"
+                            r"cursor|codex|devin|noreply@anthropic\.com)",
+    # A credit, not a mention. Two shapes: the footer, which sits at the start of
+    # its own line (optionally behind an emoji, a bullet, or a comment marker),
+    # and the inline form, which is only matched when the vendor is named as a
+    # product ("Claude Code", "Claude Opus") or linked. Without that qualifier a
+    # sentence like "handle files created by claude sessions" would block the one
+    # command a user cannot cheaply retry.
+    "generated-by credit": r"(?im)(^[\s>*_#/-]*[\U0001F300-\U0001FAFF\s]*"
+                           r"(generated|written|created|authored|co[-\s]?written)\s+"
+                           r"(with|by|using)\s+\[?\s*"
+                           r"(claude|anthropic|chatgpt|openai|copilot|gemini|cursor|codex)\b"
+                           r"|(generated|written|created|authored|co[-\s]?written)\s+"
+                           r"(with|by|using)\s+\[?\s*"
+                           r"(claude\s*(code|opus|sonnet|haiku|ai)\b|anthropic\b|chatgpt\b|"
+                           r"openai\b|copilot\b|codex\b|"
+                           r"claude\.(ai|com)|anthropic\.com|openai\.com))",
+    "AI assistance footer": r"(?im)^[\s>*_#/-]*[\U0001F300-\U0001FAFF\s]*"
+                            r"(with\s+(help|assistance)\s+from|powered\s+by)\s+"
+                            r"(claude|chatgpt|copilot|gemini)\b",
+    "robot attribution emoji": r"(?i)\U0001F916\s*(generated|created|made|built|with|by)",
+}
+
+_AI_ATTRIBUTION_RE = {n: re.compile(p) for n, p in AI_ATTRIBUTION_PATTERNS.items()}
+
+
+#: The one escape hatch every praxis scanner honours, and part of the stable
+#: public surface: a line carrying it is exempt from the placeholder scan, the
+#: house-style scan, and the drift check alike. It lives here so the three cannot
+#: drift apart on what the annotation looks like.
+ACK_RE = re.compile(r"praxis:ack\b")
+
+
+def is_acked(text: str) -> bool:
+    """True if this line records a deliberate, accepted exception."""
+    return bool(text) and bool(ACK_RE.search(text))
+
+
+def scan_ai_attribution(text: str) -> List[str]:
+    """Names of the AI-attribution shapes present in `text` (empty if none)."""
+    if not text:
+        return []
+    return [name for name, rx in _AI_ATTRIBUTION_RE.items() if rx.search(text)]
+
+
+# Dashes praxis does not author. Built from code points rather than literals so
+# this module, the scanners that import it, and the tests can all be searched for
+# a stray dash without matching the definition itself.
+EM_DASH = chr(0x2014)
+EN_DASH = chr(0x2013)
+HORIZONTAL_BAR = chr(0x2015)
+
+# The em dash and its look-alikes are banned outright: as a sentence break they
+# are the single most recognisable tell of unedited generated prose, and a colon,
+# a comma, parentheses, or a full stop always says the same thing more precisely.
+# The en dash is banned only when spaced as a sentence dash; between numbers it is
+# correct typography for a range and is left alone. The ASCII "--" is deliberately
+# not matched: in a repository it is far more often a command-line separator
+# (`git ls-files -- path`, `npm test -- --watch`) than a punctuation mark.
+BANNED_DASH_PATTERNS = {
+    "em dash": f"[{EM_DASH}{HORIZONTAL_BAR}]",
+    "spaced en dash": rf"(?<=\s){EN_DASH}(?=\s)",
+}
+
+_BANNED_DASH_RE = {n: re.compile(p) for n, p in BANNED_DASH_PATTERNS.items()}
+
+
+def scan_banned_dashes(text: str) -> List[str]:
+    """Names of the banned dash forms present in `text` (empty if none)."""
+    if not text:
+        return []
+    return [name for name, rx in _BANNED_DASH_RE.items() if rx.search(text)]

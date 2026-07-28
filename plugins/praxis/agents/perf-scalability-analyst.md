@@ -24,11 +24,11 @@ you by a repo-wide scan):
 5. **Scalability.** Behaviour as N (rows, users, items, concurrency) grows by
    10x/100x. Where does it break first? Any hard ceilings or serialization
    points?
-6. **Caching & laziness.** Opportunities to cache, batch, paginate, or defer —
+6. **Caching & laziness.** Opportunities to cache, batch, paginate, or defer,
    and correctness risks those introduce.
 7. **Front-end delivery (when the scope is UI).** Shipped JS/CSS weight,
    render-blocking resources, image sizing/formats and lazy loading, font
-   loading strategy, layout thrash and main-thread work — Core Web Vitals
+   loading strategy, layout thrash and main-thread work: Core Web Vitals
    (LCP, CLS, INP) risk as the page and data grow.
 
 Quantify where you can (Big-O, expected call counts). Distinguish premature

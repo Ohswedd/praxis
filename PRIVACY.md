@@ -1,6 +1,6 @@
 # Privacy Policy
 
-**Praxis — a Claude Code plugin.** Last updated: 2026-07-22.
+**Praxis: a Claude Code plugin.** Last updated: 2026-07-22.
 
 ## Summary
 
@@ -31,14 +31,14 @@ Locally, and only to do its job:
 - An optional `.praxis.toml` in your repository.
 
 Secret scanning is a safety feature that runs entirely on your machine. When it
-finds something, it reports the finding — never the secret's value — and
+finds something, it reports the finding, never the secret's value, and
 deliberately does not read flagged files into the conversation.
 
 ## What Praxis writes
 
 Only inside the repository you are working in:
 
-- `.claude/.praxis/` — small JSON state files recording task progress, the
+- `.claude/.praxis/`: small JSON state files recording task progress, the
   quality report, and gate counters. This directory is git-ignored by default.
 - The files Claude edits at your instruction, under your normal Claude Code
   permissions.
@@ -54,7 +54,7 @@ before it is written to disk.
 ## What reaches Anthropic
 
 This is the part worth stating plainly, because it is the one place information
-leaves your machine — and it is Claude Code's own data flow, not a channel
+leaves your machine, and it is Claude Code's own data flow, not a channel
 Praxis controls or has access to.
 
 Praxis works by injecting text into your Claude Code conversation: a repository
@@ -71,7 +71,7 @@ own account terms, not by this document.
 One subagent, `doc-reference-finder`, may use Claude Code's `WebSearch` and
 `WebFetch` tools to consult a library's official documentation. Those requests
 are made by Claude Code under your existing permissions, not by Praxis code, and
-go to the search or documentation provider — not to the author of this plugin.
+go to the search or documentation provider, not to the author of this plugin.
 
 ## Children
 

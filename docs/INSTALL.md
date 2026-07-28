@@ -4,18 +4,18 @@
 - Claude Code **v2.1.139+** (`claude --version`); the auto-enabled output style
   relies on the current output-style mechanism (the old `/output-style` command
   was removed in v2.1.91).
-- Python 3.8+ available as `python3` on `PATH` (hooks are stdlib-only — no pip
+- Python 3.8+ available as `python3` on `PATH` (hooks are stdlib-only, no pip
   installs). On Windows, ensure `python3` resolves, or adjust the hook commands
   in `hooks/hooks.json` to `python`.
 
 > **Why isn't Praxis in `/plugin > Discover`?** That browser lists only
 > `anthropics/claude-plugins-official`, Anthropic's curated directory. Praxis
 > hosts its own marketplace, so it is reached by adding this repository
-> explicitly — which is why every install below starts with
+> explicitly, which is why every install below starts with
 > `/plugin marketplace add`. Listing in the official directory is a separate
 > submission, not a consequence of publishing.
 
-## Option A — from GitHub (recommended, supports auto-update)
+## Option A: from GitHub (recommended, supports auto-update)
 
 1. Push this repository to GitHub (public, or private if your org allows).
 2. Register the marketplace and install:
@@ -39,7 +39,7 @@
    }
    ```
 
-## Option B — local (fastest iteration)
+## Option B: local (fastest iteration)
 
 From the repo root:
 
@@ -60,7 +60,7 @@ agents, MCP, or output styles run `/reload-plugins` or restart the session.
 ## Upgrading from a release before v1.5.1
 
 The marketplace was renamed from `praxis` to `ohswedd-praxis`, because an
-unrelated project (`xD4O/praxis`) publishes a marketplace under the same name —
+unrelated project (`xD4O/praxis`) publishes a marketplace under the same name,
 and Claude Code allows only one marketplace per name, silently replacing the
 first with the second. The plugin itself is still `praxis`, and every
 `/praxis:*` command is unchanged.
@@ -78,9 +78,9 @@ so this one is manual and takes two commands:
 
 The `praxis-quality` output style activates automatically when the plugin is
 enabled (via its `force-for-plugin` frontmatter), so the doctrine is on from the
-first turn — no command to run. It sets `keep-coding-instructions`, so it layers
+first turn, no command to run. It sets `keep-coding-instructions`, so it layers
 on top of Claude Code's built-in engineering instructions rather than replacing
-them, and it overrides your `outputStyle` while Praxis is enabled — disable the
+them, and it overrides your `outputStyle` while Praxis is enabled: disable the
 plugin to opt out.
 
 > The standalone `/output-style` command was removed in Claude Code v2.1.91.

@@ -6,30 +6,54 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-07-28
+
 ### Added
-- PRIVACY.md — a plain data-flow statement: Praxis has no backend, makes no network calls and sends nothing to its author; it documents what is read locally, what is written to .claude/.praxis/, and the one place information leaves the machine (Claude Code's own conversation channel to Anthropic)
+- PRIVACY.md: a plain data-flow statement: Praxis has no backend, makes no network calls and sends nothing to its author; it documents what is read locally, what is written to .claude/.praxis/, and the one place information leaves the machine (Claude Code's own conversation channel to Anthropic)
+- New /praxis:config command and config.py: every switch, its value, and where it came from (environment, repo toggle, .praxis.toml, or the default). Asking for a state a higher-precedence source overrides warns and exits non-zero instead of reporting success.
+- House-style enforcement. scan_style.py refuses em dashes and spaced en dashes in authored text and AI co-author or generated-by credits, over the whole change; the Stop gate blocks on its findings. Disable per repo with style.ban_em_dash and style.ban_ai_attribution.
+- The PreToolUse guard blocks any git commit, git tag, gh pr create, gh release create or gh issue command carrying an AI co-author trailer or a generated-by credit, so the credit never reaches the history.
+- drift.py detects documentation that contradicts the repo's live configuration and references (commands, slash commands, links) that no longer resolve. Surfaced at SessionStart, in /praxis:doctor, and at both ends of /praxis:docs.
+- The SessionStart audit states the repo's live configuration every session: gate, test-evidence and UI-vertical requirements, auto-pilot, auto-merge with the PR base branch, house style, and the detected test command.
+- UI changes are resolved from the changed file list, not from how the request was phrased. A change touching markup, styles, components, design tokens or docs/design/ cannot produce a green report without accessibility=pass and design-consistency=pass. Disable with gate.require_ui_verticals.
+- Two README assets: assets/workflows.svg maps four example requests to the skills they run and what the gate then requires, and assets/inventory.svg lists all twelve skills and twelve auditors with the trigger for each.
+- selfcheck.py now fails when plugin content references a /praxis: command or a script that does not exist, and when praxis's own text breaks the house style it enforces elsewhere.
+- make check and CI now run the drift check, so documentation that contradicts the live configuration or references something that no longer exists fails the build.
+
+### Changed
+- BREAKING: consolidated thirteen commands into nine. /praxis:spec is now /praxis:task spec:, /praxis:scan is /praxis:audit repo, /praxis:sync is folded into /praxis:docs, /praxis:release is /praxis:ship release, and /praxis:autopilot is /praxis:config autopilot. No workflow was removed; the same skills run behind fewer entry points.
+- BREAKING: autopilot.py and git_delivery.py are replaced by config.py, which toggles auto-pilot, auto-merge and the Stop gate, and reports the source that decided each resolved value.
+- Removed every em dash from the plugin's own content, docs, and README, and rewrote the affected sentences with a colon, a comma, parentheses, or two sentences.
+- /praxis:docs now covers the CLAUDE.md hierarchy alongside /docs, CHANGELOG.md and ADRs, and starts by running the drift check.
+
+### Fixed
+- The praxis:ack annotation is line-based, so a line that documents the annotation exempted itself: one em dash survived in docs/AUDIT.md behind an accidental self-exemption. Removed, and every tracked file is now verified dash-free independently of the ack mechanism.
+- The placeholder scan missed brand-new files entirely: it read only git diff, which cannot see an untracked file, and fell back to the staged diff instead of scanning both. It now covers the unstaged diff, the staged diff, and every untracked file.
+- Widened the deferral vocabulary the completeness scan matches, including out of scope for this, future work will, not production-ready, and both the contracted and spelled-out forms of we will fix this later.
+- The prompt router missed UI work phrased without design vocabulary. It now matches a much wider interface vocabulary and any UI file extension in the prompt, and its delivery directive states the live merge policy rather than a default.
+- Corrected stale claims in docs/FLOWS.md: the gate had not prompted once per signature since the escalating refusals landed, and intent has been classified from the prompt since the router landed.
 
 ## [1.6.0] - 2026-07-22
 
 ### Added
-- Marketplace entry now carries the discovery metadata Claude Code and the official plugin directory read — displayName, category, author, homepage, license and keywords — so Praxis presents properly in the /plugin UI and is submission-ready. Validated with 'claude plugin validate'
+- Marketplace entry now carries the discovery metadata Claude Code and the official plugin directory read (displayName, category, author, homepage, license and keywords) so Praxis presents properly in the /plugin UI and is submission-ready. Validated with 'claude plugin validate'
 
 ### Changed
 - CI: actions/checkout and actions/setup-python bumped to v7, which run natively on Node 24 and clear the Node 20 deprecation warning
-- CI: the release job survives a protected main — it accepts a RELEASE_TOKEN secret and verifies it can write to the branch before stamping anything, instead of failing mid-release with a half-applied version bump
-- README rebuilt around its own craft rules: a visual identity (banner, pipeline and layer diagrams as accessible SVGs), a lead that states what praxis is for, and hierarchy in place of a flat 22-row capability table — plus badges, a contents nav, and repo topics/description for discoverability
+- CI: the release job survives a protected main, it accepts a RELEASE_TOKEN secret and verifies it can write to the branch before stamping anything, instead of failing mid-release with a half-applied version bump
+- README rebuilt around its own craft rules: a visual identity (banner, pipeline and layer diagrams as accessible SVGs), a lead that states what praxis is for, and hierarchy in place of a flat 22-row capability table, plus badges, a contents nav, and repo topics/description for discoverability
 
 ## [1.5.1] - 2026-07-21
 
 ### Fixed
-- Marketplace renamed praxis → ohswedd-praxis: an unrelated project (xD4O/praxis) publishes a marketplace with the identical name AND an identical plugin name, and Claude Code keeps only one marketplace per name — silently replacing the first with the second, so praxis@praxis could resolve to the wrong plugin. Install is now praxis@ohswedd-praxis; the plugin name and all /praxis:* commands are unchanged. Existing installs need a one-time 'plugin marketplace remove praxis' then re-add (Claude Code auto-migrates plugin renames, but not marketplace renames)
+- Marketplace renamed praxis → ohswedd-praxis: an unrelated project (xD4O/praxis) publishes a marketplace with the identical name AND an identical plugin name, and Claude Code keeps only one marketplace per name, silently replacing the first with the second, so praxis@praxis could resolve to the wrong plugin. Install is now praxis@ohswedd-praxis; the plugin name and all /praxis:* commands are unchanged. Existing installs need a one-time 'plugin marketplace remove praxis' then re-add (Claude Code auto-migrates plugin renames, but not marketplace renames)
 
 ## [1.5.0] - 2026-07-21
 
 ### Added
-- Per-prompt skill router (UserPromptSubmit): a bare prompt like "fix the checkout page" now engages the same pipeline as /praxis:task — the router classifies the request and names the exact skills it needs
+- Per-prompt skill router (UserPromptSubmit): a bare prompt like "fix the checkout page" now engages the same pipeline as /praxis:task, the router classifies the request and names the exact skills it needs
 - Deferral detection in scan_placeholders.py: comments that admit unfinished work without a literal marker ("for now", "in a real implementation", "you can extend this", "omitted for brevity") are findings; a praxis:ack annotation exempts a line
-- frontend-pipeline reference/craft.md — the visual judgement the checklists could not encode: the tells of generated UI and what to do instead, hierarchy, typography, space, colour, depth, motion, content-shaped states, and a pre-ship craft checklist
+- frontend-pipeline reference/craft.md: the visual judgement the checklists could not encode: the tells of generated UI and what to do instead, hierarchy, typography, space, colour, depth, motion, content-shaped states, and a pre-ship craft checklist
 
 ### Changed
 - The Stop gate now escalates instead of giving up: it refused once per change state and then allowed any stop, so the audit was effectively optional. Refusals now sharpen over 3 attempts (workflow, then the missing evidence, then the consequence) before releasing, bounded per change state and per session
@@ -38,22 +62,22 @@ All notable changes to praxis are documented here. The format follows
 
 ### Fixed
 - Unfinished markers in a change's own diff are now blocking and cited with file:line, instead of being printed as advisory text the model could step past
-- Stop gate could block a session indefinitely when its counter state could not be written, and two Claude windows on one repo wiped each other's counters — both are release-cap failures that would have trapped a session
-- Stop gate no longer fires on a working tree that was already dirty when the session started — it demanded an audit of pre-existing work and misattributed its unfinished markers to the current change
+- Stop gate could block a session indefinitely when its counter state could not be written, and two Claude windows on one repo wiped each other's counters, both are release-cap failures that would have trapped a session
+- Stop gate no longer fires on a working tree that was already dirty when the session started: it demanded an audit of pre-existing work and misattributed its unfinished markers to the current change
 - report.py: a substituted test command (--tests true) no longer satisfies the gate, an empty vertical set is no longer vacuously green, a sensitive path in --tests is refused, timeouts kill the whole test tree, and secrets in the persisted output tail are redacted
 
 ## [1.4.0] - 2026-07-20
 
 ### Added
-- /praxis:frontend — front-end pipeline (frontend-pipeline skill + reference playbook, accessibility-auditor + design-consistency-auditor agents): business research (client call → goals → audience → competitors → positioning → messaging) → story-first wireframes → design system → development → optimization → ship, for any UI niche, proportional to task size (full/feature/patch routing); design artifacts (docs/design/) kept as living knowledge; quality-rubric, best-practices catalog (new Front-end & UX family), perf auditor (Core Web Vitals), output style, and session directives extended for UI work
+- /praxis:frontend, front-end pipeline (frontend-pipeline skill + reference playbook, accessibility-auditor + design-consistency-auditor agents): business research (client call → goals → audience → competitors → positioning → messaging) → story-first wireframes → design system → development → optimization → ship, for any UI niche, proportional to task size (full/feature/patch routing); design artifacts (docs/design/) kept as living knowledge; quality-rubric, best-practices catalog (new Front-end & UX family), perf auditor (Core Web Vitals), output style, and session directives extended for UI work
 
 ## [1.3.0] - 2026-07-20
 
 ### Added
-- /praxis:scan — repo-wide scanner (repo-audit skill + repo_scan.py shard ledger + finding-verifier agent): audits an entire existing codebase across all seven vertical dimensions, adversarially reverse-audits every finding, fixes confirmed findings in audited change-sets, and reports with deterministic coverage accounting; resumable on large repos
+- /praxis:scan, repo-wide scanner (repo-audit skill + repo_scan.py shard ledger + finding-verifier agent): audits an entire existing codebase across all seven vertical dimensions, adversarially reverse-audits every finding, fixes confirmed findings in audited change-sets, and reports with deterministic coverage accounting; resumable on large repos
 
 ### Fixed
-- State writes under .claude/.praxis/ are now atomic (temp file + os.replace) — a crash mid-write can no longer corrupt task/report/scan state, which read_state would silently reset to empty
+- State writes under .claude/.praxis/ are now atomic (temp file + os.replace): a crash mid-write can no longer corrupt task/report/scan state, which read_state would silently reset to empty
 
 ## [1.2.1] - 2026-07-18
 
@@ -63,7 +87,7 @@ All notable changes to praxis are documented here. The format follows
 ## [1.2.0] - 2026-07-18
 
 ### Added
-- Git/GitHub delivery — new `/praxis:ship` command and `git-delivery` skill: write a Conventional Commit, branch, push, and open a PR. Human-in-the-loop merge by default; opt-in `git.auto_merge` (config, `PRAXIS_AUTO_MERGE`, or `git_delivery.py on`) reviews and merges autonomously — never without a green audit or by force-pushing the base branch. Adds `git.auto_merge`/`git.default_branch` config keys and git-delivery status in `/praxis:doctor`.
+- Git/GitHub delivery: new `/praxis:ship` command and `git-delivery` skill: write a Conventional Commit, branch, push, and open a PR. Human-in-the-loop merge by default; opt-in `git.auto_merge` (config, `PRAXIS_AUTO_MERGE`, or `git_delivery.py on`) reviews and merges autonomously, never without a green audit or by force-pushing the base branch. Adds `git.auto_merge`/`git.default_branch` config keys and git-delivery status in `/praxis:doctor`.
 
 ### Changed
 - Compacted and unified every command body; sharpened the `code-craft` comment standard to forbid step-narration and doc-pointer scaffolding.
@@ -75,12 +99,12 @@ All notable changes to praxis are documented here. The format follows
 - `changelog.py add` now inserts a new `[Unreleased]` section below the document title and keeps subsections in Keep-a-Changelog order. Removed a dead no-op (`emit_context("")`) in `post_edit.py` and step-narration comments in `changelog.py`.
 
 ### Security
-- Hardened the PreToolUse guard against branch-history rewrites: it now blocks `gh pr merge --admin` (a branch-protection bypass) and every force-push form — flag, bundled `-f`, or `+refspec`, in any argument order, and behind interposed git global options — so autonomous auto-merge can never override branch protection or rewrite a branch. praxis never force-pushes; a human runs it.
+- Hardened the PreToolUse guard against branch-history rewrites: it now blocks `gh pr merge --admin` (a branch-protection bypass) and every force-push form (flag, bundled `-f`, or `+refspec`, in any argument order, and behind interposed git global options) so autonomous auto-merge can never override branch protection or rewrite a branch. praxis never force-pushes; a human runs it.
 
 ## [1.1.2] - 2026-07-18
 ### Fixed
 - Three component manifests had an unquoted `: ` (colon-space) inside their YAML
-  `description:`, which made the loader drop the **entire** frontmatter — so
+  `description:`, which made the loader drop the **entire** frontmatter, so
   `best-practices` (skill), `completeness-auditor`, and `repo-cartographer`
   (agents) loaded with empty metadata (name, the `tools: Read, Grep, Glob`
   read-only restriction, and model/effort all silently lost). Quoted the three
@@ -96,13 +120,13 @@ All notable changes to praxis are documented here. The format follows
   lifecycle (dirty → task → done → evidence report → re-arm → config-disable),
   doc-link/reference integrity, CI YAML, and absence of stray placeholders/secrets.
 - Optimisation: `detect_workspaces` now uses a single pruned filesystem walk
-  (`find_files_multi`) instead of four — faster SessionStart on large repos.
+  (`find_files_multi`) instead of four: faster SessionStart on large repos.
   No behaviour change. Test suite: 32 cases; selfcheck: 61 checks.
 
 ## [1.1.0] - 2026-07-16
 ### Added
 - **Per-repo config** `.praxis.toml` (`gate.enabled`, `gate.require_tests`,
-  `autopilot.default`, `audit.depth`) — stdlib parser, wired into the gate,
+  `autopilot.default`, `audit.depth`): stdlib parser, wired into the gate,
   auto-pilot, and doctor; template + bootstrap proposal; ADR-0004.
 - Dev DX / OSS hygiene: `Makefile`, `CODEOWNERS`, PR and issue templates,
   `.editorconfig`.
@@ -110,7 +134,7 @@ All notable changes to praxis are documented here. The format follows
 
 ### Changed
 - **Performance:** replaced whole-tree `rglob` with a pruning `os.walk`
-  (`common.find_files`) that skips `node_modules`/`.git`/build dirs — fast
+  (`common.find_files`) that skips `node_modules`/`.git`/build dirs: fast
   SessionStart on large/enterprise repos. Test suite grew to 31 cases; selfcheck
   to 61 checks.
 
@@ -127,7 +151,7 @@ First stable release. Public surface is now stable under SemVer (see
 ### Added
 - **Evidence-backed quality report** (`report.py`): records test command + exit
   code and per-vertical verdicts. The Stop gate now requires a passing test run
-  (when the repo has a test command) before accepting a green report — no longer
+  (when the repo has a test command) before accepting a green report, no longer
   trust-based. (ADR-0003.)
 - **Monorepo / workspace awareness** (`common.detect_workspaces`, `workspaces.py`):
   session_audit reports packages; the orchestrator and regression-sentinel run the
@@ -148,17 +172,17 @@ First stable release. Public surface is now stable under SemVer (see
 ### Added
 - **Test suite** (`tests/`, 16 stdlib unittest cases) covering the deterministic
   core; runs in CI.
-- **`selfcheck.py`** — plugin self-integrity validation (manifests, version
+- **`selfcheck.py`**: plugin self-integrity validation (manifests, version
   agreement, hook→script references, frontmatter, compilation); in CI and doctor.
 - **`SECURITY.md`** (threat model & posture) and **`CONTRIBUTING.md`**.
-- **`/praxis:release`** command — SemVer from Conventional Commits + changelog
+- **`/praxis:release`** command, SemVer from Conventional Commits + changelog
   finalize.
 - **`docs/AUDIT.md`** (self-audit) and **ADR-0002** (self-testing decision);
   Requirements & compatibility section in the README.
 
 ### Fixed
 - PostToolUse now formats a file only with a formatter the project actually adopts
-  (config/adoption signal), instead of any formatter on `PATH` — prevents fighting
+  (config/adoption signal), instead of any formatter on `PATH`: prevents fighting
   the project's real conventions.
 - Placeholder scanner no longer flags prose comments as commented-out code
   (tighter pattern, fewer false positives).
@@ -211,7 +235,7 @@ First stable release. Public surface is now stable under SemVer (see
 - **Removed the keyword-based intake router** (`intake_router.py` + the
   `UserPromptSubmit` hook). No prompt-text classifier decides behaviour anymore;
   the workflow directive is always injected at SessionStart and enforcement is
-  change-based — deterministic regardless of phrasing.
+  change-based: deterministic regardless of phrasing.
 - **praxis now runs the completion loop itself** via the Stop gate + a
   `task.json` state file (`task_state.py`), so the user never runs `/goal`. The
   loop keeps the session working until the task is marked done, lets Claude stop

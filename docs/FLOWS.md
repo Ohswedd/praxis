@@ -1,4 +1,4 @@
-# Praxis — Flows, Examples & Verification
+# Praxis: Flows, Examples & Verification
 
 This document explains how praxis behaves end-to-end so you can verify it does
 what it should. It covers: the system map, the pipeline, the hook lifecycle, the
@@ -8,13 +8,13 @@ traceability matrix, and an honest account of what is **hard-enforced** vs
 
 ---
 
-## 1. System map — the four layers
+## 1. System map: the four layers
 
 ```mermaid
 flowchart TB
     U["User prompt"] --> H1["Layer 4 · Hooks<br/>deterministic, can block"]
     H1 --> OS["Layer 1 · Output style<br/>praxis-quality: always-on doctrine"]
-    OS --> SK["Layer 2 · Skills<br/>orchestrator, prompt-architect, code-craft,<br/>bootstrap, quality-rubric, claudemd-living, discovery"]
+    OS --> SK["Layer 2 · Skills · twelve<br/>orchestrator, prompt-architect, best-practices, code-craft,<br/>quality-rubric, docs-living, claudemd-living, frontend-pipeline,<br/>repo-audit, git-delivery, bootstrap, capability-discovery"]
     SK --> AG["Layer 3 · Subagents · read-only, Opus<br/>9 vertical auditors + cartographer + claudemd-verifier"]
     AG --> OUT["Structured report back to user"]
 
@@ -45,13 +45,13 @@ flowchart TD
     E -->|No| G["Phase 2 · Investigate code-base"]
     F --> G
     G --> H{"CLAUDE.md present & accurate?"}
-    H -->|No| I["bootstrap / sync"]
+    H -->|No| I["bootstrap / claudemd-living"]
     H -->|Yes| J["Phase 3 · Plan in plan mode"]
     I --> J
     J --> K{"Plan approved?"}
     K -->|No| J
     K -->|Yes| L["Phase 4 · Implement to plan<br/>code-craft standards"]
-    L --> M["Phase 5 · Quality rubric<br/>7 verticals (+2 on UI changes) + horizontal pass"]
+    L --> M["Phase 5 · Quality rubric<br/>7 verticals (+2 when the changed files are UI)<br/>+ horizontal pass + the three scanners"]
     M --> N{"All PASS?"}
     N -->|No| O["Fix findings, re-run auditor"]
     O --> M
@@ -59,7 +59,7 @@ flowchart TD
     P --> Q["Phase 6 · Structured report"]
     Q --> R{"Stop gate:<br/>task done AND change reviewed?"}
     R -->|No| M
-    R -->|Yes| S["Turn ends — done"]
+    R -->|Yes| S["Turn ends: done"]
 ```
 
 The Stop gate is what makes this self-driving: while a task is open it keeps
@@ -113,14 +113,15 @@ sequenceDiagram
 stateDiagram-v2
     [*] --> Clean
     Clean --> Dirty: code edited
-    Dirty --> Blocked: Stop and no green report and not yet notified
-    Blocked --> Notified: prompt once, record signature
-    Notified --> Reviewing: run quality-rubric
-    Reviewing --> Green: all verticals pass → write signed report
+    Dirty --> Refused: Stop, and no green report for this signature
+    Refused --> Refused: refused again, message escalates and names what is missing
+    Refused --> Reviewing: run quality-rubric
+    Reviewing --> Green: every vertical passes, tests run, signed report written
     Green --> Clean: commit
-    Green --> Dirty: new edit → signature changes → gate re-arms
-    Notified --> Allowed: same signature seen again (prevents infinite loop)
-    Dirty --> Allowed: skip-gate file or PRAXIS_GATE=off
+    Green --> Dirty: new edit, signature changes, gate re-arms
+    Refused --> Disclosed: cap reached (3 per state, 12 per session)
+    Disclosed --> Allowed: finish the audit, or tell the user it is unaudited
+    Dirty --> Allowed: skip-gate file, PRAXIS_GATE=off, or counter unwritable
     Allowed --> [*]
     Clean --> [*]
 ```
@@ -154,12 +155,12 @@ flowchart TD
 
 ## 6. Worked examples
 
-### Example A — Simple fix from a one-line prompt
+### Example A: Simple fix from a one-line prompt
 
 **You type:** `fixami il bug di paginazione nella lista utenti`
 
 1. **Always-on:** the SessionStart directive + output style are already in
-   context, and `UserPromptSubmit` routes this prompt as an `implement` request —
+   context, and `UserPromptSubmit` routes this prompt as an `implement` request:
    injecting the `task-orchestrator` pipeline by name, so the workflow engages
    without a keyword trigger or `/goal`. Claude opens a praxis task with the
    acceptance criteria.
@@ -180,7 +181,7 @@ flowchart TD
 7. **Report:** what changed, criteria met, audit table, tests, out-of-scope
    (none), assumptions (none). Stop gate sees the green report → turn ends.
 
-### Example B — Larger integration
+### Example B: Larger integration
 
 **You type:** `integrami Stripe checkout nel flusso di pagamento`
 
@@ -194,16 +195,51 @@ flowchart TD
 - Implement + audit: adversarial-auditor checks the webhook signature
   verification and that secrets aren't logged; completeness-auditor verifies the
   success/cancel/error branches are all implemented, not stubbed.
-- Report ends with "Out of scope / follow-ups: webhook retry, refund flow" — in
+- Report ends with "Out of scope / follow-ups: webhook retry, refund flow", in
   writing, not hidden.
 
-### Example C — A question (pipeline does NOT trigger)
+### Example C: A question (pipeline does NOT trigger)
 
 **You type:** `come funziona la paginazione qui?`
 
 - A question changes no files, so no task is opened and the Stop gate stays quiet;
   Claude answers normally. No plan, no gate, no overhead. The gates key off real
   file changes, not the words in the prompt.
+
+### Example D: A UI change that never announces itself
+
+**You type:** `the empty state on the orders table looks wrong, fix it`
+
+- Nothing here says "design". The router still routes it: "empty state" and
+  "table" are interface vocabulary, so the directive names `frontend-pipeline`
+  alongside the orchestrator. Had the prompt been `fix OrdersTable.tsx` instead,
+  the file extension alone would have done it.
+- Phase 0 sizes the work as a `patch`: no competitor research for an empty state.
+  It inherits `docs/design/`, and if the repo has no design system at all, the
+  minimal brief and token set are established first rather than inventing one-off
+  values the next change would have to live with.
+- The empty state gets real copy, a reason, and an action, because "no orders yet"
+  with a grey box is the framework's default, not a design.
+- At the Stop, the gate reads the changed file list, sees `OrdersTable.tsx`, and
+  refuses a report carrying only the seven code verticals. It names the two it is
+  missing and the file that made them apply. Running
+  `@praxis:accessibility-auditor` and `@praxis:design-consistency-auditor`, fixing
+  what they find, and recording `accessibility=pass,design-consistency=pass` is the
+  only way through.
+
+### Example E: Delivery under a policy that changed last week
+
+**You type:** `ship it`
+
+- The SessionStart audit already stated the resolved policy for this repo, and the
+  `deliver` route restates it, so the turn works from the value in force rather
+  than from a doc that was written when the default was different.
+- Suppose someone turned `auto_merge` on and the CLAUDE.md still says a human
+  merges every PR: `drift.py` reports that line at SessionStart, `/praxis:docs`
+  fixes it, and in the meantime the resolved value wins.
+- The commit and the PR body carry no `Co-Authored-By` trailer and no "generated  <!-- praxis:ack -->
+  with" credit. This is not a matter of remembering: the PreToolUse guard denies
+  the `git commit` and the `gh pr create` outright if one is present.
 
 ---
 
@@ -215,16 +251,20 @@ flowchart TD
 | **Legacy CLAUDE.md** (other tool) | classified `legacy`; bootstrap **merges** and routes through `claudemd-verifier` + `claudemd_check.py` so no valid instruction is lost. |
 | **Model tries to leave a `TODO`/stub** | `scan_placeholders.py` flags it in the diff; completeness-auditor FAILs; Stop gate lists the exact `file:line` and refuses to finish. |
 | **Silently narrowed scope** | completeness-auditor compares delivery vs acceptance criteria and flags anything dropped; report must list it under Out-of-scope. |
-| **Reading `.env` / secrets** | PreToolUse `guard_paths` denies (exit 2) — even under `--dangerously-skip-permissions`; `.env.example` is allowed. |
+| **Reading `.env` / secrets** | PreToolUse `guard_paths` denies (exit 2), even under `--dangerously-skip-permissions`; `.env.example` is allowed. |
 | **Destructive command** (`rm -rf /`, force-push to main, `curl \| bash`) | PreToolUse denies with the reason. |
 | **Secret written into a file** | PostToolUse tripwire warns loudly (can't undo a write, so prevention is at PreToolUse). |
-| **Stop-gate infinite loop risk** | gate prompts **once per signature per session**; the second time the same state is seen it allows — no trap. |
+| **Stop-gate infinite loop risk** | refusals escalate up to `MAX_NUDGES` (3) per change state and `SESSION_NUDGE_CAP` (12) per session, then the gate spends one turn on the disclosure and releases. It also fails open if the counter cannot be persisted, since the caps depend on that write. |
+| **A brand-new file with a TODO** | untracked files are part of the scanned change, so a file that `git diff` cannot see is still checked. | <!-- praxis:ack -->
+| **A CSS-only change** | still UI work: the gate resolves that from the changed file list and requires the accessibility and design-consistency verdicts. |
+| **An em dash you meant to write** | `praxis:ack` on the line, or `ban_em_dash = false` under `[style]` for the whole repo. |
+| **A doc that documents an old command name** | `praxis:ack` on that line; the drift checker skips it, so a migration table does not read as drift. |
 | **Trivial change / no code edited** | gate only fires on a dirty git tree; clean tree or Q&A → no gate. |
 | **You intentionally want to stop early** | `touch .claude/.praxis/skip-gate` (repo) or `PRAXIS_GATE=off` (session). |
 | **A hook script errors** | every hook is fail-open: on exception it exits 0, so the session never breaks because of praxis. |
 | **Not a git repo** | gate and signature logic no-op; guards and bootstrap still work. |
 | **No formatter installed** | PostToolUse formatting skips silently; nothing fails. |
-| **A question, not a task** | The prompt router stays silent on interrogatives, slash commands, and acknowledgements — no routing noise. |
+| **A question, not a task** | The prompt router stays silent on interrogatives, slash commands, and acknowledgements, no routing noise. |
 | **The audit genuinely can't finish** | The gate escalates 3× then releases, having instructed Claude to tell you the change is unaudited and what to check. |
 | **A deferral phrase is legitimate** | Annotate the line `praxis:ack`; the scanner records the acknowledgement in the code and exempts it. |
 | **Windows / no `python3`** | hooks need `python3` on PATH; on Windows adjust the hook commands to `python` (documented in INSTALL). |
@@ -254,6 +294,11 @@ Your stated goals mapped to what implements them:
 | Secrets / destructive safety | `guard_paths.py` (PreToolUse) | **Deterministic block** |
 | Precise structured output | output-style + orchestrator report template | Guided |
 | Audit/fix an entire existing repo | `repo-audit` skill + `repo_scan.py` ledger + `finding-verifier` reverse audit | Guided, **coverage tracked deterministically** |
+| A UI change that never says it is one | `common.is_ui_path` over the changed files + the router's path match | **Deterministic block** (no green report without both UI verdicts) |
+| No em dash in any output | output-style + router directive + `scan_style.py` + `selfcheck.py` | **Deterministic block** (gate), **CI-enforced** for praxis itself |
+| No AI attribution in the history | `git-delivery` skill + `guard_paths.py` publishing check | **Deterministic block** (the command is denied) |
+| Docs that stay true when config changes | `drift.py` + live config in the SessionStart audit + `/praxis:doctor` | **Deterministic detection**, guided fix |
+| A small, coherent command surface | nine commands, modes as arguments (`task spec:`, `audit repo`, `ship release`) | Checked by `selfcheck.py`: a dangling `/praxis:` reference fails CI |
 
 ---
 
@@ -264,17 +309,31 @@ Being honest so you can trust it correctly:
 **Deterministic (the machine guarantees it):**
 - Sensitive-file and destructive-command **blocking** (PreToolUse, holds even
   under `--dangerously-skip-permissions`).
+- **AI attribution blocking**: a `git commit`, `git tag`, `gh pr create`,  <!-- praxis:ack -->
+  `gh release create` or `gh issue` command carrying a co-author trailer or a
+  "generated with" credit is denied, so the credit never reaches the history.
 - The Stop gate **will not let a turn end** while the git tree is dirty and no
   signed green report matches the current state.
-- The placeholder/incompleteness **scan** of the diff is exact grep — it will find
-  TODO/FIXME/NotImplemented/stub/debug markers regardless of the model.
+- The placeholder/incompleteness **scan** is exact matching over the unstaged
+  diff, the staged diff, and every untracked file: it finds
+  TODO/FIXME/NotImplemented/stub/debug markers and deferral prose regardless of  <!-- praxis:ack -->
+  the model, including in files `git diff` cannot see.
+- The house-style **scan** for em dashes and AI credits, over the same change.
+- **Test evidence**: `report.py` runs the project's test command itself and
+  records the real exit code. A caller-supplied exit code is ignored, and a
+  substituted command is recorded as substituted and does not satisfy the gate.
+- **UI verticals**: whether a change touches user-facing surface is resolved from
+  the changed file list, not from the request's wording, and a UI change cannot
+  produce a green report without both UI verdicts.
+- **Drift detection**: documents contradicting the live configuration, and
+  references that no longer resolve, are reported without anyone remembering.
 - Auto-format on save; secret tripwire; session classification.
 
 **Guided (the model performs it; praxis structures and prompts it, and the gate
 refuses to pass until the green report exists):**
 - Restructuring, investigation, planning, code-craft, and the *quality of* the
   vertical audits. These are LLM work. praxis makes them the default and gates
-  the finish on a green report — but it relies on the model actually running the
+  the finish on a green report, but it relies on the model actually running the
   rubric to earn that report. The deterministic backstops above are what catch the
   worst failures if it doesn't.
 
@@ -284,16 +343,19 @@ refuses to pass until the green report exists):**
    "non-trivial" can't be judged reliably in a pre-edit hook without false
    blocks. If you want a hard stop, that would be a `PreToolUse` rule you accept
    may over-fire.
-2. **The green report is trust-based.** The Stop gate checks the report exists and
-   matches the signature; it can't verify the audit reasoning was genuine. A
-   cooperative model earns it honestly; the deterministic scans are the safety
-   net.
-3. **Intent is not classified from the prompt.** praxis no longer guesses
-   "is this an implementation request" from keywords. Instead the workflow
-   directive is always present and enforcement is change-based, so behaviour is
-   deterministic regardless of phrasing. The trade-off: the always-on directive is
-   in context every session (a small, fixed context cost) rather than injected
-   selectively.
+2. **The audit's reasoning is trust-based, its evidence is not.** The gate can
+   verify that the report exists, matches the signature, carries a verdict for
+   every required vertical, and is backed by a test run praxis executed itself.
+   It cannot verify that an auditor's reasoning was genuine. A cooperative model
+   earns the report honestly; the deterministic scans are the safety net for when
+   it does not.
+3. **Prompt classification is heuristic, and errs toward routing.** The router
+   reads the request's shape (change verbs, review wording, repo-wide wording,
+   delivery wording, interface vocabulary, file extensions) and can be wrong. It
+   is built to be wrong in the cheap direction: a false positive costs a few lines
+   of context, a false negative costs the whole pipeline. Enforcement does not
+   depend on it, because the gate keys off the files that actually changed, so a
+   missed route still cannot produce an unaudited change.
 4. **Auditors are advisory + read-only.** They find issues; the main agent fixes
    them. Fix quality depends on the model.
 5. **Environment assumptions:** `python3` on PATH; formatters only run if
@@ -309,13 +371,21 @@ Logic is validated in isolation; the real proof is a 5-minute smoke test inside
 Claude Code:
 
 1. Install locally: `/plugin marketplace add ./` → `/plugin install praxis@ohswedd-praxis`.
-2. `/praxis:doctor` → confirms version + health.
+2. `/praxis:doctor` → confirms version, health, live settings, and any drift.
 3. Open a repo with a `.env` and ask Claude to read it → guard should deny.
 4. Ask `crea una funzione X` → confirm the pipeline directive appears and a plan
    is proposed before edits.
-5. Have it leave a `# TODO` deliberately, then stop → the Stop gate should block
-   and list the marker.
-6. Run `/praxis:audit` → confirm the verdict table + report.
-7. `touch .claude/.praxis/skip-gate` → confirm the gate now allows stopping.
+5. Have it leave a `# TODO` deliberately, then stop → the Stop gate should block  <!-- praxis:ack -->
+   and list the marker with its file and line.
+6. Ask it to create a **new, unstaged** file containing a `TODO` → the gate should  <!-- praxis:ack -->
+   still list it, because untracked files are part of the scanned change.
+7. Ask it to edit any `.css` or `.tsx` file, then stop → the gate should demand the
+   accessibility and design-consistency verdicts, naming the file that made them
+   apply.
+8. Ask it to commit with a `Co-Authored-By: Claude` trailer → the guard should deny  <!-- praxis:ack -->
+   the command outright.
+9. Run `/praxis:audit` → confirm the verdict table + report.
+10. `/praxis:config gate off` → confirm the gate now allows stopping, and
+    `/praxis:config` reports the source of every value.
 
-If all seven behave as described above, the harness is wired correctly.
+If all ten behave as described above, the harness is wired correctly.

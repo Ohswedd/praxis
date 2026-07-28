@@ -22,6 +22,6 @@ references, frontmatter, compilation). Both run in CI on every push, and
 - Negative: contributors must keep tests green (documented in CONTRIBUTING.md).
 
 ## Alternatives considered
-Relying on manual verification (rejected — not repeatable) and adding pytest
-(rejected — would introduce a third-party dependency, against the stdlib-only
+Relying on manual verification (rejected: not repeatable) and adding pytest
+(rejected: would introduce a third-party dependency, against the stdlib-only
 rule).

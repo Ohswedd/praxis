@@ -19,7 +19,7 @@ your machine during sessions. It is designed to be safe by construction.
   `curl | sh`, piping env/secrets to the network, writing to `authorized_keys` or
   `/etc`). These denials hold even under `--dangerously-skip-permissions` and in
   auto mode, because a PreToolUse deny precedes the permission check.
-- **Stdlib only.** Scripts use the Python standard library — no third-party
+- **Stdlib only.** Scripts use the Python standard library, no third-party
   packages are installed or imported, reducing supply-chain surface.
 - **Local state only.** Praxis writes to `.claude/.praxis/` in your repo (git-
   ignored) and never phones home.
@@ -42,5 +42,5 @@ Please do not file public issues for security reports.
 
 Praxis collects and transmits nothing; all processing is local. See
 [`PRIVACY.md`](PRIVACY.md) for the full data-flow statement, including the
-one place information leaves your machine — Claude Code's own conversation
+one place information leaves your machine: Claude Code's own conversation
 channel to Anthropic.

@@ -3,13 +3,17 @@
 praxis placeholder / incompleteness scanner (utility).
 
 Deterministic backstop for the rule "nothing left unfinished, no placeholders,
-no silently-narrowed scope". Scans either the working-tree diff (default) or
-given files for markers that signal unfinished or stubbed work.
+no silently-narrowed scope". Scans either the current change (default) or given
+files for markers that signal unfinished or stubbed work.
+
+"The current change" means the unstaged diff, the staged diff, *and* every
+untracked file: a file created during the work is untracked until it is staged,
+so a scanner reading only `git diff` never sees the new code at all.
 
 Two marker classes:
   * literal markers (TODO, NotImplementedError, stub ellipsis, ...) praxis:ack
-    — matched everywhere;
-  * deferral prose — comments that admit the code is a stand-in without using a
+    matched everywhere;
+  * deferral prose: comments that admit the code is a stand-in without using a
     literal marker ("temporary", "you can extend this", "omitted for brevity").
     This is the usual shape of unfinished work in generated code, so it carries
     the same weight. Matched only in comments, and never in prose files, where
@@ -17,7 +21,7 @@ Two marker classes:
     carrying `praxis:ack` is exempt.
 
 Usage:
-    python3 scan_placeholders.py                # scan `git diff` added lines
+    python3 scan_placeholders.py                # scan the current change
     python3 scan_placeholders.py --all          # scan all tracked files
     python3 scan_placeholders.py <file> [...]   # scan specific files
     python3 scan_placeholders.py --json         # machine-readable output
@@ -41,35 +45,49 @@ import common  # noqa: E402
 
 
 # Deferred-work *language*: prose that admits the code is a stand-in, without
-# using an explicit marker. This is how unfinished work usually reaches a diff — an
-# apologetic comment rather than an explicit flag — so it is scanned with the
+# using an explicit marker. This is how unfinished work usually reaches a diff: an
+# apologetic comment rather than an explicit flag, so it is scanned with the
 # same weight as an explicit one.
 DEFERRAL_MARKERS = [
     ("deferred: temporary stand-in",
-     r"(?i)\b(for\s+now|for\s+the\s+moment|temporar(y|ily)|placeholder\s+(for|until)|"
-     r"until\s+we\s+(have|add|implement))\b"),
+     r"(?i)\b(for\s+now|for\s+the\s+moment|for\s+the\s+time\s+being|"
+     r"temporar(y|ily)|provisional|interim\s+(solution|fix|version)|"
+     r"placeholder\s+(for|until|value)|stop[\s-]?gap|"
+     r"until\s+(we|it|this|they)\s+(have|has|add|adds|implement|implements|support))\b"),
     ("deferred: production-grade version postponed",
-     r"(?i)\b(in\s+(a|the)\s+real\s+(implementation|app|system|world|scenario)|"
+     r"(?i)\b(in\s+(a|the)\s+real\s+(implementation|app|system|world|scenario|deployment)|"
      r"in\s+production(\s+(you|we|this))?\s+(would|should|you'd|we'd)|"
-     r"real\s+implementation\s+would|proper\s+implementation\s+would)\b"),
+     r"(real|proper|production|full|complete|robust)\s+"
+     r"(implementation|version|solution)\s+would|"
+     r"not\s+production[\s-]?(ready|grade))\b"),
     ("deferred: self-declared prototype",
-     r"(?i)\b(simplified\s+(version|for|implementation)|"
-     r"(basic|naive|minimal|rudimentary|crude)\s+(implementation|version|approach)\s+"
-     r"(for|that|which|—|-)|"
-     r"(this\s+is\s+)?(just|only)\s+an?\s+(mvp|prototype|proof[\s-]of[\s-]concept|poc|sketch)|"
-     r"good\s+enough\s+for\s+now)\b"),
+     r"(?i)\b(simplified\s+(version|for|implementation|here)|"
+     r"(basic|naive|minimal|rudimentary|crude|toy|dummy|fake|mock)\s+"
+     r"(implementation|version|approach|handler|client|response)\b|"
+     r"(this\s+is\s+)?(just|only)\s+an?\s+(mvp|prototype|proof[\s-]of[\s-]concept|poc|sketch|"
+     r"example|demo|skeleton)|"
+     r"good\s+enough\s+for\s+now|first\s+(pass|cut)\s+(only|at)|"
+     r"(keeping|kept|keep)\s+(it|this)\s+simple\s+for)\b"),
     ("deferred: hand-off to the reader",
-     r"(?i)\b(left\s+as\s+an\s+exercise|you\s+(can|could|may|might|should|would)\s+"
-     r"(extend|add|implement|expand|improve|replace|customi[sz]e)|"
-     r"(feel\s+free\s+to|consider)\s+(extending|adding|implementing)|"
-     r"extend\s+this\s+as\s+needed|adapt\s+(this|as)\s+(to|needed))\b"),
+     r"(?i)\b(left\s+as\s+an\s+exercise|you\s+(can|could|may|might|should|would|'ll)\s+"
+     r"(want\s+to\s+)?(extend|add|implement|expand|improve|replace|customi[sz]e|swap|wire)|"
+     r"(feel\s+free\s+to|consider)\s+(extending|adding|implementing|replacing)|"
+     r"extend\s+this\s+as\s+needed|adapt\s+(this|as)\s+(to|needed)|"
+     r"replace\s+(this|with)\s+(with\s+)?(your|a\s+real|an?\s+actual))\b"),
     ("deferred: acknowledged gap",
-     r"(?i)\b(not\s+(yet\s+)?(implemented|handled|supported|covered)|"
-     r"doesn'?t\s+(yet\s+)?(handle|support|cover)|"
-     r"(no|without)\s+error\s+handling|"
+     r"(?i)\b(not\s+(yet\s+)?(implemented|handled|supported|covered|wired|hooked)|"
+     r"doesn'?t\s+(yet\s+)?(handle|support|cover|validate)|"
+     r"(no|without|missing)\s+(error\s+handling|validation|retry|auth)|"
      r"skipping\s+(validation|error\s+handling|the)|"
-     r"(omitted|elided|stubbed)\s+for\s+brevity|"
-     r"a\s+full\s+implementation\s+would)\b"),
+     r"(omitted|elided|stubbed|abbreviated|truncated)\s+for\s+brevity|"
+     r"a\s+full\s+implementation\s+would|"
+     r"(out\s+of\s+scope|beyond\s+the\s+scope)\s+(for|of)\s+(this|now)|"
+     r"(future|later)\s+(work|iteration|pr|commit)\s+(will|can|should)|"
+     # Both the contracted and the spelled-out subject form, which defer
+     # identically. The alternation is written out rather than made optional so
+     # that the word "well" cannot open a false match.
+     r"(we|i)\s?(?:'ll|will)\s+(add|handle|implement|fix)\s+(this|that|it)\s+"
+     r"(later|next))\b"),
 ]
 
 # (label, regex). Kept high-signal to limit false positives.
@@ -102,36 +120,10 @@ _COMMENT_RE = re.compile(r"^\s*(#|//|/\*|\*|<!--|--|;|\"\"\"|''')|(?<=\s)(#|//)\
 # postponed implementation. Literal markers still apply to them.
 _PROSE_SUFFIXES = {".md", ".mdx", ".rst", ".txt", ".adoc"}
 
-# Escape hatch for a deferral phrase that is genuinely correct in context
-# (e.g. a comment explaining a documented, accepted limitation).
-_ACK_RE = re.compile(r"praxis:ack\b")
-
-
-def added_lines_from_diff(root: Path) -> list:
-    """Return (file, lineno, text) for lines ADDED in the working-tree diff."""
-    out = common._run(["git", "diff", "--unified=0", "--no-color"], cwd=root, timeout=20)
-    if not out:
-        out = common._run(["git", "diff", "--staged", "--unified=0", "--no-color"],
-                          cwd=root, timeout=20)
-    results = []
-    cur_file = None
-    new_ln = 0
-    for line in out.splitlines():
-        if line.startswith("+++ b/"):
-            cur_file = line[6:].strip()
-        elif line.startswith("@@"):
-            m = re.search(r"\+(\d+)", line)
-            new_ln = int(m.group(1)) if m else 0
-        elif line.startswith("+") and not line.startswith("+++"):
-            results.append((cur_file, new_ln, line[1:]))
-            new_ln += 1
-    return results
-
-
 def scan_text_lines(pairs) -> list:
     findings = []
     for fname, lineno, text in pairs:
-        if _ACK_RE.search(text):
+        if common.is_acked(text):
             continue
         for label, rx in _COMPILED:
             if rx.search(text):
@@ -175,7 +167,7 @@ def main() -> int:
     elif args:
         findings = scan_files(args)
     else:
-        findings = scan_text_lines(added_lines_from_diff(root))
+        findings = scan_text_lines(common.added_line_pairs(root))
 
     if as_json:
         print(json.dumps({"count": len(findings), "findings": findings}, indent=2))

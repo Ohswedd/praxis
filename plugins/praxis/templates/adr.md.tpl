@@ -10,7 +10,7 @@
 <The decision, stated in active voice: "We will ...".>
 
 ## Consequences
-<Resulting trade-offs — what becomes easier, what becomes harder.>
+<Resulting trade-offs: what becomes easier, what becomes harder.>
 
 ## Alternatives considered
 <Options weighed and why they were not chosen.>

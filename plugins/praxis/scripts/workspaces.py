@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Praxis workspace lister — surfaces monorepo packages so changes are tested and
+Praxis workspace lister: surfaces monorepo packages so changes are tested and
 audited at the right package, not just the repo root.
 
 Usage:

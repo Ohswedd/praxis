@@ -21,7 +21,7 @@ layers that fire automatically.
 │    Reasoning workflows, auto-invoked when their description matches.│
 ├─────────────────────────────────────────────────────────────────────┤
 │ 3. SUBAGENTS  (read-only, Opus: 9 vertical auditors + verifiers)    │
-│    Deep, verbose analysis in isolated context — one concern each.   │
+│    Deep, verbose analysis in isolated context, one concern each.   │
 ├─────────────────────────────────────────────────────────────────────┤
 │ 4. HOOKS  (SessionStart, UserPromptSubmit, PreToolUse,             │
 │           PostToolUse, Stop)                                        │
@@ -37,8 +37,8 @@ Why four layers rather than one big prompt:
 - The **output style** guarantees the mindset without spending a user turn.
 - **Skills** carry multi-step reasoning and only load when relevant (progressive
   disclosure keeps context lean).
-- **Subagents** keep verbose audit reasoning *out* of the main conversation — each
-  has its own context window — and are read-only so an audit can never mutate code.
+- **Subagents** keep verbose audit reasoning *out* of the main conversation, each
+  has its own context window, and are read-only so an audit can never mutate code.
 - **Hooks** are the deterministic backbone: they run whether or not the model
   "remembers" to, and a `PreToolUse` deny even holds under
   `--dangerously-skip-permissions`.
@@ -46,7 +46,7 @@ Why four layers rather than one big prompt:
 ## From prompt to production: the pipeline
 
 A terse prompt is turned into a complete change by the `task-orchestrator`. There
-is **no prompt-keyword classifier** deciding whether to engage — the workflow is
+is **no prompt-keyword classifier** deciding whether to engage: the workflow is
 carried by the always-injected SessionStart directive (and the output style), and
 enforced by change-based gates, so it applies regardless of phrasing:
 
@@ -71,7 +71,7 @@ user: "fix the pagination bug" + chosen effort
 ```
 
 This is how the session self-drives: the **task-completion loop** in the Stop gate
-(state in `task.json`) keeps Claude working until it marks the task done — the
+(state in `task.json`) keeps Claude working until it marks the task done: the
 built-in, deterministic replacement for manually running `/goal`. At a genuine
 decision point Claude marks the task `waiting_for_user` and the gate lets it stop
 to ask.
@@ -79,13 +79,57 @@ to ask.
 ## Completeness enforcement
 
 "No placeholders, nothing silently out of scope" is enforced at three levels:
-- **Deterministic:** `scan_placeholders.py` greps the diff for TODO/FIXME/stub/
-  NotImplemented/debug markers (language-agnostic) and feeds the Stop gate's block
-  message and the completeness auditor.
+- **Deterministic:** `scan_placeholders.py` scans the change for TODO/FIXME/stub/  <!-- praxis:ack: the rule has to name the markers it looks for -->
+  NotImplemented/debug markers and for deferral prose, language-agnostically, and  <!-- praxis:ack -->
+  feeds the Stop gate's block message and the completeness auditor. "The change"
+  is the union of the unstaged diff, the staged diff, and every untracked file:
+  a file created during the work is untracked until it is staged, so a scanner
+  reading only `git diff` never sees the new code at all.
 - **Semantic:** `@praxis:completeness-auditor` judges each marker, checks every
   acceptance criterion, and flags any scope quietly dropped.
 - **Reported:** anything genuinely out of scope must appear in the report's
-  "Out of scope / follow-ups" — never hidden in a comment.
+  "Out of scope / follow-ups", never hidden in a comment. That section is for
+  what the user excluded, not for work that was started and abandoned.
+
+## House style, enforced rather than requested
+
+Two rules had been stated in the doctrine for several versions and were still
+broken regularly, because a prose instruction is easy to agree with and easy to
+forget at the moment it applies. Both are now checked by code:
+
+- **No em dashes.** As a sentence break the em dash is the most recognisable tell
+  of unedited generated prose, and a colon, a comma, parentheses, or a full stop
+  always says the same thing more precisely. `scan_style.py` scans the change and
+  the Stop gate refuses the turn. The spaced en dash goes with it; the unspaced en
+  dash of a numeric range is correct typography and is left alone.
+- **No AI attribution.** A `Co-Authored-By: Claude` trailer or a "generated with"  <!-- praxis:ack: the rule has to name the shape it refuses -->
+  credit hands the project's authorship to the tool that typed it. `guard_paths.py`
+  blocks the `git commit`, `git tag`, `gh pr create`, `gh release create` or
+  `gh issue` command outright, because a prose reminder fails exactly once and the
+  credit is then in the history for good.
+
+`praxis:ack` on a line exempts a genuine case, such as a fixture that must contain
+the character. `[style] ban_em_dash` and `[style] ban_ai_attribution` turn each
+off per repo. `selfcheck.py` holds praxis's own content to both rules, so the
+plugin cannot ship what it refuses elsewhere.
+
+## Documentation drift
+
+Documentation rots in one predictable way: it states as a constant something that
+is really configuration or code, and then the configuration or the code moves.
+The canonical case is a document that says praxis opens a pull request and leaves
+the merge to a human, written while `auto_merge` was off and still read as
+authoritative long after someone turned it on.
+
+`drift.py` closes that loop mechanically. It compares what a repo's instruction
+documents (CLAUDE.md, README, `/docs`) assert against the configuration actually
+in force, and checks that every documented command, slash command, and link still
+resolves. A sentence that qualifies itself ("with auto-merge off, praxis stops at
+the PR") is not drift; only an unqualified claim about the state currently in
+force is, which keeps the report small enough to act on. The SessionStart audit
+prints the resolved values every session and surfaces any drift, so no turn has
+to trust a document at all; `/praxis:doctor` reports the same on demand, and
+`/praxis:docs` fixes what it finds.
 
 ## Living knowledge (/docs, CHANGELOG, ADRs)
 
@@ -102,14 +146,14 @@ Praxis keeps a project's knowledge current with every change, enforced as part o
 
 See `docs/KNOWLEDGE.md` for the full model.
 
-## Repo-wide scan (`/praxis:scan`)
+## Repo-wide scan (`/praxis:audit repo`)
 
 The change-audit machinery generalises to whole repositories via the
 `repo-audit` skill: `repo_scan.py` builds a deterministic shard ledger
 (inventory → shards → per-shard × dimension tracking → finding lifecycle), the
 seven vertical auditors run over every shard, and the `finding-verifier`
 subagent reverse-audits each finding before anything is fixed. Coverage claims
-come from recorded state — an unaudited shard makes the final report print
+come from recorded state: an unaudited shard makes the final report print
 INCOMPLETE. See `docs/SCAN.md`.
 
 ## Front-end pipeline (`/praxis:frontend`)
@@ -120,16 +164,27 @@ business research (client call → goals → audience → competitors → positi
 the task-orchestrator → optimization → ship, proportional to task size (full /
 feature / patch routing). The design artifacts (`docs/design/BRIEF.md`,
 `WIREFRAMES.md`, `DESIGN-SYSTEM.md`) live in the target repo under the
-docs-living contract, and UI-touching changes add two vertical auditors —
+docs-living contract, and UI-touching changes add two vertical auditors:
 `accessibility-auditor` (WCAG 2.2 AA) and `design-consistency-auditor`
-(tokens, scales, component reuse, states, responsiveness, story fidelity) —
+(tokens, scales, component reuse, states, responsiveness, story fidelity):
 to the rubric and the recorded report. See `docs/FRONTEND.md`.
+
+**The trigger is the surface, not the wording.** "Fix the checkout bug" and
+"update `Header.tsx`" are front-end work, and relying on the request to announce
+itself as design work is how UI changes ended up skipping the pipeline. Two
+mechanisms decide it instead of the phrasing: the prompt router matches interface
+vocabulary *and* file extensions in the prompt, and the gate resolves the question
+from the changed file list (`common.is_ui_path`: markup, styles, component
+suffixes, token and theme configs, `docs/design/`). A change touching any of them
+is not green without `accessibility=pass` and `design-consistency=pass`, recorded
+by `report.py`, which applies the same rule at record time so the failure is
+reported where it can still be acted on cheaply.
 
 ## Vertical vs horizontal
 
 - **Vertical analysis** = one subagent per concern, deep and isolated:
   `adversarial`, `regression`, `duplication`, `performance`, `edge-case`,
-  `doc-reference`, `completeness` — plus `accessibility` and
+  `doc-reference`, `completeness`, plus `accessibility` and
   `design-consistency` when the change touches UI surface. Each returns
   `PASS / PASS WITH NOTES / FAIL`.
 - **Horizontal analysis** = the `quality-rubric` skill's cross-cutting pass over
@@ -166,7 +221,7 @@ stepped past, so each successive refusal names something more concrete: first th
 workflow, then the specific evidence that is missing (which vertical failed, why
 the existing report doesn't count), then a direct instruction to execute rather
 than restate the plan. Escalation is keyed on the session's refusal total, not on
-the change signature — Claude normally edits between two Stops, which re-keys the
+the change signature: Claude normally edits between two Stops, which re-keys the
 signature, so a per-change counter would restart at 1 every turn and never
 sharpen.
 
@@ -183,10 +238,17 @@ delivery, so the gate names each one with its file:line and requires it to be
 either implemented or removed and reported as out of scope. `scan_placeholders.py`
 supplies that signal; a line carrying `praxis:ack` is exempt.
 
+House-style violations lead the message alongside them, on the same reasoning:
+an em dash or an AI credit that reached the diff is a rule the doctrine stated
+and the writing ignored, and naming the file:line is what turns it into a fix.
+The gate also names any UI vertical the change owes but the report does not
+carry, with the changed files that made it a UI change, so the requirement never
+looks arbitrary.
+
 Loop safety, in layers:
 
-- Two caps bound the escalation — `MAX_NUDGES` (3) per change signature and
-  `SESSION_NUDGE_CAP` (12) per session — so a change set that keeps mutating
+- Two caps bound the escalation: `MAX_NUDGES` (3) per change signature and
+  `SESSION_NUDGE_CAP` (12) per session, so a change set that keeps mutating
   cannot loop indefinitely.
 - Each session owns its own entry in `gate_notified.json`. A single shared record
   would let two Claude windows on one repo wipe each other's counters every turn,
@@ -196,7 +258,7 @@ Loop safety, in layers:
   the block would trap the session forever.
 - A tree that is byte-for-byte as the session found it is never gated. A repo can
   be dirty from work that predates the session, and demanding an audit of someone
-  else's diff — while attributing their unfinished markers to "this change" — is
+  else's diff, while attributing their unfinished markers to "this change", is
   worse than not gating at all.
 - The `skip-gate` file and `PRAXIS_GATE=off` escapes always apply.
 
@@ -204,7 +266,7 @@ Loop safety, in layers:
 
 `prompt_router.py` runs on every `UserPromptSubmit`. It closes praxis's oldest
 gap: the pipeline used to be announced once at `SessionStart`, after which skill
-selection depended on the model spontaneously matching a skill description — which
+selection depended on the model spontaneously matching a skill description, which
 works for `/praxis:task` but degrades for a bare "add rate limiting" many turns
 into a session, when the SessionStart block is far behind in the context.
 
@@ -217,11 +279,22 @@ injects a short directive naming the exact skills that request requires:
 | `review` | review/audit/verify wording | `quality-rubric` with the auditors dispatched as subagents |
 | `scan` | repo-wide wording | `repo-audit` with adversarial verification and honest coverage |
 | `deliver` | commit/push/PR/ship | `git-delivery` |
-| `none` | an information question, a slash command, an acknowledgement | nothing — silence beats noise |
+| `none` | an information question, a slash command, an acknowledgement | nothing: silence beats noise |
 
-Two modifiers stack on any route: UI wording adds the `frontend-pipeline` skill
-(and its `reference/craft.md`) plus the two UI verticals; documentation wording
-adds `docs-living`. Auto-pilot appends its decide-don't-ask directive.
+Two modifiers stack on any route: UI wording **or a UI file path in the prompt**
+adds the `frontend-pipeline` skill (and its `reference/craft.md`) plus the two UI
+verticals; documentation wording adds `docs-living`. Auto-pilot appends its
+decide-don't-ask directive. Every routed prompt also carries the house-style line,
+because the two rules it names apply to the reply as much as to the files.
+
+The UI vocabulary is deliberately broad and the path match deliberately literal:
+a false positive costs one skill read, while a false negative costs a page built
+with no brief, no story, and no design system. "Update `Header.tsx`" routes to the
+front-end pipeline on the file extension alone.
+
+The `deliver` route resolves the **live** merge policy rather than describing it,
+so the directive says what this repo will actually do instead of restating a
+default the repo may have overridden.
 
 An opening interrogative ("what…", "how…", "why…") wins over any verb in the
 sentence, so "how do I add caching?" is answered rather than implemented. The
@@ -240,12 +313,34 @@ verdict into context:
 | `partial` | some `.claude/` config | doctor reconcile |
 | `managed` | praxis marker present | gates active, patch drift only |
 
+Alongside the verdict it injects the repo's **live configuration**: the gate, the
+test-evidence and UI-vertical requirements, auto-pilot, auto-merge with the PR
+base branch, the house-style switches, and the detected test command. Each is
+resolved at that moment from environment, toggle file, and `.praxis.toml`, so a
+session never has to infer a policy from a document that may have gone stale, and
+any drift found in the repo's own docs is listed right below it.
+
+## Settings, resolved in one place
+
+`config.py` reads and toggles the three switches a user actually flips
+(auto-pilot, auto-merge, the Stop gate) and prints every resolved value **with
+the source it came from**: environment variable, then repo toggle file, then
+`.praxis.toml`, then the default. Naming the source matters more than the value:
+a user who clears a toggle that an environment variable still forces would
+otherwise believe the policy changed, and every later turn would act on the old
+one. Asking for a state that a higher-precedence source overrides prints a warning
+and exits non-zero rather than reporting success.
+
+The gate's toggle is inverted (its file is `skip-gate`, so the file's presence
+means off) and that inversion is encoded once in the switch table rather than
+special-cased at each call site.
+
 ## Language-agnostic by construction
 
 praxis ships **workflow and rubric**, not language rules. Skills and agents are
 written as *reasoning* ("derive the build system from what's present", "check
 against the authoritative docs for the version in use"), so the same
-`regression-sentinel` reasons about Rust, Elixir, or COBOL — the model supplies
+`regression-sentinel` reasons about Rust, Elixir, or COBOL: the model supplies
 the language specifics at runtime. The only place concrete tools appear is
 `post_edit.py`'s formatter table, and that degrades silently when a tool is
 absent.
@@ -257,22 +352,37 @@ absent.
 plugins/praxis/
   .claude-plugin/plugin.json         plugin manifest
   output-styles/praxis-quality.md     always-on doctrine
-  skills/*/SKILL.md                  task-orchestrator, prompt-architect, code-craft,
-                                     frontend-pipeline, bootstrap, quality-rubric,
-                                     claudemd-living, capability-discovery
+  commands/*.md                      nine entry points (task, frontend, audit, docs,
+                                     ship, bootstrap, doctor, config, discover)
+  skills/*/SKILL.md                  twelve reasoning workflows: task-orchestrator,
+                                     prompt-architect, best-practices, code-craft,
+                                     quality-rubric, docs-living, claudemd-living,
+                                     frontend-pipeline, repo-audit, git-delivery,
+                                     bootstrap, capability-discovery
   agents/*.md                        twelve read-only subagents (9 verticals +
                                      finding-verifier + repo-cartographer +
                                      claudemd-verifier)
   hooks/hooks.json                   lifecycle wiring (command hooks)
-  scripts/*.py                       hook implementations + utilities (stdlib only)
-  scripts/lib/common.py              shared, defensive helpers
+  scripts/
+    session_audit.py                 SessionStart: state, live config, drift
+    prompt_router.py                 UserPromptSubmit: per-prompt skill routing
+    guard_paths.py                   PreToolUse: secrets, destructive commands,
+                                     AI attribution in the project's record
+    post_edit.py                     PostToolUse: format + secret tripwire
+    quality_gate.py                  Stop: task loop and per-change gate
+    scan_placeholders.py             unfinished work in the whole change
+    scan_style.py                    em dashes and AI credits in the whole change
+    drift.py                         docs versus live config, and stale references
+    report.py  config.py  doctor.py  selfcheck.py  repo_scan.py
+    task_state.py  changelog.py  adr.py  workspaces.py  claudemd_check.py
+    lib/common.py                    shared, defensive helpers
   templates/*                        CLAUDE.md, settings, MCP starting points
 ```
 
 ## Swapping in native LLM hooks (optional)
 
 praxis drives its LLM review through skills + subagents and enforces it with a
-deterministic `command` Stop hook — a design that only uses documented,
+deterministic `command` Stop hook: a design that only uses documented,
 universally-available hook mechanics. If your Claude Code version exposes `prompt`
 or `agent` hook handler types, you can wire an LLM verdict *directly* into the
 Stop event instead of via the marker file. That is a drop-in change to

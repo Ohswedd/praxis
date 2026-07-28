@@ -2,7 +2,7 @@
 """
 Praxis changelog maintainer (operates on the *target project's* CHANGELOG.md).
 
-Keeps a Keep-a-Changelog file current so the project's history is never lost —
+Keeps a Keep-a-Changelog file current so the project's history is never lost:
 every change is recorded under [Unreleased] as it happens, preserving knowledge
 without regression. Change types map to Conventional Commits
 (feat→Added, fix→Fixed, etc.).

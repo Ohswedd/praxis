@@ -1,7 +1,7 @@
 # Best-Practices Catalog
 
 Reference for the `best-practices` skill. Apply the **minimal relevant set** for
-the change — matched to existing repo conventions. Do not apply everything; KISS,
+the change: matched to existing repo conventions. Do not apply everything; KISS,
 YAGNI and "avoid speculative generality" govern this catalog too.
 
 Each entry: the concept, and *when to reach for it*.
@@ -9,38 +9,38 @@ Each entry: the concept, and *when to reach for it*.
 ---
 
 ## 1. Design principles
-- **SOLID** — SRP, OCP, LSP, ISP, DIP. Reach for when structuring classes/modules;
+- **SOLID**: SRP, OCP, LSP, ISP, DIP. Reach for when structuring classes/modules;
   the backbone of maintainable OOP.
-- **DRY** — remove duplicated knowledge (not just duplicated text). When you see
+- **DRY**: remove duplicated knowledge (not just duplicated text). When you see
   the same decision expressed twice.
-- **KISS** — the simplest thing that works. Always; it caps the others.
-- **YAGNI** — don't build for imagined future needs. When tempted to generalise.
-- **POLA / Principle of Least Astonishment** — behaviour should not surprise.
+- **KISS**: the simplest thing that works. Always; it caps the others.
+- **YAGNI**: don't build for imagined future needs. When tempted to generalise.
+- **POLA / Principle of Least Astonishment**: behaviour should not surprise.
   Naming, API shape, defaults.
-- **Principle of Least Privilege** — grant the minimum access. Security-sensitive
+- **Principle of Least Privilege**: grant the minimum access. Security-sensitive
   code, tokens, DB users.
 - **Separation of Concerns**, **High Cohesion / Low Coupling**, **Information
-  Hiding** — module boundaries and dependencies.
-- **Law of Demeter** — talk to immediate collaborators only. Reduces coupling.
-- **Composition over Inheritance** — prefer has-a to is-a when reuse is the goal.
-- **Convention over Configuration** — sensible defaults over ceremony.
-- **Fail Fast**, **Defensive Programming**, **Design by Contract** — validate
+  Hiding**: module boundaries and dependencies.
+- **Law of Demeter**: talk to immediate collaborators only. Reduces coupling.
+- **Composition over Inheritance**: prefer has-a to is-a when reuse is the goal.
+- **Convention over Configuration**: sensible defaults over ceremony.
+- **Fail Fast**, **Defensive Programming**, **Design by Contract**: validate
   inputs/invariants early at trust boundaries.
-- **CQS / CQRS** — separate reads from writes; CQRS only when the complexity is
+- **CQS / CQRS**: separate reads from writes; CQRS only when the complexity is
   justified (not by default).
-- **Don't Make Me Think** — obvious interfaces and code.
+- **Don't Make Me Think**: obvious interfaces and code.
 
 ## 2. Software architecture
-- **Layered / Clean / Hexagonal (Ports & Adapters) / Onion** — isolate domain
+- **Layered / Clean / Hexagonal (Ports & Adapters) / Onion**: isolate domain
   from I/O. Reach for when the app has real business logic worth protecting.
-- **Modular Monolith** — default for most systems; get boundaries right before
+- **Modular Monolith**: default for most systems; get boundaries right before
   considering microservices.
-- **Microservices** — only when org/scale/deploy independence justifies the
+- **Microservices**: only when org/scale/deploy independence justifies the
   distributed-systems cost.
-- **Event-Driven Architecture, SOA, Serverless, Client-Server, P2P** — pick per
+- **Event-Driven Architecture, SOA, Serverless, Client-Server, P2P**: pick per
   coupling/scaling needs.
-- **MVC / MVP / MVVM, Flux/Redux** — UI structure.
-- **BFF, API Gateway** — when multiple clients need tailored aggregation.
+- **MVC / MVP / MVVM, Flux/Redux**: UI structure.
+- **BFF, API Gateway**: when multiple clients need tailored aggregation.
 
 ## 3. OOP & GoF patterns
 - Core: Encapsulation, Abstraction, Inheritance, Polymorphism, Composition,
@@ -49,7 +49,7 @@ Each entry: the concept, and *when to reach for it*.
 - **Structural:** Adapter, Facade, Decorator, Proxy, Bridge, Composite, Flyweight.
 - **Behavioural:** Strategy, Observer, Command, State, Chain of Responsibility,
   Mediator, Template Method, Visitor, Iterator, Memento, Interpreter.
-- Reach for a pattern to *name a solution the problem already has* — never to
+- Reach for a pattern to *name a solution the problem already has*, never to
   decorate simple code.
 
 ## 4. Domain-Driven Design
@@ -59,20 +59,20 @@ Context Mapping, Shared Kernel. Reach for when the domain is complex enough that
 the model is the hard part; overkill for CRUD utilities.
 
 ## 5. Database
-- **Normal Forms (1NF→BCNF, 4NF/5NF)** — normalise to remove anomalies; denormalise
+- **Normal Forms (1NF→BCNF, 4NF/5NF)**: normalise to remove anomalies; denormalise
   deliberately for read performance.
-- **CAP / PACELC** — state the trade-off explicitly for distributed data.
+- **CAP / PACELC**: state the trade-off explicitly for distributed data.
 - **Consistency options:** eventual consistency, read replica, sharding,
   partitioning, replication.
 - **Indexing:** covering/composite/clustered/non-clustered; match to query shape.
-- **Materialized View, Stored Procedure, Trigger** — use judiciously.
+- **Materialized View, Stored Procedure, Trigger**: use judiciously.
 - **Concurrency:** optimistic vs pessimistic locking, MVCC, WAL. Choose per
   contention profile.
 
 ## 6. REST & API
 - **REST constraints:** client-server, stateless, cacheable, uniform interface,
   layered, code-on-demand.
-- **Richardson Maturity Model, HATEOAS** — level of RESTfulness.
+- **Richardson Maturity Model, HATEOAS**: level of RESTfulness.
 - **HTTP verbs** GET/POST/PUT/PATCH/DELETE/OPTIONS/HEAD; **safe** vs **idempotent**
   semantics; correct status codes. Idempotency keys for unsafe retried operations.
 - **Contracts:** OpenAPI/Swagger; GraphQL / gRPC / WebSocket / SSE / RPC per need.
@@ -156,30 +156,30 @@ functions, currying, partial application, function composition, monads/functors,
 lazy evaluation. Reach for to reduce side effects and improve testability.
 
 ## 21. Front-end & UX
-- **Semantic HTML** — native elements before ARIA; landmarks, heading order,
+- **Semantic HTML**: native elements before ARIA; landmarks, heading order,
   buttons vs links. The foundation of accessibility and SEO; always on UI work.
-- **Accessibility (WCAG 2.2 AA)** — keyboard operability, visible focus,
+- **Accessibility (WCAG 2.2 AA)**: keyboard operability, visible focus,
   contrast (4.5:1 text / 3:1 UI), labels, announced dynamic content,
   reduced-motion. Correctness, not polish; any user-facing surface.
-- **Design tokens & design system** — colors/type/spacing/radii as a single
+- **Design tokens & design system**: colors/type/spacing/radii as a single
   source of truth; components with variants *and states*; extend the system,
   never fork it. Reach for whenever styling anything.
-- **Typography & spacing scales** — a modular type scale and one spacing scale;
+- **Typography & spacing scales**: a modular type scale and one spacing scale;
   off-scale values are drift.
-- **Responsive & mobile-first** — content-driven breakpoints, fluid layout,
+- **Responsive & mobile-first**: content-driven breakpoints, fluid layout,
   reflow without horizontal scroll; test what you claim.
-- **State completeness** — loading, empty, error, disabled, focus, hover ship
+- **State completeness**: loading, empty, error, disabled, focus, hover ship
   with the component, not as follow-ups.
-- **Core Web Vitals & performance budget** — LCP/CLS/INP targets, asset weight,
+- **Core Web Vitals & performance budget**: LCP/CLS/INP targets, asset weight,
   image/font strategy, minimal shipped JS. Any page users wait for.
-- **Forms & validation UX** — visible labels, inline errors that help recovery,
+- **Forms & validation UX**: visible labels, inline errors that help recovery,
   no placeholder-as-label, sensible defaults.
-- **Story-first structure** — every page has one goal; sections carry
+- **Story-first structure**: every page has one goal; sections carry
   message/feel/evidence/action; hierarchy scannable from headings alone.
   Reach for on marketing/landing/storefront pages especially.
-- **SEO fundamentals** — unique titles/descriptions, canonical, Open Graph,
+- **SEO fundamentals**: unique titles/descriptions, canonical, Open Graph,
   structured data where genuine. Public pages only.
-- **UI architecture** — MVC/MVVM/Flux per the stack's idiom (§2); component
+- **UI architecture**: MVC/MVVM/Flux per the stack's idiom (§2); component
   composition over inheritance; container/presentational separation only when
   it earns its keep.
 

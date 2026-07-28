@@ -1,0 +1,117 @@
+<svg width="900" height="466" viewBox="0 0 900 466" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="wt wd">
+  <title id="wt">Four kinds of request, and the workflow each one runs</title>
+  <desc id="wd">A four-row table. Column one is what you type; column two is the chain of praxis skills that runs; column three is what the Stop gate requires before the turn can end. Row one, "fix the pagination bug", runs task-orchestrator, then quality-rubric with seven auditors, then docs-living, and the gate requires a green report backed by a test run praxis executed itself. Row two, "build the pricing page", runs frontend-pipeline, then task-orchestrator, then the rubric with nine auditors, and the gate additionally requires the accessibility and design-consistency verdicts. Row three, "audit the whole repo", runs repo-audit, then finding-verifier on each finding, then a coverage report, and the gate requires every shard audited on every dimension, proved by the ledger. Row four, "commit this and open a PR", runs git-delivery, then commit and pull request, then the merge policy, and the gate requires a green audit, with the merge left to a human unless auto-merge is on.</desc>
+
+  <defs>
+    <marker id="wa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10z" fill="#6B7482"/>
+    </marker>
+  </defs>
+
+  <rect x="1" y="1" width="898" height="464" rx="14" fill="#FAF8F4" stroke="#D8D1C3" stroke-width="1.5"/>
+
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+
+    <!-- column headers -->
+    <g font-size="11" font-weight="600" letter-spacing="1.5" fill="#5A6270">
+      <text x="28" y="38">YOU TYPE</text>
+      <text x="250" y="38">PRAXIS RUNS</text>
+      <text x="712" y="38">THE GATE REQUIRES</text>
+    </g>
+    <line x1="28" y1="52" x2="872" y2="52" stroke="#D8D1C3" stroke-width="1"/>
+
+    <!-- ROW 1: implementation -->
+    <text x="28" y="86" font-size="14" font-style="italic" fill="#12161D">“fix the pagination</text>
+    <text x="28" y="105" font-size="14" font-style="italic" fill="#12161D">bug”</text>
+    <text x="28" y="126" font-size="10.5" font-weight="600" letter-spacing="1.1" fill="#167A5B">IMPLEMENT</text>
+
+    <g font-size="11.5" font-weight="600" fill="#12161D" text-anchor="middle">
+      <rect x="250" y="76" width="138" height="40" rx="8" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.3"/>
+      <text x="319" y="101">task-orchestrator</text>
+      <rect x="406" y="76" width="138" height="40" rx="8" fill="#12161D" stroke="#12161D" stroke-width="1.3"/>
+      <text x="475" y="101" fill="#FAF8F4">quality-rubric ×7</text>
+      <rect x="562" y="76" width="138" height="40" rx="8" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.3"/>
+      <text x="631" y="101">docs-living</text>
+    </g>
+    <line x1="390" y1="96" x2="404" y2="96" stroke="#6B7482" stroke-width="1.3" marker-end="url(#wa)"/>
+    <line x1="546" y1="96" x2="560" y2="96" stroke="#6B7482" stroke-width="1.3" marker-end="url(#wa)"/>
+
+    <text x="712" y="90" font-size="11.5" fill="#4A5462">a green report, backed by a</text>
+    <text x="712" y="106" font-size="11.5" fill="#4A5462">test run praxis executed</text>
+    <text x="712" y="122" font-size="11.5" fill="#4A5462">itself, and nothing unfinished</text>
+
+    <line x1="28" y1="146" x2="872" y2="146" stroke="#E6E0D4" stroke-width="1"/>
+
+    <!-- ROW 2: user-facing surface -->
+    <text x="28" y="180" font-size="14" font-style="italic" fill="#12161D">“build the pricing</text>
+    <text x="28" y="199" font-size="14" font-style="italic" fill="#12161D">page”</text>
+    <text x="28" y="220" font-size="10.5" font-weight="600" letter-spacing="1.1" fill="#167A5B">FRONT END</text>
+
+    <g font-size="11.5" font-weight="600" fill="#12161D" text-anchor="middle">
+      <rect x="250" y="170" width="138" height="40" rx="8" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.3"/>
+      <text x="319" y="188">frontend-pipeline</text>
+      <text x="319" y="203" font-size="9.5" font-weight="400" fill="#4A5462">brief · story · system</text>
+      <rect x="406" y="170" width="138" height="40" rx="8" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.3"/>
+      <text x="475" y="195">task-orchestrator</text>
+      <rect x="562" y="170" width="138" height="40" rx="8" fill="#12161D" stroke="#12161D" stroke-width="1.3"/>
+      <text x="631" y="195" fill="#FAF8F4">quality-rubric ×9</text>
+    </g>
+    <line x1="390" y1="190" x2="404" y2="190" stroke="#6B7482" stroke-width="1.3" marker-end="url(#wa)"/>
+    <line x1="546" y1="190" x2="560" y2="190" stroke="#6B7482" stroke-width="1.3" marker-end="url(#wa)"/>
+
+    <text x="712" y="184" font-size="11.5" fill="#4A5462">all of the above, plus the</text>
+    <text x="712" y="200" font-size="11.5" fill="#B4501C" font-weight="600">accessibility</text>
+    <text x="712" y="216" font-size="11.5" fill="#B4501C" font-weight="600">design-consistency</text>
+    <text x="712" y="232" font-size="11.5" fill="#4A5462">verdicts, resolved from the</text>
+    <text x="712" y="248" font-size="11.5" fill="#4A5462">files you changed</text>
+
+    <line x1="28" y1="266" x2="872" y2="266" stroke="#E6E0D4" stroke-width="1"/>
+
+    <!-- ROW 3: repo-wide -->
+    <text x="28" y="300" font-size="14" font-style="italic" fill="#12161D">“audit the whole</text>
+    <text x="28" y="319" font-size="14" font-style="italic" fill="#12161D">repo”</text>
+    <text x="28" y="340" font-size="10.5" font-weight="600" letter-spacing="1.1" fill="#167A5B">REPO SCAN</text>
+
+    <g font-size="11.5" font-weight="600" fill="#12161D" text-anchor="middle">
+      <rect x="250" y="290" width="138" height="40" rx="8" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.3"/>
+      <text x="319" y="308">repo-audit</text>
+      <text x="319" y="323" font-size="9.5" font-weight="400" fill="#4A5462">shard ledger</text>
+      <rect x="406" y="290" width="138" height="40" rx="8" fill="#12161D" stroke="#12161D" stroke-width="1.3"/>
+      <text x="475" y="308" fill="#FAF8F4">finding-verifier</text>
+      <text x="475" y="323" font-size="9.5" font-weight="400" fill="#C9C2B4">refute, then fix</text>
+      <rect x="562" y="290" width="138" height="40" rx="8" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.3"/>
+      <text x="631" y="315">coverage report</text>
+    </g>
+    <line x1="390" y1="310" x2="404" y2="310" stroke="#6B7482" stroke-width="1.3" marker-end="url(#wa)"/>
+    <line x1="546" y1="310" x2="560" y2="310" stroke="#6B7482" stroke-width="1.3" marker-end="url(#wa)"/>
+
+    <text x="712" y="304" font-size="11.5" fill="#4A5462">every shard × every</text>
+    <text x="712" y="320" font-size="11.5" fill="#4A5462">dimension, proved by the</text>
+    <text x="712" y="336" font-size="11.5" fill="#4A5462">ledger, never by memory</text>
+
+    <line x1="28" y1="354" x2="872" y2="354" stroke="#E6E0D4" stroke-width="1"/>
+
+    <!-- ROW 4: delivery -->
+    <text x="28" y="388" font-size="14" font-style="italic" fill="#12161D">“commit this and</text>
+    <text x="28" y="407" font-size="14" font-style="italic" fill="#12161D">open a PR”</text>
+    <text x="28" y="428" font-size="10.5" font-weight="600" letter-spacing="1.1" fill="#167A5B">DELIVERY</text>
+
+    <g font-size="11.5" font-weight="600" fill="#12161D" text-anchor="middle">
+      <rect x="250" y="378" width="138" height="40" rx="8" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.3"/>
+      <text x="319" y="403">git-delivery</text>
+      <rect x="406" y="378" width="138" height="40" rx="8" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.3"/>
+      <text x="475" y="396">commit + PR</text>
+      <text x="475" y="411" font-size="9.5" font-weight="400" fill="#4A5462">no AI co-author</text>
+      <rect x="562" y="378" width="138" height="40" rx="8" fill="#FFFFFF" stroke="#C9C2B4" stroke-width="1.3" stroke-dasharray="4 3"/>
+      <text x="631" y="403">merge policy</text>
+    </g>
+    <line x1="390" y1="398" x2="404" y2="398" stroke="#6B7482" stroke-width="1.3" marker-end="url(#wa)"/>
+    <line x1="546" y1="398" x2="560" y2="398" stroke="#6B7482" stroke-width="1.3" marker-end="url(#wa)"/>
+
+    <text x="712" y="392" font-size="11.5" fill="#4A5462">a green audit. The merge is</text>
+    <text x="712" y="408" font-size="11.5" fill="#4A5462">yours unless you turned</text>
+    <text x="712" y="424" font-size="11.5" fill="#4A5462">auto-merge on</text>
+
+    <text x="28" y="452" font-size="11" fill="#5A6270">No command required: the router reads the request and engages the same skills that /praxis:task would.</text>
+  </g>
+</svg>

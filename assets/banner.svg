@@ -1,6 +1,6 @@
 <svg width="880" height="220" viewBox="0 0 880 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bt bd">
-  <title id="bt">Praxis — the disciplined practice of engineering, applied automatically in Claude Code</title>
-  <desc id="bd">The Praxis wordmark beside a gate mark — a circle crossed by a threshold bar with a check above it — over the tagline and the pipeline stages: spec, investigate, plan, implement, audit, document, ship.</desc>
+  <title id="bt">Praxis: the disciplined practice of engineering, applied automatically in Claude Code</title>
+  <desc id="bd">The Praxis wordmark beside a gate mark, a circle crossed by a threshold bar with a check above it, over the tagline and the pipeline stages: spec, investigate, plan, implement, audit, document, ship.</desc>
 
   <defs>
     <linearGradient id="paper" x1="0" y1="0" x2="0.35" y2="1">
@@ -47,7 +47,7 @@
   <g transform="translate(171 180)">
     <line x1="0" y1="0" x2="640" y2="0" stroke="#C9C2B4" stroke-width="1.5"/>
     <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif"
-       font-size="10.5" font-weight="600" letter-spacing="1.4" fill="#6B7482">
+       font-size="10.5" font-weight="600" letter-spacing="1.4" fill="#4A5462">
       <g fill="#167A5B">
         <circle cx="0" cy="0" r="3.5"/><circle cx="106" cy="0" r="3.5"/><circle cx="212" cy="0" r="3.5"/>
         <circle cx="318" cy="0" r="3.5"/><circle cx="424" cy="0" r="3.5"/><circle cx="530" cy="0" r="3.5"/>

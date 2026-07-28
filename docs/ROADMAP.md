@@ -16,6 +16,6 @@ roughly in priority order:
 - **Team profiles.** Shareable best-practice profiles (e.g. an org's security or
   API conventions) layered onto the catalog.
 - **Metrics/telemetry (local, opt-in).** A per-repo log of audits and decisions
-  for retrospective review — never phoning home.
+  for retrospective review, never phoning home.
 
 Have a need? Record it as an issue; significant accepted directions become ADRs.

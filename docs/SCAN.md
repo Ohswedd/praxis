@@ -1,6 +1,7 @@
-# The Repo-Wide Scanner (`/praxis:scan`)
+# The Repo-Wide Scanner (`/praxis:audit repo`)
 
-`/praxis:audit` reviews a *change*; `/praxis:scan` reviews a *repository* — an
+`/praxis:audit` with no argument reviews a *change*; `/praxis:audit repo` reviews
+a whole *repository*, an
 already-developed, "solid" project with no fresh diff. It finds security
 issues, real bugs, broken contracts, duplication, performance hazards, bad
 practice, and debt across the whole codebase; adversarially verifies every
@@ -13,7 +14,7 @@ Phase 0  Inventory      repo_scan.py init → every auditable file assigned to a
                         shard (grouped by subsystem, capped by files/lines);
                         exclusions counted; test baseline recorded
 Phase 1  Starting report scope, shard plan, dimensions, fix policy, baseline,
-                        estimated dispatches — before any auditing
+                        estimated dispatches, before any auditing
 Phase 2  Forward audit  every shard × every vertical dimension, dispatched to
                         the praxis auditor subagents; findings + passes recorded
 Phase 3  Reverse audit  dedup → @praxis:finding-verifier tries to REFUTE each
@@ -35,7 +36,7 @@ reads the interesting 20 files and reports the repo as reviewed. The scanner
 makes that impossible mechanically, not aspirationally:
 
 - **Inventory is deterministic.** `repo_scan.py init` enumerates tracked files
-  (pruned of vendored/binary/lockfile/oversize noise — every exclusion counted
+  (pruned of vendored/binary/lockfile/oversize noise, every exclusion counted
   and reported, never hidden).
 - **Coverage is recorded, not remembered.** A shard counts as audited only when
   all seven dimensions were marked (`repo_scan.py mark <shard> <dim>`), and a
@@ -44,17 +45,17 @@ makes that impossible mechanically, not aspirationally:
   findings table from state; if any shard × dimension never ran, the report
   prints an INCOMPLETE warning that cannot be prose-papered over.
 - **Findings have a lifecycle.** `open → confirmed | refuted → fixed | deferred`
-  (a `downgraded` verdict records as `confirmed` at the lower severity) —
+  (a `downgraded` verdict records as `confirmed` at the lower severity):
   nothing is fixed unverified, and nothing confirmed can quietly disappear.
 - **No silent inventory caps.** `init` fetches one file beyond `--max-files`
-  (default 20000) and refuses to proceed if the scope exceeds it — you narrow
+  (default 20000) and refuses to proceed if the scope exceeds it: you narrow
   `--scope` or raise the cap explicitly; the tail is never dropped quietly. In
   git repos a `--scope` is applied as a git pathspec, so scoping a huge repo
   stays exact; the non-git fallback walk likewise *refuses* (rather than
   truncates) when a pathological tree exhausts its directory budget.
 - **The ledger cannot lie about persistence.** Unlike praxis's fail-open hook
   scripts, `repo_scan.py` propagates I/O errors (atomic temp-file writes, loud
-  failure on a corrupt ledger) — `mark`/`finding` never report success without
+  failure on a corrupt ledger): `mark`/`finding` never report success without
   the state actually on disk, and `init`/`clear` refuse to destroy recorded
   work without `--force`.
 
@@ -71,12 +72,12 @@ to "these files"): `adversarial` (security), `edge-case` (correctness bugs),
 
 Forward auditors are rewarded for *finding* things, so a scan without a
 counterweight over-reports. Every finding is handed to
-`@praxis:finding-verifier` — a skeptic that re-reads the cited code trying to
-**refute** the claim — and only `confirmed` findings reach the fix phase.
+`@praxis:finding-verifier`, a skeptic that re-reads the cited code trying to
+**refute** the claim, and only `confirmed` findings reach the fix phase.
 Severity gets re-graded against realistic impact (`downgraded`), and false
 positives die with cited evidence (`refuted`). The sweep then inverts
 direction: from the project's promises (README, docs, public API, tests) back
-into the code, catching behaviour that is promised but not delivered — the
+into the code, catching behaviour that is promised but not delivered: the
 half of an audit a code-first pass structurally misses.
 
 ## Fix policy
@@ -86,7 +87,7 @@ half of an audit a code-first pass structurally misses.
 - **Never auto-applied**, even in auto-pilot: architectural restructuring,
   breaking public-API changes, dependency major upgrades, schema migrations,
   anything irreversible or credential-dependent. These are deferred with a
-  remediation plan in the final report — a scope decision belongs to you.
+  remediation plan in the final report: a scope decision belongs to you.
 - Live secrets found in the repo are flagged critical by path only (the value
   is never echoed); the remedy is rotation + removal.
 - `--report-only` skips fixing entirely and delivers recommendations.
@@ -100,7 +101,7 @@ half of an audit a code-first pass structurally misses.
   shards, dimensions, and findings are pending, and the skill resumes there.
   `init` refuses to clobber an in-progress scan without `--force`.
 - Auditor context stays lean: agents receive file lists, read what they need in
-  their own context window, and return findings — the main conversation only
+  their own context window, and return findings: the main conversation only
   carries the ledger.
 
 ## CLI reference
@@ -125,5 +126,5 @@ repo_scan.py clear [--force]
 
 Severities: `critical`, `high`, `medium`, `low`. Free text recorded into the
 ledger (`--title`/`--detail`/`--note`/`--reason`) is screened against praxis's
-secret signatures and rejected if it looks like a credential — findings about
+secret signatures and rejected if it looks like a credential: findings about
 secrets reference the file path only.
