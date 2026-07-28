@@ -1582,5 +1582,239 @@ class TestModeSetting(ContributorRepoCase):
         self.assertTrue(common.bootstrap_auto(self.root))
 
 
+# --------------------------------------------------------------------------- #
+# Review scope: the branch, not the working tree
+# --------------------------------------------------------------------------- #
+class BranchCase(GitRepoCase):
+    """A topic branch with committed work, which is what delivery produces."""
+
+    def branch(self, name="feat/x"):
+        sh(["git", "checkout", "-q", "-b", name], cwd=self.tmp)
+
+    def commit(self, path, body, message):
+        before = sh(["git", "rev-parse", "HEAD"], cwd=self.tmp).stdout.strip()
+        (self.root / path).write_text(body)
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", message], cwd=self.tmp)
+        head = sh(["git", "rev-parse", "HEAD"], cwd=self.tmp).stdout.strip()
+        # Writing a file's existing content commits nothing, and a fixture that
+        # silently produced no commit would make a scope test pass for the wrong
+        # reason: it would be asserting against an empty branch.
+        assert head != before, f"fixture committed nothing for {path!r}"
+        return sh(["git", "rev-parse", "--short", "HEAD"],
+                  cwd=self.tmp).stdout.strip()
+
+    def tearDown(self):
+        common._MERGE_BASE_CACHE.pop(str(self.root), None)
+        common._CHANGED_FILES_CACHE.pop(str(self.root), None)
+        super().tearDown()
+
+
+class TestReviewScope(BranchCase):
+    def test_committed_work_is_still_under_review(self):
+        """One commit used to end the review: every diff praxis reads went empty."""
+        self.branch()
+        self.commit("a.py", "x = 1\ny = 2\n", "subtask 1")
+        self.assertEqual(sh(["git", "diff", "--name-only"], cwd=self.tmp).stdout, "")
+        self.assertTrue(common.review_base(self.root))
+        self.assertEqual(common.changed_files(self.root), ["a.py"])
+        self.assertTrue(common.review_pending(self.root))
+
+    def test_a_marker_in_a_committed_file_is_found(self):
+        self.branch()
+        self.commit("a.py", "x = 1\n# TODO: finish this\n", "subtask 1")
+        findings = common.run_scanner("scan_placeholders.py", self.root)
+        self.assertTrue(any(f.get("file") == "a.py" for f in findings), findings)
+
+    def test_the_gate_refuses_a_turn_with_unaudited_commits(self):
+        self.branch()
+        self.commit("a.py", "x = 99\n", "subtask 1")
+        r = run_script("quality_gate.py", self.payload(), self.root)
+        self.assertEqual(r.returncode, 2)
+
+    def test_a_commit_re_keys_the_signature(self):
+        """So a report recorded against three commits is not valid for a fourth."""
+        self.branch()
+        self.commit("a.py", "x = 1\nfirst = True\n", "subtask 1")
+        first = common.change_signature(self.root)
+        common._MERGE_BASE_CACHE.pop(str(self.root), None)
+        self.commit("b.py", "y = 1\n", "subtask 2")
+        common._MERGE_BASE_CACHE.pop(str(self.root), None)
+        self.assertNotEqual(first, common.change_signature(self.root))
+
+    def test_the_integration_branch_has_no_range(self):
+        """No branch, no committed scope: exactly the pre-3.1 behaviour."""
+        self.assertIsNone(common.review_base(self.root))
+        self.assertEqual(common.committed_files(self.root), [])
+        self.assertFalse(common.review_pending(self.root))
+
+    def test_a_branch_with_no_commits_yet_has_no_range(self):
+        self.branch()
+        self.assertIsNone(common.review_base(self.root))
+
+    def test_scope_reports_the_base_the_commits_and_the_files(self):
+        self.branch()
+        self.commit("a.py", "x = 1\nscoped = True\n", "subtask 1")
+        r = sh([sys.executable, str(SCRIPTS / "scope.py"), "--json"],
+               env={**os.environ, "CLAUDE_PROJECT_DIR": str(self.root)})
+        scope = json.loads(r.stdout)
+        self.assertTrue(scope["base"])
+        self.assertEqual(len(scope["commits"]), 1)
+        self.assertEqual(scope["committed_files"], ["a.py"])
+        self.assertTrue(scope["review_pending"])
+
+    def test_ui_verticals_apply_to_a_committed_ui_change(self):
+        """The gate resolves UI from the changed files, which now include commits."""
+        self.branch()
+        self.commit("page.tsx", "export const P = () => <main>hi</main>;\n", "ui")
+        self.assertEqual(common.ui_files_in_change(self.root), ["page.tsx"])
+
+
+# --------------------------------------------------------------------------- #
+# Task plans and delivery binding
+# --------------------------------------------------------------------------- #
+class TestTaskPlan(GitRepoCase):
+    def ts(self, *args):
+        return sh([sys.executable, str(SCRIPTS / "task_state.py"), *args],
+                  env={**os.environ, "CLAUDE_PROJECT_DIR": str(self.root)})
+
+    def open_with_plan(self):
+        return self.ts("open", "Macro", "--criteria", "done",
+                       "--subtasks", "first", "second", "--max", "9")
+
+    def state(self):
+        return common.read_state(self.root, "task.json")
+
+    def test_a_plan_is_recorded_with_the_task(self):
+        self.open_with_plan()
+        subs = self.state()["subtasks"]
+        self.assertEqual([s["title"] for s in subs], ["first", "second"])
+        self.assertTrue(all(s["status"] == "pending" for s in subs))
+
+    def test_a_task_cannot_close_with_an_unfinished_subtask(self):
+        self.open_with_plan()
+        r = self.ts("done")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("not finished", r.stdout)
+        self.assertTrue(self.state()["open"], "the task must stay open")
+
+    def test_force_closes_but_is_an_explicit_act(self):
+        self.open_with_plan()
+        self.assertEqual(self.ts("done", "--force").returncode, 0)
+        self.assertFalse(self.state()["open"])
+
+    def test_a_subtask_records_the_commit_it_landed_on(self):
+        self.open_with_plan()
+        (self.root / "b.py").write_text("y = 1\n")
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "feat: first"], cwd=self.tmp)
+        head = sh(["git", "rev-parse", "--short", "HEAD"], cwd=self.tmp).stdout.strip()
+        self.ts("subtask", "done", "1")
+        self.assertEqual(self.state()["subtasks"][0]["commit"], head)
+
+    def test_a_subtask_with_no_commit_of_its_own_is_flagged(self):
+        """The warning is the whole point: at that moment the tracking is gone."""
+        self.open_with_plan()
+        (self.root / "b.py").write_text("y = 1\n")
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "feat: first"], cwd=self.tmp)
+        self.ts("subtask", "done", "1")
+        r = self.ts("subtask", "done", "2")
+        self.assertIn("WARNING", r.stdout)
+        self.assertEqual(self.state()["subtasks"][1]["commit"], "")
+
+    def test_replanning_keeps_finished_subtasks_finished(self):
+        self.open_with_plan()
+        self.ts("subtask", "done", "1")
+        self.ts("plan", "first", "second", "third")
+        subs = self.state()["subtasks"]
+        self.assertEqual(len(subs), 3)
+        self.assertEqual(subs[0]["status"], "done")
+        self.assertEqual(subs[1]["status"], "pending")
+
+    def test_an_unknown_subtask_is_rejected(self):
+        self.open_with_plan()
+        r = self.ts("subtask", "done", "7")
+        self.assertNotEqual(r.returncode, 0)
+        self.assertIn("does not exist", r.stdout + r.stderr)
+
+    def test_delivery_binding_is_recorded_and_reported(self):
+        self.open_with_plan()
+        self.ts("delivery", "--pr", "https://example.test/pr/1")
+        self.assertEqual(self.state()["delivery"]["pr"], "https://example.test/pr/1")
+
+    def test_closing_without_a_pr_says_so(self):
+        self.ts("open", "Simple", "--criteria", "done")
+        r = self.ts("done")
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("no pull request recorded", r.stdout)
+
+    def test_the_gate_shows_the_plan_and_the_next_step(self):
+        self.open_with_plan()
+        (self.root / "a.py").write_text("x = 2\n")
+        r = run_script("quality_gate.py", self.payload(), self.root)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("Plan (0/2 subtasks done)", r.stderr)
+        self.assertIn("Work subtask 1 next", r.stderr)
+
+
+# --------------------------------------------------------------------------- #
+# The technical-debt register
+# --------------------------------------------------------------------------- #
+class TestDebtRegister(GitRepoCase):
+    def debt(self, *args):
+        return sh([sys.executable, str(SCRIPTS / "debt.py"), *args],
+                  env={**os.environ, "CLAUDE_PROJECT_DIR": str(self.root)})
+
+    def add_one(self, title="A shortcut"):
+        return self.debt("add", title, "--interest", "200ms per call",
+                         "--principal", "cache it properly")
+
+    def test_an_entry_without_a_cost_is_refused(self):
+        """A register of complaints stops being read, so it cannot be one."""
+        r = self.debt("add", "A shortcut")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("--interest", r.stdout)
+        self.assertFalse((self.root / "docs" / "DEBT.md").exists())
+
+    def test_an_entry_is_recorded_with_its_interest_and_principal(self):
+        self.assertEqual(self.add_one().returncode, 0)
+        body = (self.root / "docs" / "DEBT.md").read_text()
+        self.assertIn("## 1. A shortcut", body)
+        self.assertIn("200ms per call", body)
+        self.assertIn("cache it properly", body)
+        self.assertIn("Status: open", body)
+
+    def test_entries_are_numbered_and_listable(self):
+        self.add_one("First")
+        self.add_one("Second")
+        r = self.debt("list")
+        self.assertIn("1. First", r.stdout)
+        self.assertIn("2. Second", r.stdout)
+
+    def test_repaying_an_entry_closes_it(self):
+        self.add_one()
+        self.assertEqual(self.debt("paid", "1").returncode, 0)
+        self.assertIn("Status: repaid", (self.root / "docs" / "DEBT.md").read_text())
+        self.assertEqual(self.debt("paid", "1").returncode, 1, "already repaid")
+
+    def test_the_register_follows_the_workspace_mode(self):
+        self.add_one()
+        self.assertTrue((self.root / "docs" / "DEBT.md").exists())
+        shutil.rmtree(self.root / "docs")
+        r = sh([sys.executable, str(SCRIPTS / "debt.py"), "add", "Local debt",
+                "--interest", "x", "--principal", "y"],
+               env={**os.environ, "CLAUDE_PROJECT_DIR": str(self.root),
+                    "PRAXIS_MODE": "contributor"})
+        self.assertEqual(r.returncode, 0)
+        self.assertTrue((common.state_dir(self.root) / "knowledge" / "docs"
+                         / "DEBT.md").exists())
+        self.assertFalse((self.root / "docs" / "DEBT.md").exists())
+
+    def test_failure_is_loud(self):
+        r = self.debt("nonsense")
+        self.assertEqual(r.returncode, 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
