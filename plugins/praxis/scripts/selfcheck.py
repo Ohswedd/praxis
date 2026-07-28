@@ -167,9 +167,24 @@ def check(require_repo: bool = False):
     except Exception as e:
         fail(f"hooks.json invalid: {e}")
 
+    # Auditors that review a change must say how to scope it. The preamble is
+    # repeated in each brief because agent files have no include mechanism, so
+    # nothing but this check stops one from silently losing it, and an auditor
+    # without it scopes to `git diff`, reads nothing on a branch with commits,
+    # and reports PASS. Recorded as debt in docs/DEBT.md.
+    _NON_DIFF_AGENTS = {"repo-cartographer", "claudemd-verifier", "finding-verifier"}
     for md in sorted((PLUGIN / "agents").glob("*.md")):
         k = _frontmatter_keys(md)
         need(k and {"name", "description"} <= k, f"agent {md.name}: bad/missing frontmatter")
+        if md.stem in _NON_DIFF_AGENTS:
+            continue
+        try:
+            body = md.read_text(encoding="utf-8")
+        except Exception:
+            body = ""
+        need("scripts/scope.py" in body,
+             f"agent {md.name}: reviews a change but never resolves the review "
+             "scope, so on a branch with commits it would audit an empty diff")
     for skill in sorted((PLUGIN / "skills").glob("*/SKILL.md")):
         k = _frontmatter_keys(skill)
         need(k and {"name", "description"} <= k,
