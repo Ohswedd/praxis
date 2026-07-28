@@ -872,5 +872,119 @@ class TestDrift(GitRepoCase):
         self.assertFalse(self.drift())
 
 
+class TestSelfcheckScopes(unittest.TestCase):
+    """An installed plugin has no marketplace beside it, and must not be failed for it.
+
+    `/praxis:doctor` runs selfcheck from wherever the plugin is installed. Before
+    this distinction existed it reported PROBLEM on every healthy install, which
+    is worse than reporting nothing: a permanent false alarm teaches the reader to
+    ignore the line that matters when something really breaks.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        # Mirror the install cache layout: <cache>/<marketplace>/<plugin>/<version>/
+        self.installed = Path(self.tmp) / "cache" / "ohswedd-praxis" / "praxis" / "9.9.9"
+        self.installed.parent.mkdir(parents=True)
+        shutil.copytree(PLUGIN, self.installed)
+        self.script = self.installed / "scripts" / "selfcheck.py"
+        self.above = Path(self.tmp) / "cache" / "ohswedd-praxis" / ".claude-plugin"
+
+    def tearDown(self):
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def run_check(self, path, *args):
+        return sh([sys.executable, str(path), *args])
+
+    def write_marketplace(self, body):
+        self.above.mkdir(parents=True, exist_ok=True)
+        (self.above / "marketplace.json").write_text(body, encoding="utf-8")
+
+    def test_installed_plugin_passes_and_names_its_scope(self):
+        r = self.run_check(self.script)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("installed-plugin scope", r.stdout)
+
+    def test_source_repo_passes_and_names_its_scope(self):
+        r = self.run_check(SCRIPTS / "selfcheck.py")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("repo scope", r.stdout)
+
+    def test_require_repo_refuses_to_pass_outside_the_source_tree(self):
+        """CI must not silently drop to the smaller scope and report OK."""
+        r = self.run_check(self.script, "--require-repo")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("--require-repo", r.stdout)
+
+    def test_require_repo_is_satisfied_in_the_source_tree(self):
+        r = self.run_check(SCRIPTS / "selfcheck.py", "--require-repo")
+        self.assertEqual(r.returncode, 0, r.stdout)
+
+    def test_an_unrelated_marketplace_above_does_not_claim_the_plugin(self):
+        """Only the marketplace that actually publishes this plugin counts."""
+        self.write_marketplace('{"name":"other","metadata":{"version":"0.0.1"},'
+                               '"plugins":[{"name":"x","source":"./somewhere-else"}]}')
+        r = self.run_check(self.script)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("installed-plugin scope", r.stdout)
+
+    def test_a_marketplace_that_publishes_the_plugin_enables_repo_scope(self):
+        self.write_marketplace('{"name":"m","metadata":{"version":"9.9.9"},'
+                               '"plugins":[{"name":"praxis","source":"./praxis/9.9.9"}]}')
+        r = self.run_check(self.script)
+        self.assertIn("repo scope", r.stdout)
+        # The plugin manifest carries the real version, not 9.9.9, so this must fail.
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("version mismatch", r.stdout)
+
+    def test_an_unparseable_marketplace_is_a_failure_not_a_downgrade(self):
+        self.write_marketplace("not json at all")
+        r = self.run_check(self.script)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("does not parse", r.stdout)
+        self.assertIn("repo scope", r.stdout,
+                      "a corrupt manifest must not silently become plugin scope")
+
+    def test_unknown_argument_is_rejected(self):
+        r = self.run_check(SCRIPTS / "selfcheck.py", "--nope")
+        self.assertEqual(r.returncode, 2)
+
+    def test_a_manifest_that_parses_but_is_not_a_marketplace_does_not_crash(self):
+        """Every other path in this module fails safe; scope detection must too."""
+        for body in ("[]", "null", '"hello"', "5", '{"plugins": 5}',
+                     '{"plugins": null}', '{"plugins": ["a string"]}',
+                     '{"plugins": [null]}'):
+            self.write_marketplace(body)
+            r = self.run_check(self.script)
+            self.assertEqual(r.returncode, 0, f"{body}: {r.stdout}{r.stderr}")
+            self.assertNotIn("Traceback", r.stderr, body)
+            self.assertIn("installed-plugin scope", r.stdout, body)
+
+    def test_the_check_writes_nothing_into_the_plugin(self):
+        """A diagnostic must not mutate the directory it is diagnosing."""
+        for cache in self.installed.rglob("__pycache__"):
+            shutil.rmtree(cache, ignore_errors=True)
+        before = sorted(p for p in self.installed.rglob("*") if p.is_file())
+        r = sh([sys.executable, str(self.script)],
+               env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
+        self.assertEqual(r.returncode, 0, r.stdout)
+        after = sorted(p for p in self.installed.rglob("*") if p.is_file())
+        self.assertEqual(before, after, "the self-check left files behind")
+
+    def test_syntax_errors_are_still_caught(self):
+        """Dropping py_compile must not weaken the check it performed."""
+        (self.installed / "scripts" / "report.py").write_text("def broken(:\n")
+        r = self.run_check(self.script)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("compile error in report.py", r.stdout)
+
+
+class TestDoctorIntegrityLine(GitRepoCase):
+    def test_reports_the_scope_it_checked(self):
+        r = run_script("doctor.py", self.payload(), self.root)
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("plugin integrity: **OK (full source tree)**", r.stdout)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

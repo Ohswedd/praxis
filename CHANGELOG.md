@@ -6,6 +6,18 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-07-28
+
+### Added
+- selfcheck.py --require-repo asserts the full repo scope instead of detecting it, so CI cannot silently fall back to the smaller scope and report OK for a tree whose marketplace is missing, unreadable, or no longer lists the plugin. make check and the release workflow both use it.
+- selfcheck.py rejects an unrecognised argument with a usage line and exit code 2 instead of ignoring it.
+- The repo-scope house-style check now covers docs/adr/ as well as docs/*.md, so no directory of authored prose sits outside the check that gates CI.
+
+### Fixed
+- selfcheck.py demanded a marketplace manifest that only exists in the source checkout, so /praxis:doctor reported 'plugin integrity: PROBLEM' for every installed plugin, and had since the check was introduced. The checks are now scoped: an installed plugin is verified on everything that ships with it, and the marketplace and repo prose are verified in the source tree. Both selfcheck and doctor name the scope they covered, and a failing integrity line now cites the first problem and how to see the rest instead of printing a bare PROBLEM.
+- Scope detection no longer raises on a marketplace manifest that parses but is not a marketplace (a bare list, a string, a non-list plugins key). Such a manifest does not publish the plugin, so it selects installed-plugin scope rather than a traceback.
+- The integrity check writes nothing into the directory it checks. It uses the builtin compile instead of py_compile, and /praxis:doctor runs it with bytecode writing disabled, so diagnosing an installed plugin no longer leaves __pycache__ in the plugin cache.
+
 ## [2.0.0] - 2026-07-28
 
 ### Added

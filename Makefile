@@ -4,8 +4,8 @@ all: check
 
 check: selfcheck drift test compile ## run everything CI runs
 
-selfcheck: ## validate plugin integrity
-	python3 plugins/praxis/scripts/selfcheck.py
+selfcheck: ## validate plugin integrity (asserts the full repo scope)
+	python3 plugins/praxis/scripts/selfcheck.py --require-repo
 
 test: ## run the test suite
 	python3 -m unittest discover -s tests -v

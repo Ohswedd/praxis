@@ -47,7 +47,7 @@ jobs:
         run: python -m compileall plugins/praxis/scripts
 
       - name: Plugin self-integrity check
-        run: python plugins/praxis/scripts/selfcheck.py
+        run: python plugins/praxis/scripts/selfcheck.py --require-repo
 
       - name: Documentation drift check
         run: python plugins/praxis/scripts/drift.py
