@@ -202,6 +202,86 @@ def git_default_branch(root: Path) -> str:
     return "main"
 
 
+# --------------------------------------------------------------------------- #
+# Review scope: the branch, not just the working tree
+# --------------------------------------------------------------------------- #
+# praxis used to define "the change" as the working tree: unstaged diff, staged
+# diff, untracked files. That definition has a hole that gets wider the better
+# the delivery discipline gets. The moment work is committed, `git diff` is
+# empty, the tree is clean, and every consumer goes blind: the scanners find
+# nothing, the auditors review nothing, and the Stop gate opens.
+#
+# One commit is all it takes, so a task delivered as a series of commits (which
+# is the point of one-commit-per-subtask) would switch the entire audit off. The
+# scope is therefore the whole branch: every commit since it left its base, plus
+# whatever is still uncommitted.
+_MERGE_BASE_CACHE: Dict[str, Optional[str]] = {}
+
+#: Commits inspected when describing the branch. A review scope larger than this
+#: is not a change under review, it is a history.
+MAX_BRANCH_COMMITS = 200
+
+
+def current_branch(root: Path) -> str:
+    return _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root).strip()
+
+
+def review_base(root: Path) -> Optional[str]:
+    """The commit this branch's work should be reviewed against, or None.
+
+    None means "there is no branch range here": praxis is on the integration
+    branch itself, or the base cannot be resolved. Callers then fall back to the
+    working tree alone, which is exactly the pre-3.1 behaviour, so a repo that
+    never branches sees no change at all.
+    """
+    key = str(root)
+    if key in _MERGE_BASE_CACHE:
+        return _MERGE_BASE_CACHE[key]
+    _MERGE_BASE_CACHE[key] = base = _review_base(root)
+    return base
+
+
+def _review_base(root: Path) -> Optional[str]:
+    if not is_git_repo(root):
+        return None
+    default = git_default_branch(root)
+    branch = current_branch(root)
+    # On the integration branch there is nothing to compare against: its commits
+    # are history, not a change awaiting review.
+    if not branch or branch == "HEAD" or branch == default:
+        return None
+    for ref in (f"origin/{default}", default):
+        if not _run(["git", "rev-parse", "--verify", "--quiet", ref], cwd=root).strip():
+            continue
+        base = _run(["git", "merge-base", ref, "HEAD"], cwd=root).strip()
+        if base:
+            head = git_head(root)
+            # A branch that has not diverged yet has nothing committed to review.
+            return None if base == head else base
+    return None
+
+
+def branch_commits(root: Path) -> List[str]:
+    """`<sha> <subject>` for each commit on this branch, newest first."""
+    base = review_base(root)
+    if not base:
+        return []
+    out = _run(["git", "log", f"-n{MAX_BRANCH_COMMITS}", "--format=%h %s",
+                f"{base}..HEAD"], cwd=root, timeout=20)
+    return [ln for ln in out.splitlines() if ln.strip()]
+
+
+def committed_files(root: Path) -> List[str]:
+    """Files this branch has already committed, relative to its base."""
+    base = review_base(root)
+    if not base:
+        return []
+    out = _run(["git", "diff", "--name-only", "--no-color", f"{base}...HEAD"],
+               cwd=root, timeout=20)
+    return [f.strip() for f in out.splitlines()
+            if f.strip() and not _is_praxis_state(f.strip())]
+
+
 def git_status_porcelain(root: Path) -> List[str]:
     out = _run(["git", "status", "--porcelain"], cwd=root)
     return [ln for ln in out.splitlines() if ln.strip()]
@@ -295,10 +375,11 @@ MAX_UNTRACKED_BYTES = 4_000_000
 def added_line_pairs(root: Path) -> List[tuple]:
     """Every line the current change adds, as (file, lineno, text).
 
-    The union of three sources, because a change is spread across all three and
-    auditing only one of them under-reports: the unstaged diff, the staged diff,
-    and the whole content of untracked files. Deduplicated, since a hunk edited
-    after staging appears in both diffs.
+    The union of four sources, because a change is spread across all of them and
+    auditing only one under-reports: what this branch has committed since it left
+    its base, the unstaged diff, the staged diff, and the whole content of
+    untracked files. Deduplicated, since a hunk that is committed and then edited
+    again appears more than once.
     """
     seen = set()
     pairs: List[tuple] = []
@@ -309,7 +390,11 @@ def added_line_pairs(root: Path) -> List[tuple]:
             seen.add(key)
             pairs.append(key)
 
-    for extra in ([], ["--staged"]):
+    ranges = []
+    base = review_base(root)
+    if base:
+        ranges.append([f"{base}...HEAD"])
+    for extra in ranges + [[], ["--staged"]]:
         diff = _run(["git", "diff", "--unified=0", "--no-color"] + extra, cwd=root, timeout=20)
         for fname, lineno, text in _parse_diff_added(diff):
             if fname and not _is_praxis_state(fname):
@@ -354,16 +439,22 @@ _CHANGED_FILES_CACHE: Dict[str, List[str]] = {}
 
 
 def changed_files(root: Path) -> List[str]:
-    """Repo-relative paths this change touches (modified, staged, or untracked).
+    """Repo-relative paths this change touches: committed on the branch, modified,
+    staged, or untracked.
+
+    Committed files are included because a change does not stop being a change by
+    being committed. Without them, delivering a task as one commit per subtask
+    would empty this list, and everything keyed on it (the UI verticals, the
+    scanners, the gate) would silently pass.
 
     Memoised per process: the Stop gate asks the same question from four places
-    in one run, and each answer costs three git invocations. A hook process is
+    in one run, and each answer costs several git invocations. A hook process is
     short-lived and never outlives the state it cached.
     """
     key = str(root)
     if key in _CHANGED_FILES_CACHE:
         return _CHANGED_FILES_CACHE[key]
-    files = set()
+    files = set(committed_files(root))
     for extra in ([], ["--staged"]):
         out = _run(["git", "diff", "--name-only", "--no-color"] + extra, cwd=root, timeout=20)
         files.update(f.strip() for f in out.splitlines() if f.strip())
@@ -371,6 +462,17 @@ def changed_files(root: Path) -> List[str]:
     result = sorted(f for f in files if f and not _is_praxis_state(f))
     _CHANGED_FILES_CACHE[key] = result
     return result
+
+
+def review_pending(root: Path) -> bool:
+    """True if there is anything to review: uncommitted work, or branch commits.
+
+    The Stop gate's old question was "is the tree dirty". That answered yes to
+    unfinished work and no to finished-and-committed work, which is precisely
+    backwards for a gate whose job is to see a change before it becomes a pull
+    request.
+    """
+    return bool(working_tree_dirty(root) or committed_files(root))
 
 
 # --------------------------------------------------------------------------- #
@@ -1357,7 +1459,11 @@ def change_signature(root: Path) -> str:
     state it was produced against. Recomputed on every call (two git
     subprocesses); callers that need it more than once should hold the value.
     """
-    parts = [git_head(root)]
+    # The branch's base as well as its head: HEAD alone moves on every commit,
+    # which correctly invalidates a report, but says nothing about how much of
+    # the branch the report covered. Keying on the range means a report recorded
+    # against three commits is still valid for those three and not for a fourth.
+    parts = [git_head(root), review_base(root) or ""]
     for ln in git_status_porcelain(root):
         # Praxis's own state dir must never affect the code-change signature,
         # even when the repo hasn't git-ignored it yet.
