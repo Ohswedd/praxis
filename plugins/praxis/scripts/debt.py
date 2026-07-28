@@ -20,7 +20,7 @@ Usage:
         --why "The release was date-bound and the refactor is two days" \\
         --where "src/orders/list.tsx"
     debt.py list                # the register, newest first
-    debt.py paid <n>            # mark entry n repaid, with the date
+    debt.py paid <n> --by "..."  # mark entry n repaid, and record how
 
 Entries live in docs/DEBT.md, or under .claude/.praxis/knowledge/ when the
 repository is not ours (contributor mode), like every other knowledge artifact.
@@ -105,10 +105,15 @@ def add(root, args) -> int:
         print("praxis: the title comes first, before the flags: "
               "debt.py add \"<title>\" [--interest ...] [--principal ...]")
         return 1
-    interest = common.cli_opt(args, "--interest", "")
-    principal = common.cli_opt(args, "--principal", "")
-    why = common.cli_opt(args, "--why", "")
-    where = common.cli_opt(args, "--where", "")
+    # Every value is flattened, not only the title. A newline in any of them
+    # injects a `## N.` heading that ENTRY_RE reads as a real entry, and a forged
+    # entry suppresses a real finding: the auditor does not re-report debt that
+    # is already listed.
+    def field(flag):
+        return " ".join((common.cli_opt(args, flag, "") or "").split())
+
+    interest, principal = field("--interest"), field("--principal")
+    why, where = field("--why"), field("--where")
 
     # Interest and principal are what make the entry rankable and actionable. An
     # entry without them is a complaint, and a register of complaints is ignored.
@@ -146,7 +151,7 @@ def add(root, args) -> int:
 
 
 def paid(root, args) -> int:
-    if not args or not args[0].isdigit():
+    if not args or not args[0].isdecimal():
         print("usage: debt.py paid <entry number>")
         return 1
     num = int(args[0])
@@ -170,14 +175,33 @@ def paid(root, args) -> int:
 
     at, end = block
     body = text[at:end]
+    # Flattened for the same reason a title is: the replacement below is
+    # line-anchored, so a note spanning lines would leave its own tail behind
+    # when it was later replaced.
+    by = " ".join((common.cli_opt(args, "--by", "") or "").split())
+
     new_body, count = re.subn(r"(?m)^- Status: open$",
                               f"- Status: repaid {_dt.date.today().isoformat()}",
                               body, count=1)
-    if not count:
-        print(f"praxis: debt entry {num} is not open.")
+    if not count and not by:
+        print(f"praxis: debt entry {num} is not open. Pass --by \"<how it was "
+              "repaid>\" to record that against it.")
         return 1
+
+    if by:
+        # An entry that says only "repaid" is a dead line: the next reader cannot
+        # tell whether the principal was paid, the debt was designed away, or the
+        # premise turned out to be wrong. Recording *how* is what makes the
+        # register worth keeping, and it is the only place a mistaken premise
+        # gets corrected without rewriting the history of what was believed.
+        new_body = re.sub(r"(?m)^\*\*Repaid by\.\*\*.*$", "", new_body).rstrip("\n")
+        # The trailing blank line separates this entry from the next heading;
+        # rstrip took it, so put it back rather than degrading the file on
+        # every repayment.
+        new_body += f"\n\n**Repaid by.** {by}\n\n"
     _write(path(root), text[:at] + new_body + text[end:])
-    print(f"praxis: debt entry {num} marked repaid.")
+    print(f"praxis: debt entry {num} marked repaid."
+          if count else f"praxis: recorded how entry {num} was repaid.")
     return 0
 
 
@@ -198,7 +222,8 @@ def entries(text: str) -> list:
         status = "unknown"
         for line in block.splitlines():
             if line.startswith("- Status: "):
-                status = line[len("- Status: "):].strip().split()[0]
+                parts = line[len("- Status: "):].strip().split()
+                status = parts[0] if parts else "unknown"
                 break
         out.append((num, title, status))
     return out
@@ -225,7 +250,7 @@ def main() -> int:
     args = sys.argv[1:]
     if not args:
         print("usage: debt.py add \"<title>\" --interest \"...\" --principal \"...\" "
-              "[--why ...] [--where ...] | list | paid <n>")
+              "[--why ...] [--where ...] | list | paid <n> [--by \"how\"]")
         return 1
     if args[0] == "add":
         if len(args) < 2:

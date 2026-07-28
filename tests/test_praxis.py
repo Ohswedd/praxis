@@ -1860,6 +1860,54 @@ class TestDebtRegister(GitRepoCase):
         for expected in ("1. First", "5. Hand-written", "6. Third"):
             self.assertIn(expected, out)
 
+    def test_recording_how_it_was_repaid_replaces_rather_than_accumulates(self):
+        """A multi-line note left its own tail behind: the removal is line-anchored."""
+        self.add_one("Entry")
+        self.debt("paid", "1", "--by", "first note\nsecond line")
+        self.debt("paid", "1", "--by", "corrected note")
+        body = (self.root / "docs" / "DEBT.md").read_text()
+        self.assertEqual(body.count("**Repaid by.**"), 1)
+        self.assertNotIn("second line", body)
+        self.assertIn("corrected note", body)
+
+    def test_an_already_repaid_entry_still_refuses_without_a_note(self):
+        self.add_one("Entry")
+        self.debt("paid", "1")
+        r = self.debt("paid", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("--by", r.stdout)
+
+    def test_no_field_can_inject_a_forged_entry(self):
+        """A forged entry suppresses a real finding: the auditor does not
+        re-report debt that is already listed."""
+        self.debt("add", "Real", "--interest", "cost",
+                  "--principal", "the fix\n\n## 7. Forged\n- Status: open\n")
+        out = self.debt("list").stdout
+        self.assertIn("1. Real", out)
+        self.assertNotIn("7. Forged", out)
+        self.add_one("Next")
+        self.assertIn("2. Next", self.debt("list").stdout, "numbering intact")
+
+    def test_a_status_line_with_no_value_does_not_kill_the_listing(self):
+        self.add_one("First")
+        self.add_one("Second")
+        p = self.root / "docs" / "DEBT.md"
+        p.write_text(p.read_text().replace("- Status: open", "- Status: ", 1))
+        r = self.debt("list")
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("2. Second", r.stdout)
+
+    def test_repayment_keeps_the_separator_before_the_next_entry(self):
+        self.add_one("First")
+        self.add_one("Second")
+        self.debt("paid", "1", "--by", "done")
+        self.assertIn("\n\n## 2. ", (self.root / "docs" / "DEBT.md").read_text())
+
+    def test_a_non_decimal_digit_is_rejected_cleanly(self):
+        r = self.debt("paid", "²")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("usage", r.stdout)
+
     def test_a_title_cannot_inject_a_heading(self):
         """Flattened to one line, so it cannot become an entry or skew numbering."""
         self.debt("add", "Bad\n## 999. injected", "--interest", "i",
@@ -1943,6 +1991,158 @@ class TestGateSurvivesMalformedState(GitRepoCase):
         })
         r = run_script("quality_gate.py", self.payload(), self.root)
         self.assertEqual(r.returncode, 2)
+
+
+class TestReviewScopeWiring(unittest.TestCase):
+    """The scoping rules exist once, and every auditor is wired to them.
+
+    Each assertion below stands for a failure that is silent at runtime: the
+    auditor still runs, still returns a verdict, and the verdict is worthless
+    because it was formed against an empty diff.
+    """
+
+    AGENTS = PLUGIN / "agents"
+    SKILL = PLUGIN / "skills" / "review-scope" / "SKILL.md"
+
+    @property
+    def NON_REVIEW(self):
+        """Imported, never re-declared: a second copy can disagree with the check
+        it is meant to verify, and the test would then ratify the wrong answer."""
+        return self.selfcheck().NON_REVIEW_AGENTS
+
+    def selfcheck(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "praxis_selfcheck", SCRIPTS / "selfcheck.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def agents(self):
+        return sorted(self.AGENTS.glob("*.md"))
+
+    def test_the_rules_exist_exactly_once(self):
+        self.assertTrue(self.SKILL.is_file())
+        rules = "scope.py"
+        restating = [p.name for p in self.agents()
+                     if rules in p.read_text(encoding="utf-8")]
+        self.assertEqual(restating, [], "no agent restates what the skill defines")
+
+    def test_the_skill_can_actually_be_preloaded(self):
+        """A skill the model may not invoke cannot be injected at startup."""
+        self.assertNotIn("disable-model-invocation: true",
+                         self.SKILL.read_text(encoding="utf-8"))
+
+    def test_every_review_agent_preloads_it_and_carries_the_pointer(self):
+        sc = self.selfcheck()
+        for p in self.agents():
+            body = p.read_text(encoding="utf-8")
+            front = body.split("---")[1]
+            if p.stem in self.NON_REVIEW:
+                self.assertNotIn("praxis:review-scope", body, p.name)
+                continue
+            self.assertIn("praxis:review-scope", front,
+                          f"{p.name} does not preload the skill")
+            self.assertIn(sc.REVIEW_SCOPE_BLOCK, body,
+                          f"{p.name}'s pointer has drifted from the canonical block")
+
+    def test_a_commented_out_preload_is_not_a_preload(self):
+        """`# - praxis:review-scope` contains the name and preloads nothing."""
+        sc = self.selfcheck()
+        skill = "praxis:review-scope"
+        head = "---\nname: x\ndescription: y\ntools: Read\n"
+        self.assertFalse(sc._preloads_skill(
+            head + "skills:\n  # - praxis:review-scope\n---\nbody", skill))
+        self.assertFalse(sc._preloads_skill(
+            head + "skills:\n  - praxis:review_scope\n---\nbody", skill))
+        self.assertFalse(sc._preloads_skill(
+            head + "skills:\n  - review-scope\n---\nbody", skill))
+        self.assertTrue(sc._preloads_skill(
+            head + 'skills:\n  - "praxis:review-scope"\n---\nbody', skill))
+        self.assertTrue(sc._preloads_skill(
+            head + "skills:\n  - other\n  - praxis:review-scope\n---\nbody", skill))
+
+    def _wiring_errors(self, mutate):
+        """Errors from the real check against a copy of the plugin, mutated.
+
+        Every branch of this function is the only thing standing between an
+        auditor and a verdict formed against nothing, so each is exercised rather
+        than assumed from the current tree passing.
+        """
+        with tempfile.TemporaryDirectory() as tmp:
+            fake = Path(tmp)
+            shutil.copytree(PLUGIN / "agents", fake / "agents")
+            shutil.copytree(PLUGIN / "skills" / "review-scope",
+                            fake / "skills" / "review-scope")
+            mutate(fake)
+            errors = []
+            self.selfcheck()._review_scope_wiring(fake, errors)
+            return errors
+
+    def test_selfcheck_rejects_a_drifted_pointer(self):
+        def mutate(fake):
+            t = fake / "agents" / "edge-case-hunter.md"
+            t.write_text(t.read_text().replace(
+                "reports PASS on a change it never saw.", "reports PASS."))
+        self.assertTrue(any("drifted" in e for e in self._wiring_errors(mutate)))
+
+    def test_selfcheck_rejects_a_pointer_that_is_not_first(self):
+        """A pointer demoted below other text is read late or not at all."""
+        def mutate(fake):
+            t = fake / "agents" / "edge-case-hunter.md"
+            t.write_text(t.read_text().replace(
+                "<!-- praxis:review-scope begin", "Preamble.\n\n<!-- praxis:review-scope begin"))
+        self.assertTrue(any("drifted" in e for e in self._wiring_errors(mutate)))
+
+    def test_selfcheck_rejects_an_agent_that_stops_preloading(self):
+        def mutate(fake):
+            t = fake / "agents" / "adversarial-auditor.md"
+            t.write_text(t.read_text().replace("skills:\n  - praxis:review-scope\n", ""))
+        self.assertTrue(any("does not preload" in e for e in self._wiring_errors(mutate)))
+
+    def test_selfcheck_rejects_a_missing_skill(self):
+        def mutate(fake):
+            shutil.rmtree(fake / "skills" / "review-scope")
+        self.assertTrue(any("skill is missing" in e for e in self._wiring_errors(mutate)))
+
+    def test_selfcheck_rejects_an_emptied_skill(self):
+        """Ten copies became one file; the file must be asserted to say something."""
+        def mutate(fake):
+            s = fake / "skills" / "review-scope" / "SKILL.md"
+            head = s.read_text().split("---")
+            s.write_text(f"---{head[1]}---\n")
+        self.assertTrue(any("no longer carries" in e for e in self._wiring_errors(mutate)))
+
+    def test_selfcheck_rejects_a_renamed_skill(self):
+        """The agents reference the name, not the directory."""
+        def mutate(fake):
+            s = fake / "skills" / "review-scope" / "SKILL.md"
+            s.write_text(s.read_text().replace("name: review-scope", "name: review-scoping"))
+        self.assertTrue(any("resolve to nothing" in e for e in self._wiring_errors(mutate)))
+
+    def test_selfcheck_rejects_a_skill_that_cannot_be_preloaded(self):
+        def mutate(fake):
+            s = fake / "skills" / "review-scope" / "SKILL.md"
+            s.write_text(s.read_text().replace("---\n\n# Scope",
+                                               "disable-model-invocation: True\n---\n\n# Scope"))
+        errors = self._wiring_errors(mutate)
+        self.assertTrue(any("disable-model-invocation" in e for e in errors))
+
+    def test_selfcheck_rejects_the_wiring_on_a_non_review_agent(self):
+        def mutate(fake):
+            t = fake / "agents" / "repo-cartographer.md"
+            t.write_text(t.read_text().replace(
+                "tools: Read, Grep, Glob",
+                "tools: Read, Grep, Glob\nskills:\n  - praxis:review-scope"))
+        self.assertTrue(any("does not belong to it" in e for e in self._wiring_errors(mutate)))
+
+    def test_a_tab_in_frontmatter_is_rejected(self):
+        """A tab drops the whole frontmatter in YAML, silently."""
+        sc = self.selfcheck()
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "a.md"
+            f.write_text("---\nname: x\ndescription: y\nskills:\n\t- praxis:review-scope\n---\n\nbody\n")
+            self.assertIsNone(sc._frontmatter_keys(f))
 
 
 class TestLedgerMigration(GitRepoCase):

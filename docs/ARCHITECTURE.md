@@ -283,6 +283,13 @@ updated is a regression that a squashed diff makes no easier to see.
   `PASS / PASS WITH NOTES / FAIL`. The `debt` vertical is the only one that asks
   about later rather than now: what the change will cost to live with, and
   whether the shortcuts it took were recorded in `docs/DEBT.md` or left silent.
+- **How they are scoped** is defined once, in the `review-scope` skill, which
+  every review auditor preloads through the `skills` frontmatter field: the field
+  injects a skill's full content into a subagent at startup, which is the include
+  mechanism agent bodies lack. Each brief keeps only a byte-checked pointer, so a
+  preload that silently did not happen still leaves the auditor able to read the
+  rules. `selfcheck.py` fails if the skill goes missing, if an auditor stops
+  preloading it, or if a pointer drifts.
 - **Horizontal analysis** = the `quality-rubric` skill's cross-cutting pass over
   the whole change for consistency, use-case coverage, and guideline compliance,
   looping until every vertical is green.
@@ -476,7 +483,9 @@ plugins/praxis/
   output-styles/praxis-quality.md     always-on doctrine
   commands/*.md                      eight entry points (task, audit, docs, ship,
                                      bootstrap, doctor, config, discover)
-  skills/*/SKILL.md                  twelve reasoning workflows: task-orchestrator,
+  skills/*/SKILL.md                  twelve reasoning workflows plus review-scope
+                                     (shared content the auditors preload, not a
+                                     routed workflow): task-orchestrator,
                                      prompt-architect, best-practices, code-craft,
                                      quality-rubric, docs-living, claudemd-living,
                                      frontend-pipeline, repo-audit, git-delivery,

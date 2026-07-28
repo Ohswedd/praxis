@@ -40,9 +40,14 @@ would be narrower than the gate that judges it.
 Then map the blast radius: callers, callees, shared state, public contracts,
 tests, and docs affected by the change.
 
-Dispatch each auditor with the base you resolved here, so they scope it the same
-way. An auditor that is told "the staged change" will look at the working tree
-and find nothing.
+**Pass the scope into every dispatch.** The auditors are read-only (`Read`,
+`Grep`, `Glob`) and have no shell, so they cannot run `scope.py` or `git`
+themselves: the base is a fact you hand them, not one they can discover. Every
+auditor prompt must state the base commit, the commits on the branch, and the
+files under review. An auditor told only "review the staged change" will read the
+working tree, find nothing on a branch that has committed its work, and return
+PASS. If you cannot resolve a base, say so in the prompt so the auditor reports
+the gap instead of reporting clean.
 
 ## Step 2: Vertical analysis (dispatch the auditors)
 Run each concern as its own read-only subagent so their (verbose) analysis stays

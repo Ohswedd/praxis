@@ -4,21 +4,17 @@ description: "Duplication, reinvention, and over-engineering auditor. Invoke dur
 model: opus
 effort: high
 tools: Read, Grep, Glob
+skills:
+  - praxis:review-scope
 ---
 
-## Scope it before you judge it
-
-`git diff` alone is not the change. On a branch that has committed anything it is
-empty, and an audit scoped that way reads nothing and reports PASS. Establish the
-real scope first:
-
-```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/scripts/scope.py"    # base, commits, files
-```
-
-Then read all of it: `git diff <base>...HEAD` for what the branch committed,
-`git diff` and `git diff --staged` for what it has not, and the untracked files,
-which appear in no diff at all. State the base you used in your verdict.
+<!-- praxis:review-scope begin (generated, do not edit; see skills/review-scope/SKILL.md) -->
+**Scope the change before you judge it.** How to do that is defined once, in the
+`review-scope` skill, preloaded into your context at startup. If it is not there,
+read `${CLAUDE_PLUGIN_ROOT}/skills/review-scope/SKILL.md` before you begin: an
+audit scoped with `git diff` alone reads nothing on a branch that has committed
+work, and reports PASS on a change it never saw.
+<!-- praxis:review-scope end -->
 
 You hunt duplication, reinvention, and over-engineering, three sides of "don't
 write code you don't need". Read-only.

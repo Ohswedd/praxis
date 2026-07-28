@@ -6,6 +6,21 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-07-29
+
+### Added
+- debt.py paid <n> --by "<how>" records how an entry was settled. An entry that says only repaid cannot tell the next reader whether the principal was paid, the debt was designed away, or the premise turned out to be wrong.
+
+### Changed
+- The auditors' scoping rules live in one place. They were copied into ten agent briefs on the belief that agent files have no include mechanism; they do, the skills frontmatter field, which preloads a skill's full content into a subagent at startup. The rules are now the review-scope skill, each brief keeps only a byte-checked pointer for the case where a preload is silently skipped, and selfcheck fails on all five ways the wiring can break. Debt entry 1 is repaid, with the false premise corrected in the register rather than quietly dropped.
+
+### Fixed
+- debt.py paid --by flattens the note it records. The removal that replaces a previous note is line-anchored, so a note spanning lines left its own tail orphaned in the entry when it was later replaced.
+- The review-scope wiring check parses the skills list rather than substring-matching it. A commented-out entry contains the skill name and preloads nothing, so it would have been reported as wired when it was not.
+- The review-scope rules told the auditors to run scope.py and git commands. None of them can: they carry Read, Grep and Glob and no shell, so the procedure was unexecutable by every one of its ten readers, and what it actually described was the working-tree assumption it exists to break. The skill now states that the scope is a fact the dispatcher resolves and passes, what to do when it was not passed, and the quality-rubric makes passing it a requirement of every dispatch.
+- The wiring check was weaker than claimed. It matched the skill name as a substring of the frontmatter, so a commented-out entry passed; it accepted the pointer anywhere in the file, so one demoted into an example passed; it never read the skill's body, so an emptied skill passed; it compared disable-model-invocation against one exact string, so True or yes passed; and it never checked the skill's frontmatter name against the name the agents reference, so a half-done rename broke all ten preloads silently. A tab in frontmatter, which drops the whole block in YAML, is now rejected too.
+- debt.py add flattened only the title, so a newline in --interest, --principal, --why or --where injected a heading that the register read as a real entry. A forged entry suppresses a real finding, because the debt auditor does not re-report debt that is already listed. A status line with no value crashed the whole listing, paid accepted a unicode digit that int() rejects, and a repayment note ate the blank line before the next entry.
+
 ## [3.1.0] - 2026-07-28
 
 ### Added

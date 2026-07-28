@@ -119,6 +119,8 @@ def _frontmatter_keys(md: Path):
         return None
     keys = set()
     for line in m.group(1).splitlines():
+        if "\t" in line:
+            return None  # a tab in YAML indentation drops the whole frontmatter
         mm = re.match(r"^([A-Za-z0-9_-]+):(.*)$", line)
         if not mm:
             continue
@@ -167,24 +169,10 @@ def check(require_repo: bool = False):
     except Exception as e:
         fail(f"hooks.json invalid: {e}")
 
-    # Auditors that review a change must say how to scope it. The preamble is
-    # repeated in each brief because agent files have no include mechanism, so
-    # nothing but this check stops one from silently losing it, and an auditor
-    # without it scopes to `git diff`, reads nothing on a branch with commits,
-    # and reports PASS. Recorded as debt in docs/DEBT.md.
-    _NON_DIFF_AGENTS = {"repo-cartographer", "claudemd-verifier", "finding-verifier"}
     for md in sorted((PLUGIN / "agents").glob("*.md")):
         k = _frontmatter_keys(md)
         need(k and {"name", "description"} <= k, f"agent {md.name}: bad/missing frontmatter")
-        if md.stem in _NON_DIFF_AGENTS:
-            continue
-        try:
-            body = md.read_text(encoding="utf-8")
-        except Exception:
-            body = ""
-        need("scripts/scope.py" in body,
-             f"agent {md.name}: reviews a change but never resolves the review "
-             "scope, so on a branch with commits it would audit an empty diff")
+    checks += _review_scope_wiring(PLUGIN, errors)
     for skill in sorted((PLUGIN / "skills").glob("*/SKILL.md")):
         k = _frontmatter_keys(skill)
         need(k and {"name", "description"} <= k,
@@ -258,6 +246,150 @@ def check(require_repo: bool = False):
         checks += _house_style(repo_prose(root), root, errors)
 
     return scope, checks, errors
+
+
+# --------------------------------------------------------------------------- #
+# The shared review scope
+# --------------------------------------------------------------------------- #
+#: The skill that holds the scoping rules, once. Agent bodies never restate them.
+REVIEW_SCOPE_SKILL = "review-scope"
+
+#: Agents that are handed a file list rather than a change, so they have no base
+#: to resolve and the scoping rules do not apply to them.
+NON_REVIEW_AGENTS = {"repo-cartographer", "claudemd-verifier", "finding-verifier"}
+
+#: The pointer every review agent carries, byte for byte. It is a *pointer*, not
+#: a copy: the rules live in the skill, and this exists only so a preload that
+#: silently did not happen cannot leave an auditor with no scoping at all. Agent
+#: files have no include directive, so this line is the smallest thing that has
+#: to be repeated, and asserting it exactly is what stops it drifting.
+REVIEW_SCOPE_BLOCK = """<!-- praxis:review-scope begin (generated, do not edit; see skills/review-scope/SKILL.md) -->
+**Scope the change before you judge it.** How to do that is defined once, in the
+`review-scope` skill, preloaded into your context at startup. If it is not there,
+read `${CLAUDE_PLUGIN_ROOT}/skills/review-scope/SKILL.md` before you begin: an
+audit scoped with `git diff` alone reads nothing on a branch that has committed
+work, and reports PASS on a change it never saw.
+<!-- praxis:review-scope end -->"""
+
+
+def _preloads_skill(body: str, skill: str) -> bool:
+    """True if the frontmatter's `skills:` list really contains `skill`.
+
+    Parsed rather than substring-matched: `# - praxis:review-scope` contains the
+    name and preloads nothing, and a check that accepted it would report the
+    wiring as present on an agent that has none.
+    """
+    if body.count("---") < 2:
+        return False
+    front = body.split("---")[1]
+    in_list = False
+    for raw in front.splitlines():
+        line = raw.split("#", 1)[0].rstrip()
+        if not line.strip():
+            continue
+        if re.match(r"^skills:\s*$", line):
+            in_list = True
+            continue
+        if in_list:
+            item = re.match(r"^\s+-\s*(.+?)\s*$", line)
+            if not item:
+                in_list = False          # the list ended at the next key
+                continue
+            if item.group(1).strip("'\"") == skill:
+                return True
+    return False
+
+
+def _review_scope_wiring(plugin: Path, errors: list) -> int:
+    """Assert the scoping rules exist once and reach every auditor. Returns checks.
+
+    Three failures are possible and all of them are silent at runtime, which is
+    why they are asserted here rather than trusted:
+      * the skill goes missing, and every preload is skipped with only a debug-log
+        warning;
+      * an agent stops preloading it, or never did;
+      * an agent's pointer drifts from the canonical one, so the two disagree
+        about where the rules live.
+    Any of them ends with an auditor scoping to `git diff`, reading nothing on a
+    branch that has committed work, and reporting PASS.
+    """
+    checks = 0
+    skill = plugin / "skills" / REVIEW_SCOPE_SKILL / "SKILL.md"
+
+    checks += 1
+    if not skill.is_file():
+        errors.append(f"the {REVIEW_SCOPE_SKILL} skill is missing: every agent that "
+                      "preloads it would be skipped with only a debug-log warning")
+        return checks
+
+    try:
+        text = skill.read_text(encoding="utf-8")
+    except Exception as exc:
+        checks += 1
+        errors.append(f"skill {REVIEW_SCOPE_SKILL}: unreadable ({exc})")
+        return checks
+    front = text.split("---")[1] if text.count("---") >= 2 else ""
+
+    # A skill that cannot be invoked by the model cannot be preloaded either.
+    # Matched as a key with a truthy value rather than one exact string, since
+    # `True` and `yes` are equally truthy to a YAML loader and equally invisible
+    # to a substring test.
+    checks += 1
+    if re.search(r"(?im)^\s*[\"']?disable-model-invocation[\"']?\s*:\s*(true|yes|on)\b",
+                 front):
+        errors.append(f"skill {REVIEW_SCOPE_SKILL}: sets disable-model-invocation, "
+                      "which makes it impossible to preload into an agent")
+
+    # The name the agents reference, not the directory they happen to sit in. A
+    # half-done rename leaves `skills: [praxis:review-scope]` resolving to
+    # nothing in all ten agents, skipped with only a debug-log warning.
+    checks += 1
+    declared_name = re.search(r"(?m)^name:\s*(\S+)\s*$", front)
+    if not declared_name or declared_name.group(1).strip("'\"") != REVIEW_SCOPE_SKILL:
+        errors.append(f"skill {REVIEW_SCOPE_SKILL}: its frontmatter name is "
+                      f"{declared_name.group(1) if declared_name else 'missing'}, so "
+                      "every `praxis:review-scope` preload would resolve to nothing")
+
+    # The rules themselves. Concentrating ten copies into one file and then not
+    # asserting the file says anything would trade drift for a single silent
+    # point of failure: a truncated write leaves ten auditors preloading nothing.
+    checks += 1
+    body = text.split("---", 2)[-1]
+    missing = [phrase for phrase in ("scope.py", "base", "untracked")
+               if phrase not in body]
+    if missing or len(body.split()) < 120:
+        errors.append(f"skill {REVIEW_SCOPE_SKILL}: its body no longer carries the "
+                      f"scoping rules (missing: {', '.join(missing) or 'too short'}), "
+                      "so every agent preloads an empty instruction")
+
+    for md in sorted((plugin / "agents").rglob("*.md")):
+        try:
+            body = md.read_text(encoding="utf-8")
+        except Exception:
+            body = ""
+        declared = _preloads_skill(body, f"praxis:{REVIEW_SCOPE_SKILL}")
+        # Immediately after the frontmatter, not merely somewhere in the file: a
+        # pointer demoted into an example, a code fence, or the tail of the brief
+        # is a pointer the agent reads last or not at all.
+        has_block = body.split("---", 2)[-1].lstrip("\n").startswith(REVIEW_SCOPE_BLOCK)
+
+        if md.stem in NON_REVIEW_AGENTS:
+            checks += 1
+            if declared or has_block:
+                errors.append(f"agent {md.name}: is handed a file list, not a change, "
+                              "so the review-scope wiring does not belong to it")
+            continue
+
+        checks += 2
+        if not declared:
+            errors.append(f"agent {md.name}: reviews a change but does not preload "
+                          f"the {REVIEW_SCOPE_SKILL} skill, so it would scope to "
+                          "`git diff` and audit an empty diff on a branch")
+        if not has_block:
+            errors.append(f"agent {md.name}: its review-scope pointer is missing or "
+                          "has drifted from the canonical block in selfcheck.py; "
+                          "replace it verbatim rather than rewording it")
+    return checks
 
 
 def _house_style(files, root: Path, errors: list) -> int:
