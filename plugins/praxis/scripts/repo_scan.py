@@ -56,7 +56,8 @@ DIMENSIONS = [
     "duplication",   # copy-paste, reinvention, over-engineering
     "performance",   # complexity, hot paths, growth
     "doc-reference", # authoritative docs + in-repo pattern conformance
-    "completeness",  # stubs, dead code, debt, unwired pieces
+    "debt",          # what this code costs to live with, and whether it is recorded
+    "completeness",  # stubs, dead code, unwired pieces
 ]
 
 SEVERITIES = ("critical", "high", "medium", "low")

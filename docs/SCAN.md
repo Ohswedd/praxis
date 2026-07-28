@@ -39,7 +39,7 @@ makes that impossible mechanically, not aspirationally:
   (pruned of vendored/binary/lockfile/oversize noise, every exclusion counted
   and reported, never hidden).
 - **Coverage is recorded, not remembered.** A shard counts as audited only when
-  all seven dimensions were marked (`repo_scan.py mark <shard> <dim>`), and a
+  all eight dimensions were marked (`repo_scan.py mark <shard> <dim>`), and a
   clean pass is still a recorded pass.
 - **The report is computed.** `repo_scan.py report` derives coverage and the
   findings table from state; if any shard × dimension never ran, the report
@@ -61,12 +61,13 @@ makes that impossible mechanically, not aspirationally:
 
 ## The dimensions
 
-Each shard is audited on all seven praxis verticals, by the same read-only
+Each shard is audited on all eight praxis code verticals, by the same read-only
 Opus subagents the change-audit uses (their scope generalises from "the diff"
 to "these files"): `adversarial` (security), `edge-case` (correctness bugs),
 `regression` (contracts vs tests), `duplication` (maintainability/reinvention),
-`performance`, `doc-reference` (API misuse, pattern drift), `completeness`
-(stubs, dead code, debt).
+`performance`, `doc-reference` (API misuse, pattern drift), `debt` (what the
+code costs to live with, and whether it is recorded), `completeness` (stubs,
+dead code, unwired pieces).
 
 ## The reverse audit
 

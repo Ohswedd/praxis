@@ -176,7 +176,7 @@ See `docs/KNOWLEDGE.md` for the full model.
 The change-audit machinery generalises to whole repositories via the
 `repo-audit` skill: `repo_scan.py` builds a deterministic shard ledger
 (inventory → shards → per-shard × dimension tracking → finding lifecycle), the
-seven vertical auditors run over every shard, and the `finding-verifier`
+eight vertical auditors run over every shard, and the `finding-verifier`
 subagent reverse-audits each finding before anything is fixed. Coverage claims
 come from recorded state: an unaudited shard makes the final report print
 INCOMPLETE. See `docs/SCAN.md`.

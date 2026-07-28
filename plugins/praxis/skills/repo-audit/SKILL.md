@@ -66,13 +66,13 @@ Present the scan plan so the user knows exactly what will and won't happen:
 - Scope: <path>, N files / M lines in K shards (top groups: …)
 - Excluded from inventory: vendored=…, binary=…, lockfile=…, oversize=… (counted, not hidden)
 - Dimensions per shard: adversarial, edge-case, regression, duplication,
-  performance, doc-reference, completeness
+  performance, doc-reference, debt, completeness
 - Reverse audit: every finding is independently re-examined by @praxis:finding-verifier
 - Fix policy: confirmed findings fixed in audited change-sets; architectural /
   breaking / irreversible items are deferred with a remediation plan, never auto-applied
 - Mode: full (audit + verify + fix) | report-only (--report-only)
 - Test baseline: <command> → <pass/fail summary>
-- Estimated agent dispatches: K shards × 7 dimensions + 1 per finding
+- Estimated agent dispatches: K shards × 8 dimensions + 1 per finding
 ```
 
 For a very large repo (thousands of files), this is a genuine decision point on
@@ -91,7 +91,8 @@ For each shard, dispatch **every** dimension to its auditor. The mapping:
 | `duplication`   | `@praxis:duplication-scanner`     | copy-paste, reinvention, over-engineering (maintainability) |
 | `performance`   | `@praxis:perf-scalability-analyst`| complexity, hot paths, N+1, growth ceilings |
 | `doc-reference` | `@praxis:doc-reference-finder`    | misused APIs, deprecated usage, pattern drift, bad practice |
-| `completeness`  | `@praxis:completeness-auditor`    | stubs, TODO debt, dead code, debug leftovers, unwired code |
+| `debt`          | `@praxis:debt-auditor`            | what this code costs to live with: shortcuts, coupling, wrong abstractions, deprecated dependencies, tests that lock in implementation, and whether any of it is recorded |
+| `completeness`  | `@praxis:completeness-auditor`    | stubs, dead code, debug leftovers, unwired code |
 
 Dispatch mechanics:
 - Get the shard's file list with `repo_scan.py shard <id>` and paste it into
