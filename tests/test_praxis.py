@@ -1877,6 +1877,37 @@ class TestDebtRegister(GitRepoCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("--by", r.stdout)
 
+    def test_no_field_can_inject_a_forged_entry(self):
+        """A forged entry suppresses a real finding: the auditor does not
+        re-report debt that is already listed."""
+        self.debt("add", "Real", "--interest", "cost",
+                  "--principal", "the fix\n\n## 7. Forged\n- Status: open\n")
+        out = self.debt("list").stdout
+        self.assertIn("1. Real", out)
+        self.assertNotIn("7. Forged", out)
+        self.add_one("Next")
+        self.assertIn("2. Next", self.debt("list").stdout, "numbering intact")
+
+    def test_a_status_line_with_no_value_does_not_kill_the_listing(self):
+        self.add_one("First")
+        self.add_one("Second")
+        p = self.root / "docs" / "DEBT.md"
+        p.write_text(p.read_text().replace("- Status: open", "- Status: ", 1))
+        r = self.debt("list")
+        self.assertEqual(r.returncode, 0)
+        self.assertIn("2. Second", r.stdout)
+
+    def test_repayment_keeps_the_separator_before_the_next_entry(self):
+        self.add_one("First")
+        self.add_one("Second")
+        self.debt("paid", "1", "--by", "done")
+        self.assertIn("\n\n## 2. ", (self.root / "docs" / "DEBT.md").read_text())
+
+    def test_a_non_decimal_digit_is_rejected_cleanly(self):
+        r = self.debt("paid", "²")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("usage", r.stdout)
+
     def test_a_title_cannot_inject_a_heading(self):
         """Flattened to one line, so it cannot become an entry or skew numbering."""
         self.debt("add", "Bad\n## 999. injected", "--interest", "i",
@@ -1972,7 +2003,20 @@ class TestReviewScopeWiring(unittest.TestCase):
 
     AGENTS = PLUGIN / "agents"
     SKILL = PLUGIN / "skills" / "review-scope" / "SKILL.md"
-    NON_REVIEW = {"repo-cartographer", "claudemd-verifier", "finding-verifier"}
+
+    @property
+    def NON_REVIEW(self):
+        """Imported, never re-declared: a second copy can disagree with the check
+        it is meant to verify, and the test would then ratify the wrong answer."""
+        return self.selfcheck().NON_REVIEW_AGENTS
+
+    def selfcheck(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "praxis_selfcheck", SCRIPTS / "selfcheck.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
 
     def agents(self):
         return sorted(self.AGENTS.glob("*.md"))
@@ -1990,12 +2034,7 @@ class TestReviewScopeWiring(unittest.TestCase):
                          self.SKILL.read_text(encoding="utf-8"))
 
     def test_every_review_agent_preloads_it_and_carries_the_pointer(self):
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "praxis_selfcheck", SCRIPTS / "selfcheck.py")
-        sc = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(sc)
-
+        sc = self.selfcheck()
         for p in self.agents():
             body = p.read_text(encoding="utf-8")
             front = body.split("---")[1]
@@ -2009,11 +2048,7 @@ class TestReviewScopeWiring(unittest.TestCase):
 
     def test_a_commented_out_preload_is_not_a_preload(self):
         """`# - praxis:review-scope` contains the name and preloads nothing."""
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "praxis_selfcheck3", SCRIPTS / "selfcheck.py")
-        sc = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(sc)
+        sc = self.selfcheck()
         skill = "praxis:review-scope"
         head = "---\nname: x\ndescription: y\ntools: Read\n"
         self.assertFalse(sc._preloads_skill(
@@ -2027,24 +2062,87 @@ class TestReviewScopeWiring(unittest.TestCase):
         self.assertTrue(sc._preloads_skill(
             head + "skills:\n  - other\n  - praxis:review-scope\n---\nbody", skill))
 
-    def test_selfcheck_rejects_a_drifted_pointer(self):
-        """The enforcement itself is tested, not just its current result."""
-        errors = []
+    def _wiring_errors(self, mutate):
+        """Errors from the real check against a copy of the plugin, mutated.
+
+        Every branch of this function is the only thing standing between an
+        auditor and a verdict formed against nothing, so each is exercised rather
+        than assumed from the current tree passing.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             fake = Path(tmp)
             shutil.copytree(PLUGIN / "agents", fake / "agents")
             shutil.copytree(PLUGIN / "skills" / "review-scope",
                             fake / "skills" / "review-scope")
-            target = fake / "agents" / "edge-case-hunter.md"
-            target.write_text(target.read_text().replace(
+            mutate(fake)
+            errors = []
+            self.selfcheck()._review_scope_wiring(fake, errors)
+            return errors
+
+    def test_selfcheck_rejects_a_drifted_pointer(self):
+        def mutate(fake):
+            t = fake / "agents" / "edge-case-hunter.md"
+            t.write_text(t.read_text().replace(
                 "reports PASS on a change it never saw.", "reports PASS."))
-            import importlib.util
-            spec = importlib.util.spec_from_file_location(
-                "praxis_selfcheck2", SCRIPTS / "selfcheck.py")
-            sc = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(sc)
-            sc._review_scope_wiring(fake, errors)
-        self.assertTrue(any("drifted" in e for e in errors), errors)
+        self.assertTrue(any("drifted" in e for e in self._wiring_errors(mutate)))
+
+    def test_selfcheck_rejects_a_pointer_that_is_not_first(self):
+        """A pointer demoted below other text is read late or not at all."""
+        def mutate(fake):
+            t = fake / "agents" / "edge-case-hunter.md"
+            t.write_text(t.read_text().replace(
+                "<!-- praxis:review-scope begin", "Preamble.\n\n<!-- praxis:review-scope begin"))
+        self.assertTrue(any("drifted" in e for e in self._wiring_errors(mutate)))
+
+    def test_selfcheck_rejects_an_agent_that_stops_preloading(self):
+        def mutate(fake):
+            t = fake / "agents" / "adversarial-auditor.md"
+            t.write_text(t.read_text().replace("skills:\n  - praxis:review-scope\n", ""))
+        self.assertTrue(any("does not preload" in e for e in self._wiring_errors(mutate)))
+
+    def test_selfcheck_rejects_a_missing_skill(self):
+        def mutate(fake):
+            shutil.rmtree(fake / "skills" / "review-scope")
+        self.assertTrue(any("skill is missing" in e for e in self._wiring_errors(mutate)))
+
+    def test_selfcheck_rejects_an_emptied_skill(self):
+        """Ten copies became one file; the file must be asserted to say something."""
+        def mutate(fake):
+            s = fake / "skills" / "review-scope" / "SKILL.md"
+            head = s.read_text().split("---")
+            s.write_text(f"---{head[1]}---\n")
+        self.assertTrue(any("no longer carries" in e for e in self._wiring_errors(mutate)))
+
+    def test_selfcheck_rejects_a_renamed_skill(self):
+        """The agents reference the name, not the directory."""
+        def mutate(fake):
+            s = fake / "skills" / "review-scope" / "SKILL.md"
+            s.write_text(s.read_text().replace("name: review-scope", "name: review-scoping"))
+        self.assertTrue(any("resolve to nothing" in e for e in self._wiring_errors(mutate)))
+
+    def test_selfcheck_rejects_a_skill_that_cannot_be_preloaded(self):
+        def mutate(fake):
+            s = fake / "skills" / "review-scope" / "SKILL.md"
+            s.write_text(s.read_text().replace("---\n\n# Scope",
+                                               "disable-model-invocation: True\n---\n\n# Scope"))
+        errors = self._wiring_errors(mutate)
+        self.assertTrue(any("disable-model-invocation" in e for e in errors))
+
+    def test_selfcheck_rejects_the_wiring_on_a_non_review_agent(self):
+        def mutate(fake):
+            t = fake / "agents" / "repo-cartographer.md"
+            t.write_text(t.read_text().replace(
+                "tools: Read, Grep, Glob",
+                "tools: Read, Grep, Glob\nskills:\n  - praxis:review-scope"))
+        self.assertTrue(any("does not belong to it" in e for e in self._wiring_errors(mutate)))
+
+    def test_a_tab_in_frontmatter_is_rejected(self):
+        """A tab drops the whole frontmatter in YAML, silently."""
+        sc = self.selfcheck()
+        with tempfile.TemporaryDirectory() as tmp:
+            f = Path(tmp) / "a.md"
+            f.write_text("---\nname: x\ndescription: y\nskills:\n\t- praxis:review-scope\n---\n\nbody\n")
+            self.assertIsNone(sc._frontmatter_keys(f))
 
 
 class TestLedgerMigration(GitRepoCase):

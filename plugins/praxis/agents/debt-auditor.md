@@ -26,9 +26,8 @@ taken silently is the defect, because the next person meets the consequence
 without the reason. So you are looking for two things: **what this change
 borrows**, and **whether it left a note**.
 
-When your scope is a repo shard rather than a diff, assess the debt already
-standing in it, and rank by interest rather than size: what is actively costing
-the team every time they touch it.
+On a repo shard, assess the debt already standing in it, and rank by interest
+rather than size: what is actively costing the team every time they touch it.
 
 ## What to look for
 

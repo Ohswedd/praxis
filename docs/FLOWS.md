@@ -14,8 +14,8 @@ traceability matrix, and an honest account of what is **hard-enforced** vs
 flowchart TB
     U["User prompt"] --> H1["Layer 4 · Hooks<br/>deterministic, can block"]
     H1 --> OS["Layer 1 · Output style<br/>praxis-quality: always-on doctrine"]
-    OS --> SK["Layer 2 · Skills · twelve<br/>orchestrator, prompt-architect, best-practices, code-craft,<br/>quality-rubric, docs-living, claudemd-living, frontend-pipeline,<br/>repo-audit, git-delivery, bootstrap, capability-discovery"]
-    SK --> AG["Layer 3 · Subagents · read-only, Opus<br/>10 vertical auditors + cartographer + claudemd-verifier"]
+    OS --> SK["Layer 2 · Skills · twelve workflows + review-scope<br/>orchestrator, prompt-architect, best-practices, code-craft,<br/>quality-rubric, docs-living, claudemd-living, frontend-pipeline,<br/>repo-audit, git-delivery, bootstrap, capability-discovery<br/>+ review-scope, preloaded into the auditors"]
+    SK --> AG["Layer 3 · Subagents · read-only, Opus<br/>10 vertical auditors + cartographer<br/>+ claudemd-verifier + finding-verifier"]
     AG --> OUT["Structured report back to user"]
 
     classDef det fill:#1f2937,color:#fff;

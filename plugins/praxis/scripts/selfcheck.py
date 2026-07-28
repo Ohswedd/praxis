@@ -119,6 +119,8 @@ def _frontmatter_keys(md: Path):
         return None
     keys = set()
     for line in m.group(1).splitlines():
+        if "\t" in line:
+            return None  # a tab in YAML indentation drops the whole frontmatter
         mm = re.match(r"^([A-Za-z0-9_-]+):(.*)$", line)
         if not mm:
             continue
@@ -320,22 +322,56 @@ def _review_scope_wiring(plugin: Path, errors: list) -> int:
                       "preloads it would be skipped with only a debug-log warning")
         return checks
 
-    # A skill that cannot be invoked by the model cannot be preloaded either.
-    checks += 1
     try:
-        if "disable-model-invocation: true" in skill.read_text(encoding="utf-8"):
-            errors.append(f"skill {REVIEW_SCOPE_SKILL}: sets disable-model-invocation, "
-                          "which makes it impossible to preload into an agent")
+        text = skill.read_text(encoding="utf-8")
     except Exception as exc:
+        checks += 1
         errors.append(f"skill {REVIEW_SCOPE_SKILL}: unreadable ({exc})")
+        return checks
+    front = text.split("---")[1] if text.count("---") >= 2 else ""
 
-    for md in sorted((plugin / "agents").glob("*.md")):
+    # A skill that cannot be invoked by the model cannot be preloaded either.
+    # Matched as a key with a truthy value rather than one exact string, since
+    # `True` and `yes` are equally truthy to a YAML loader and equally invisible
+    # to a substring test.
+    checks += 1
+    if re.search(r"(?im)^\s*[\"']?disable-model-invocation[\"']?\s*:\s*(true|yes|on)\b",
+                 front):
+        errors.append(f"skill {REVIEW_SCOPE_SKILL}: sets disable-model-invocation, "
+                      "which makes it impossible to preload into an agent")
+
+    # The name the agents reference, not the directory they happen to sit in. A
+    # half-done rename leaves `skills: [praxis:review-scope]` resolving to
+    # nothing in all ten agents, skipped with only a debug-log warning.
+    checks += 1
+    declared_name = re.search(r"(?m)^name:\s*(\S+)\s*$", front)
+    if not declared_name or declared_name.group(1).strip("'\"") != REVIEW_SCOPE_SKILL:
+        errors.append(f"skill {REVIEW_SCOPE_SKILL}: its frontmatter name is "
+                      f"{declared_name.group(1) if declared_name else 'missing'}, so "
+                      "every `praxis:review-scope` preload would resolve to nothing")
+
+    # The rules themselves. Concentrating ten copies into one file and then not
+    # asserting the file says anything would trade drift for a single silent
+    # point of failure: a truncated write leaves ten auditors preloading nothing.
+    checks += 1
+    body = text.split("---", 2)[-1]
+    missing = [phrase for phrase in ("scope.py", "base", "untracked")
+               if phrase not in body]
+    if missing or len(body.split()) < 120:
+        errors.append(f"skill {REVIEW_SCOPE_SKILL}: its body no longer carries the "
+                      f"scoping rules (missing: {', '.join(missing) or 'too short'}), "
+                      "so every agent preloads an empty instruction")
+
+    for md in sorted((plugin / "agents").rglob("*.md")):
         try:
             body = md.read_text(encoding="utf-8")
         except Exception:
             body = ""
         declared = _preloads_skill(body, f"praxis:{REVIEW_SCOPE_SKILL}")
-        has_block = REVIEW_SCOPE_BLOCK in body
+        # Immediately after the frontmatter, not merely somewhere in the file: a
+        # pointer demoted into an example, a code fence, or the tail of the brief
+        # is a pointer the agent reads last or not at all.
+        has_block = body.split("---", 2)[-1].lstrip("\n").startswith(REVIEW_SCOPE_BLOCK)
 
         if md.stem in NON_REVIEW_AGENTS:
             checks += 1

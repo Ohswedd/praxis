@@ -105,10 +105,15 @@ def add(root, args) -> int:
         print("praxis: the title comes first, before the flags: "
               "debt.py add \"<title>\" [--interest ...] [--principal ...]")
         return 1
-    interest = common.cli_opt(args, "--interest", "")
-    principal = common.cli_opt(args, "--principal", "")
-    why = common.cli_opt(args, "--why", "")
-    where = common.cli_opt(args, "--where", "")
+    # Every value is flattened, not only the title. A newline in any of them
+    # injects a `## N.` heading that ENTRY_RE reads as a real entry, and a forged
+    # entry suppresses a real finding: the auditor does not re-report debt that
+    # is already listed.
+    def field(flag):
+        return " ".join((common.cli_opt(args, flag, "") or "").split())
+
+    interest, principal = field("--interest"), field("--principal")
+    why, where = field("--why"), field("--where")
 
     # Interest and principal are what make the entry rankable and actionable. An
     # entry without them is a complaint, and a register of complaints is ignored.
@@ -146,7 +151,7 @@ def add(root, args) -> int:
 
 
 def paid(root, args) -> int:
-    if not args or not args[0].isdigit():
+    if not args or not args[0].isdecimal():
         print("usage: debt.py paid <entry number>")
         return 1
     num = int(args[0])
@@ -190,7 +195,10 @@ def paid(root, args) -> int:
         # register worth keeping, and it is the only place a mistaken premise
         # gets corrected without rewriting the history of what was believed.
         new_body = re.sub(r"(?m)^\*\*Repaid by\.\*\*.*$", "", new_body).rstrip("\n")
-        new_body += f"\n\n**Repaid by.** {by}\n"
+        # The trailing blank line separates this entry from the next heading;
+        # rstrip took it, so put it back rather than degrading the file on
+        # every repayment.
+        new_body += f"\n\n**Repaid by.** {by}\n\n"
     _write(path(root), text[:at] + new_body + text[end:])
     print(f"praxis: debt entry {num} marked repaid."
           if count else f"praxis: recorded how entry {num} was repaid.")
@@ -214,7 +222,8 @@ def entries(text: str) -> list:
         status = "unknown"
         for line in block.splitlines():
             if line.startswith("- Status: "):
-                status = line[len("- Status: "):].strip().split()[0]
+                parts = line[len("- Status: "):].strip().split()
+                status = parts[0] if parts else "unknown"
                 break
         out.append((num, title, status))
     return out

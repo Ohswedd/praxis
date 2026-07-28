@@ -39,10 +39,9 @@ only the net result.
   merge base rather than the working tree, so you are judging this branch's work
   and not somebody else's uncommitted edits.
 
-When your scope is a repo shard rather than a diff, hunt the same hazards as
-they exist latently: contracts whose tests assert the wrong thing, callers that
-disagree with a signature's actual behaviour, and promised behaviours (README,
-docs, public API) the code does not deliver.
+On a repo shard, hunt the same hazards latently: contracts whose tests assert the
+wrong thing, callers that disagree with a signature's actual behaviour, and
+promised behaviours (README, docs, public API) the code does not deliver.
 
 For the scope under review:
 
@@ -74,6 +73,4 @@ For the scope under review:
 
 Return `PASS`, `PASS WITH NOTES`, or `FAIL`, listing each potential regression
 with its blast radius and the concrete check or test that would confirm it.
-State the base you compared against and how many commits you read: a verdict
-whose scope is unstated cannot be trusted by the next reader, and "I reviewed
-the working tree" on a branch with commits means the review did not happen.
+Name every regression's blast radius, and how many commits you read.
