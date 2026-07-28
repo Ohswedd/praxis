@@ -364,11 +364,15 @@ Your stated goals mapped to what implements them:
 | Leave no praxis trace in someone else's repo | `common.workspace_mode` → local artifact paths + `$GIT_COMMON_DIR/info/exclude` + the staging guard | **Deterministic block** (the paths cannot be staged) |
 | Plan mode before code | output-style + orchestrator Phase 3 | **Guided (not a hard block)** |
 | Keep working until the task is done | `quality_gate.py` task loop + `task.json` (no `/goal` needed) | **Deterministic** |
+| A large prompt broken into trackable pieces | `prompt-architect` decomposition + `task.json` subtasks; the gate reports the plan | **Deterministic** (a task cannot close with an unfinished subtask) |
+| One task, one PR, one commit per subtask | `git-delivery` + `task_state.py subtask done` recording each commit | Guided, with a warning when a subtask records no commit of its own |
+| A review that survives a commit | `common.review_base` + `scope.py`; scanners, signature and gate all use the branch range | **Deterministic** |
+| What a change costs later | `@praxis:debt-auditor` + `debt.py` register | Guided, gated by report |
 | Invoke the right agents/skills | `prompt_router.py` (UserPromptSubmit) names them per request + `quality-rubric` orchestration + skill descriptions | **Deterministic routing**, guided execution |
 | Finish it, don't ship an MVP | `scan_placeholders.py` deferral detection + escalating Stop gate + completeness-auditor | **Deterministic block** |
 | A designed UI, not a generic one | `frontend-pipeline` `reference/craft.md` + design-consistency-auditor §9 | Guided, gated by report |
 | Professional comments | `code-craft` skill | Guided |
-| Redo all audits, no regression | `quality-rubric` + 7 vertical subagents (+ accessibility & design-consistency on UI changes) | Guided, gated by report |
+| Redo all audits, no regression | `quality-rubric` + 8 vertical subagents (+ accessibility & design-consistency on UI changes) | Guided, gated by report |
 | Professional front-end for any niche | `frontend-pipeline` skill + design artifacts (`docs/design/`) + a11y/design-consistency verticals | Guided, gated by report |
 | No placeholders / nothing missing | `completeness-auditor` + `scan_placeholders.py` | **Deterministic scan + gate** |
 | Nothing silently out of scope | prompt-architect (declare) + completeness-auditor (verify) + report | Guided + checked |

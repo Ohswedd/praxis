@@ -1,10 +1,10 @@
 # Living Knowledge
 
 Praxis treats a project's knowledge as a first-class, always-current artifact,
-not documentation you write once and abandon. Three stores, kept in sync with
+not documentation you write once and abandon. Four stores, kept in sync with
 every change, with the same no-regression discipline Praxis applies to code.
 
-## The three stores
+## The four stores
 
 1. **`/docs`**: the human-readable knowledge of the system: architecture,
    subsystem/feature docs, and an index (`docs/README.md`). Every repo Praxis
@@ -19,6 +19,15 @@ every change, with the same no-regression discipline Praxis applies to code.
 3. **`docs/adr/`**: Architecture Decision Records: *why* a significant decision
    was made. In auto-pilot, every non-trivial autonomous decision is persisted
    here, so the reasoning survives beyond the session that made it.
+
+4. **`docs/DEBT.md`**: the technical-debt register: what the project has
+   knowingly borrowed, what it costs (the *interest*), and what repaying it would
+   take (the *principal*). Written when the debt is taken on, not discovered
+   later. Debt is not a synonym for bad code: a shortcut taken for a stated
+   reason and written down is a decision, while the same shortcut taken silently
+   is the defect, because the next person meets the consequence without the
+   reason. `debt.py` refuses an entry that does not state its interest and
+   principal, since a register of complaints stops being read.
 
 ## Whose knowledge is it? (owner vs contributor)
 

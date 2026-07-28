@@ -168,12 +168,29 @@ handling and the states you know are needed are in scope, not follow-ups.
 
 ### It audits like an adversary
 
-Nine read-only subagents, each with one concern and its own context:
+Ten read-only subagents, each with one concern and its own context:
 **adversarial**, **regression**, **duplication** (including over-engineering),
-**performance**, **edge-case**, **doc-reference**, **completeness**, plus
-**accessibility** and **design-consistency** whenever a change touches UI. A
+**performance**, **edge-case**, **doc-reference**, **debt**, **completeness**,
+plus **accessibility** and **design-consistency** whenever a change touches UI. A
 horizontal pass then checks the change reads as one coherent whole, and the loop
 repeats until every vertical is green.
+
+The **debt** vertical is the only one that asks about later rather than now:
+what this change will cost to live with, and, above all, whether the shortcuts it
+took were written down. A shortcut with a stated reason is a decision; the same
+shortcut unrecorded is the defect, because the next person meets the consequence
+without the reason. `debt.py` keeps that register in `docs/DEBT.md` and refuses an
+entry that does not say what it costs and what would repay it.
+
+### It reviews the branch, not the working tree
+
+One `git commit` used to end a review: `git diff` goes empty, the tree is clean,
+and every scanner, auditor and gate sees nothing. The better the delivery
+discipline, the more complete that blindness became. The review scope is now
+everything the branch has done since it left its base, plus what is still
+uncommitted, plus untracked files. `scope.py` prints it, and the regression
+auditor reads the commits **in order**, because a signature changed in one commit
+and its callers updated in another is a story a squashed diff cannot tell.
 
 `/praxis:audit repo` applies the same auditors to an entire existing codebase,
 shard by shard, adversarially re-verifying every finding before acting on it and
@@ -223,7 +240,7 @@ than existing as a command of their own.
 | Command | What it does |
 | --- | --- |
 | `/praxis:task <request>` | run the full pipeline end to end. Prefix `spec:` to stop at the spec |
-| `/praxis:audit [repo\|path]` | the quality rubric on the current change, or the whole repo |
+| `/praxis:audit [repo\|path]` | the quality rubric on the current branch's change, or the whole repo |
 | `/praxis:docs` | update `/docs`, `CHANGELOG.md`, ADRs and the brief hierarchy |
 | `/praxis:ship [release]` | Conventional Commit → branch → PR, or cut a SemVer release |
 | `/praxis:bootstrap` | set up or migrate this repo (it also runs on its own) |

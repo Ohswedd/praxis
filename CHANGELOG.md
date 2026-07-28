@@ -6,6 +6,20 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- The technical-debt vertical. @praxis:debt-auditor asks what a change will cost later rather than whether it is correct now: shortcuts and workarounds, coupling and duplication something will have to keep in sync by hand, abstractions the change has made wrong, deprecated or pinned dependencies, and tests that lock in implementation rather than behaviour. It runs in the quality rubric and as a repo-scan dimension.
+- debt.py and docs/DEBT.md, the debt register. Debt taken for a stated reason and written down is a decision; the same shortcut taken silently is the defect, because the next person meets the consequence without the reason. Entries carry the interest (what it costs, and how often) and the principal (what the real fix is), and an entry without both is refused, since a register of complaints stops being read. The debt-auditor does not re-report what is listed there, and treats what it finds that is not listed as a finding.
+- scope.py: the review scope in one place. It prints the base, the commits on the branch, the files under review and the exact diff commands, so the rubric and every subagent work from one resolved answer instead of each guessing.
+- task_state.py carries a plan and a delivery binding: --subtasks at open time, plan to re-declare, subtask start|done to track progress, and delivery --pr to bind the task to its pull request. A task cannot close while a subtask is unfinished, subtask done records the commit each one landed on, and it warns when a subtask shares a commit with the previous one, which is the moment the tracking disappears.
+
+### Changed
+- Every auditor resolves the review scope before judging, and states the base it used. The regression sentinel reads the commits in order rather than as one squashed diff: a signature changed in one commit with its callers updated in another is fine, and the same change with the callers never updated is a regression a combined diff makes no easier to see. It also hunts what a branch did to itself (a later commit undoing an earlier one usually means the same mistake survives elsewhere), follows renames, and treats every deletion as a behaviour that no longer happens.
+- prompt-architect splits any request with more than one deliverable into ordered subtasks, each independently completable and worth exactly one commit, with dependencies stated rather than pretended away. Where one change forces another it stays a single subtask, because splitting it produces a commit that does not work on its own.
+- One task is one branch is one pull request, with each subtask its own commit, so the version history matches the work rather than being reconstructed from it. Two unrelated tasks never share a branch. task-orchestrator, git-delivery and the prompt router all state it, and the canonical report gains a Delivery section.
+
+### Fixed
+- A change stopped being reviewable the moment it was committed. git diff, git diff --staged and the dirty-tree check all go empty on the first commit, so the scanners found nothing, the auditors reviewed nothing, and the Stop gate opened. The review scope is now the branch: every commit since it left its base, plus the working tree and untracked files, covered by changed_files, added_line_pairs, the change signature and the gate alike. The better the delivery discipline, the worse this got, which made it a blocker for one-commit-per-subtask.
+
 ## [3.0.0] - 2026-07-28
 
 ### Added

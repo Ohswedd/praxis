@@ -252,13 +252,36 @@ insufficient for the house style:
 3. The session audit, the prompt router and the skills state the mode and the
    artifact map, so the correct path is used first rather than caught last.
 
+## Review scope: the branch, not the working tree
+
+praxis used to define "the change" as the working tree: the unstaged diff, the
+staged diff, and untracked files. That definition has a hole that widens as the
+delivery discipline improves. One `git commit` empties every diff it reads, so
+the scanners find nothing, the auditors review nothing, and the Stop gate opens.
+With one commit per subtask, most of a task's life is spent in that state.
+
+`common.review_base()` resolves the merge-base with the integration branch, and
+`changed_files`, `added_line_pairs`, `change_signature` and `review_pending` all
+cover the range from there to HEAD as well as the working tree. Every existing
+consumer therefore sees committed work without knowing anything new. On the
+integration branch there is no range, and the behaviour is exactly as before.
+
+`scope.py` prints the base, the commits, the files and the diff commands, so the
+rubric and each subagent work from one resolved answer rather than each guessing.
+The regression auditor reads the commits **in order**, because its question is
+about differences between states: a signature changed in one commit with its
+callers updated in another is fine, and the same change with the callers never
+updated is a regression that a squashed diff makes no easier to see.
+
 ## Vertical vs horizontal
 
 - **Vertical analysis** = one subagent per concern, deep and isolated:
   `adversarial`, `regression`, `duplication`, `performance`, `edge-case`,
-  `doc-reference`, `completeness`, plus `accessibility` and
+  `doc-reference`, `debt`, `completeness`, plus `accessibility` and
   `design-consistency` when the change touches UI surface. Each returns
-  `PASS / PASS WITH NOTES / FAIL`.
+  `PASS / PASS WITH NOTES / FAIL`. The `debt` vertical is the only one that asks
+  about later rather than now: what the change will cost to live with, and
+  whether the shortcuts it took were recorded in `docs/DEBT.md` or left silent.
 - **Horizontal analysis** = the `quality-rubric` skill's cross-cutting pass over
   the whole change for consistency, use-case coverage, and guideline compliance,
   looping until every vertical is green.
@@ -457,8 +480,8 @@ plugins/praxis/
                                      quality-rubric, docs-living, claudemd-living,
                                      frontend-pipeline, repo-audit, git-delivery,
                                      bootstrap, capability-discovery
-  agents/*.md                        twelve read-only subagents (9 verticals +
-                                     finding-verifier + repo-cartographer +
+  agents/*.md                        thirteen read-only subagents (10 verticals
+                                     + finding-verifier + repo-cartographer +
                                      claudemd-verifier)
   hooks/hooks.json                   lifecycle wiring (command hooks)
   scripts/
@@ -473,8 +496,10 @@ plugins/praxis/
     scan_placeholders.py             unfinished work in the whole change
     scan_style.py                    em dashes and AI credits in the whole change
     drift.py                         docs versus live config, and stale references
+    scope.py                         what is under review: base, commits, files
     report.py  config.py  doctor.py  selfcheck.py  repo_scan.py
-    task_state.py  changelog.py  adr.py  workspaces.py  claudemd_check.py
+    task_state.py  changelog.py  adr.py  debt.py  workspaces.py
+    claudemd_check.py
     lib/common.py                    shared, defensive helpers
   templates/*                        CLAUDE.md, settings, MCP starting points
 ```
