@@ -14,10 +14,132 @@ No magic keywords, no deciding when to run `/goal`, no manual orchestration.
 | You | praxis (automatic) |
 | --- | --- |
 | Write the prompt in chat | Restructure it into a spec, plan, implement |
-| Pick the effort (`high`, `ultracode`, …) | Dispatch the right skills & subagents |
-| Answer at genuine decision points | Run QA / audit / regression / completeness |
-|: | Keep working until the task is done (the loop) |
-|: | Enforce no secrets, no destructive ops, no placeholders |
+| Pick the effort (`high`, `ultracode`, …) | Set the repo up before working in it |
+| Answer at genuine decision points | Work out whether the repo is yours, and write accordingly |
+| | Dispatch the right skills & subagents |
+| | Run QA / audit / regression / completeness |
+| | Keep working until the task is done (the loop) |
+| | Enforce no secrets, no destructive ops, no placeholders |
+
+---
+
+## Workspace mode: whose repository is this?
+
+praxis writes real files into a project: an operating brief, settings, a `/docs`
+tree, a changelog, ADRs. In your own repository that is the point. In a
+repository you only contribute to, every one of them is a file the project never
+asked for, sitting one `git add -A` away from a pull request that should have
+contained a bug fix.
+
+So praxis resolves the question first, and everything else follows from it.
+
+| | `owner` | `contributor` |
+| --- | --- | --- |
+| Operating brief | `CLAUDE.md` (+ nested files) | `CLAUDE.local.md`, root only |
+| Settings | `.claude/settings.json` | `.claude/settings.local.json` |
+| praxis config | `.praxis.toml` (committed) | `.claude/.praxis/praxis.toml` (local) |
+| `/docs`, `CHANGELOG.md`, `docs/adr/`, `docs/design/` | created and maintained | joined **only if the project already has them**, on its terms; otherwise kept under `.claude/.praxis/knowledge/` |
+| Ignore rules | praxis's paths added to `.gitignore` | `.gitignore` untouched; praxis maintains `$GIT_COMMON_DIR/info/exclude` |
+| Delivery | commit, PR, and merge per the auto-merge policy | commit and PR in the project's own style, then stop |
+
+`CLAUDE.local.md` and `.claude/settings.local.json` are the locations Claude Code
+documents for local, uncommitted configuration, so praxis reuses that contract
+rather than inventing one.
+
+### How the mode is decided
+
+Most specific source wins, and the session audit always prints which one:
+
+```
+PRAXIS_MODE  →  .claude/.praxis/workspace  →  .praxis.toml [workspace] mode  →  detection
+```
+
+Detection is offline and asks one question: has the person configured to commit
+here ever actually committed here? A repo with a remote, real history, and no
+commit from your git address is somebody else's project that you cloned.
+Everything uncertain (no remote, no `user.email`, barely any history, not a git
+repo at all) resolves to `owner`, which is how praxis has always behaved. A git
+call that fails or times out is *not* treated as uncertainty in your favour: it
+is its own state, because reading a timeout as "no commits by you" would move
+your own project into contributor mode.
+
+**The verdict is pinned once detection reaches `contributor`**, in
+`.claude/.praxis/workspace`. Without that, the ordinary contribution workflow
+would undo the mode: you clone (contributor), praxis sets up locally, you fix the
+bug and commit it, and on the next session your own address is in `git log`,
+detection says `owner`, and praxis starts writing a `CLAUDE.md` and a `/docs`
+tree into a repository that is not yours.
+
+One asymmetry is a trust boundary rather than a preference: a **committed**
+`.praxis.toml` belongs to the repository, and a repository does not get to tell
+praxis that it is yours. It may declare `contributor`, which only ever withholds
+writes; its `owner` is reported and then ignored in favour of detection. Local
+sources (the environment variable, the toggle, the git-excluded config) are yours
+and may say either.
+
+```bash
+/praxis:config mode contributor   # or owner, or auto
+```
+
+Switching also adds or removes praxis's block in `$GIT_COMMON_DIR/info/exclude`,
+so the files match the verdict immediately.
+
+### Three layers keep it out of their history
+
+1. **Excluded.** The marked block in `$GIT_COMMON_DIR/info/exclude` (the file
+   gitignore(5) reserves for per-clone patterns that are never shared) makes
+   praxis's artifacts invisible to `git status`, unreachable by `git add -A`, and
+   absent from praxis's own change detection. It is the *common* dir, not the
+   per-worktree one, because that is the only one git reads.
+2. **Refused.** The PreToolUse guard blocks any command that stages
+   `CLAUDE.local.md`, `.claude/.praxis/` or `.claude/settings.local.json` **by
+   name**, `-f` included, and refuses a forced stage-everything outright, since
+   `--force` exists precisely to override the exclusion. It also refuses to write
+   a praxis path into the project's `.gitignore` (through the file tools or a
+   shell redirect), and on an unforced stage-everything it verifies the exclusion
+   rather than assuming it, repairing it first and blocking only if the repair
+   fails.
+3. **Checked at the index.** A command string can always be written another way:
+   `git -C .claude add -f settings.local.json`, a glob the shell expands after the
+   hook has read the command, `git update-index --add`. So the last layer stops
+   pattern-matching and asks git. A `commit`, `push` or `stash` is refused while a
+   praxis artifact is in the index, however it got there. This is the layer that
+   actually holds; the two above it are what make the failure legible early.
+
+The session audit, the prompt router and every skill also state the mode and the
+artifact map, so the correct path is normally used first rather than caught last.
+
+### Caveats worth knowing
+
+- **Worktrees.** `CLAUDE.local.md` is per-worktree, so each `git worktree` gets
+  its own brief. The exclusion is shared (it lives in the common dir), so all of
+  them are covered.
+- **`--setting-sources`.** Running `claude --setting-sources user,project` skips
+  `CLAUDE.local.md` and `.claude/settings.local.json` entirely. praxis still
+  resolves the mode from disk and still protects the artifacts; they simply are
+  not loaded into that session.
+- **`/init`.** Claude Code's own `/init`, in its personal mode, writes
+  `CLAUDE.local.md` into the project's `.gitignore`. That is the one unrequested
+  `.gitignore` diff praxis cannot intercept, since it is not a tool call. Prefer
+  `/praxis:bootstrap` in a repo that is not yours.
+
+---
+
+## Auto-bootstrap: set up first, then work
+
+Any session that does real work in a repo praxis does not manage runs the
+`bootstrap` skill first, in the same turn, and then carries straight on to the
+request. It maps the repo read-only, writes what is absent, and reports it in a
+line or two.
+
+It asks about exactly one thing: reconciling a `CLAUDE.md` that praxis did not
+author, which is the only lossy step and which goes through
+`@praxis:claudemd-verifier`. In `contributor` mode even that cannot arise, since
+the brief praxis owns is a separate, additive file.
+
+Turn it off per repo with `/praxis:config bootstrap off`, `bootstrap.auto =
+false`, or `PRAXIS_BOOTSTRAP=off`. Conversational prompts never trigger it:
+answering a question does not require writing a brief first.
 
 ---
 
@@ -108,6 +230,10 @@ rather than repeating what a document says: the session audit and
 `/praxis:config` both print the value in force and where it came from. See
 [DELIVERY.md](DELIVERY.md).
 
+In `contributor` mode auto-merge does not apply at all. Merging somebody else's
+project is not a decision praxis gets to make, so it opens the pull request in
+the project's own style and stops.
+
 ---
 
 ## Determinism summary
@@ -115,6 +241,8 @@ rather than repeating what a document says: the session audit and
 | Concern | Mechanism | Deterministic? |
 | --- | --- | --- |
 | Does the workflow engage? | always-on directive (SessionStart) + output style + per-prompt router (UserPromptSubmit); enforced by the change/task gate | Yes: the router names the skills each request needs, and the gate is keyed on real file changes |
+| Is the repo set up before work starts? | `repo_state` at SessionStart and on every actionable prompt | Yes (the instruction); the setup itself is Claude running the skill |
+| Does praxis leave a trace in a repo that is not yours? | `$GIT_COMMON_DIR/info/exclude`, the staging guard, and an index check before `commit`/`push`/`stash` | Yes: whatever staged it, the command that would publish it is refused |
 | Keep working until done | Stop gate + `task.json` (turn cap, `waiting`, `done`) | Yes |
 | No secrets / destructive ops | PreToolUse guard (holds even in auto mode) | Yes |
 | No placeholders / stubs / deferral | `scan_placeholders.py` over both diffs and every untracked file (literal markers + deferral prose in comments) | Yes |

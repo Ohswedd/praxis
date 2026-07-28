@@ -53,7 +53,9 @@ CONTENT_AREAS = ("skills", "commands", "output-styles", "agents")
 
 #: Repo-level prose held to the same house style as the plugin's own content.
 #: These live beside the plugin in the source tree and are absent from an install.
-REPO_TEXT = ("README.md", "CONTRIBUTING.md", "SECURITY.md", "PRIVACY.md")
+#: `CLAUDE.md` is included because it is the repo's most-read instruction file and
+#: it claims, in its own text, that this check covers it.
+REPO_TEXT = ("README.md", "CONTRIBUTING.md", "SECURITY.md", "PRIVACY.md", "CLAUDE.md")
 
 SCOPE_REPO = "repo"
 SCOPE_PLUGIN = "plugin"

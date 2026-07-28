@@ -11,7 +11,9 @@ session, when the SessionStart block is far behind in the context.
 This hook runs on *every* user prompt. It classifies the request from its text
 and injects a short, explicit routing directive naming the exact skills to
 invoke for that request, so the pipeline engages without the user having to type
-a command. It is deliberately:
+a command. Two facts ride along with the routing because both expire from context
+and both change what a turn may do: that praxis has not been set up here yet, and
+that this repository is somebody else's. It is deliberately:
 
   * silent for conversational prompts (questions, explanations, chit-chat):
     routing noise on "what does this file do?" would be worse than useless;
@@ -182,12 +184,61 @@ _TASK_CMD = ('python3 "${CLAUDE_PLUGIN_ROOT}/scripts/task_state.py" open "<title
              '--criteria "..." --max <N>')
 
 
+def _bootstrap_directive(root) -> list:
+    """Set the repo up before working in it, restated on every actionable prompt.
+
+    SessionStart already says this, but by the tenth turn that block is far behind
+    in the context and the instruction has effectively expired. It is repeated
+    here, on the prompts that are about to change something, and deliberately not
+    on conversational ones: answering "what does this file do?" does not require
+    writing a CLAUDE.md first, and the router's silence on questions is a property
+    worth keeping.
+    """
+    try:
+        if not common.bootstrap_required(root):
+            return []
+        where = common.bootstrap_targets(root)
+    except Exception:
+        return []
+    return [
+        "**praxis is not set up in this repository. Run the `bootstrap` skill "
+        "FIRST, in this turn, before touching the request below.** Map the repo "
+        f"read-only, then write {where}. Write what does not exist without asking "
+        "and carry straight on to the request; the only thing worth stopping for "
+        "is reconciling an existing non-praxis `CLAUDE.md`, which goes through "
+        "`@praxis:claudemd-verifier`.",
+        "",
+    ]
+
+
+def _contributor_directive(root) -> list:
+    """Where this turn is allowed to write when the repository is not ours."""
+    try:
+        if not common.is_contributor(root):
+            return []
+    except Exception:
+        return []
+    return [
+        "",
+        "**Workspace is `contributor`: this repository is not ours.** Everything "
+        "praxis authors stays local and git-excluded: the brief is "
+        "`CLAUDE.local.md`, settings are `.claude/settings.local.json`, and "
+        "`/docs`, `CHANGELOG.md`, `docs/adr/` and `docs/design/` are updated only "
+        "if the repo already has them (following its conventions), otherwise "
+        "written under `.claude/.praxis/knowledge/`. Do not create a `CLAUDE.md`, "
+        "a `.praxis.toml`, a `/docs` tree or a `CHANGELOG.md` here, do not edit "
+        "`.gitignore`, and never stage a praxis artifact: the commit carries the "
+        "user's change and nothing else.",
+    ]
+
+
 def render(decision: dict, root) -> str:
     route = decision["route"]
     if route == "none":
         return ""
 
     lines = ["## praxis routing (this request)", ""]
+    lines += _bootstrap_directive(root)
 
     if route == "implement":
         lines += [
@@ -248,6 +299,8 @@ def render(decision: dict, root) -> str:
             "existing docs before writing so nothing already documented is lost.",
         ]
 
+    lines += _contributor_directive(root)
+
     try:
         if common.autopilot_on(root):
             lines += [
@@ -277,6 +330,15 @@ def _delivery_policy(root) -> str:
     resulting confident-but-wrong statement is exactly what this closes.
     """
     try:
+        if common.is_contributor(root):
+            # Merging is not ours to do in someone else's project, whatever the
+            # local toggle says: the maintainers review and merge.
+            return ("This repository is **not ours** (`contributor` mode): deliver a "
+                    "clean topic branch and a pull request that matches the project's "
+                    "own commit, PR and changelog conventions, and stop there. Never "
+                    "merge, and never let a praxis artifact "
+                    "(`CLAUDE.local.md`, `.claude/.praxis/`, "
+                    "`.claude/settings.local.json`) into the commit.")
         if common.auto_merge_on(root):
             return ("Auto-merge is **ON** for this repo: after a green audit and passing "
                     "checks, self-review the diff and merge with "

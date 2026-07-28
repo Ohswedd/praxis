@@ -79,12 +79,15 @@ sequenceDiagram
 
     U->>CC: open session
     CC->>CF: SessionStart → session_audit.py
-    CF->>CL: inject repo classification + standing directives (always)
+    CF->>CF: resolve workspace mode; in contributor, write $GIT_COMMON_DIR/info/exclude
+    CF->>CL: inject mode, repo classification, bootstrap instruction, directives
 
     U->>CC: submit prompt (with chosen effort)
+    CC->>CF: UserPromptSubmit → prompt_router.py
+    CF->>CL: skills for this request (+ bootstrap first, if not managed)
     CL->>CC: request Bash / Edit / Write
     CC->>CF: PreToolUse → guard_paths.py
-    alt sensitive file or destructive command
+    alt sensitive file, destructive command, or staging a praxis artifact
         CF-->>CC: exit 2 → tool DENIED
     else safe
         CF-->>CC: allow
@@ -134,22 +137,70 @@ editing again automatically re-arms the gate.
 
 ## 5. Onboarding classifier (every SessionStart)
 
+The brief it looks for is whichever one this workspace mode owns: `CLAUDE.md` in
+`owner`, `CLAUDE.local.md` in `contributor`. So a bootstrapped contributor clone
+reads as `managed` while the project's own `CLAUDE.md`, if it has one, is never
+counted and never touched.
+
 ```mermaid
 flowchart TD
     A["SessionStart"] --> B{"code or .git present?"}
     B -->|neither| N["new"]
-    B -->|yes| C{"CLAUDE.md or .claude/ exists?"}
+    B -->|yes| C{"this mode's brief or settings exist?"}
     C -->|no| U["uninitialised"]
-    C -->|CLAUDE.md exists| D{"has praxis:managed marker?"}
+    C -->|brief exists| D{"has praxis:managed marker?"}
     D -->|yes| M["managed"]
     D -->|no| L["legacy"]
     C -->|only partial config| P["partial"]
-    N --> RN["route → bootstrap (from scratch)"]
-    U --> RU["route → analyse then bootstrap"]
-    L --> RL["route → reconcile + migrate via claudemd-verifier"]
+    N --> RN["bootstrap NOW (from scratch), then the request"]
+    U --> RU["bootstrap NOW (analyse first), then the request"]
+    L --> RL["bootstrap NOW; ask before reconciling via claudemd-verifier"]
     M --> RM["gates active, patch drift only"]
-    P --> RP["route → doctor reconcile"]
+    P --> RP["bootstrap NOW (complete it), then the request"]
 ```
+
+Anything but `managed` produces an **instruction**, not a suggestion, repeated by
+the prompt router on every actionable prompt (conversational prompts stay
+silent). `bootstrap.auto = false` turns it off per repo. See ADR-0018.
+
+---
+
+## 5b. Workspace mode (resolved before anything is written)
+
+```mermaid
+flowchart TD
+    A["workspace_mode(root)"] --> B{"PRAXIS_MODE set?"}
+    B -->|yes| Z["use it"]
+    B -->|no| C{".claude/.praxis/workspace?"}
+    C -->|yes| Z
+    C -->|no| D{".praxis.toml [workspace] mode?"}
+    D -->|owner or contributor| Z
+    D -->|owner, but from the committed file| E
+    D -->|auto / absent| E{"git repo, with a remote?"}
+    E -->|no| O["owner"]
+    E -->|yes| F{"user.email configured?"}
+    F -->|no| O
+    F -->|yes| G{"20+ commits, or a shallow clone?"}
+    G -->|no| O
+    G -->|yes| H{"your address in the last 500 commits?"}
+    H -->|yes| O
+    H -->|git failed or timed out| X["undetermined → owner,<br/>said as a default, not a finding"]
+    H -->|no| K["contributor"]
+    K --> K2["pin the verdict in .claude/.praxis/workspace"]
+    K2 --> K3["brief → CLAUDE.local.md; settings → settings.local.json;<br/>knowledge → join what exists, else .claude/.praxis/knowledge/;<br/>write $GIT_COMMON_DIR/info/exclude; refuse to stage any of it"]
+```
+
+Every uncertain branch lands on `owner`, which is how praxis has always behaved:
+a wrong `contributor` verdict would silently withhold the setup a user expected
+in their own project. Two branches are not "uncertainty" though, and are treated
+separately. A git call that fails or times out is its own state, because reading
+a timeout as "no commits by you" would move a user's own project into contributor
+mode. And a **committed** `.praxis.toml` may declare `contributor` but not
+`owner`: a repository you cloned does not get to tell praxis that it is yours.
+
+The `contributor` verdict is pinned the first time it is reached. Otherwise the
+normal contribution workflow undoes it: clone, set up, fix the bug, commit, and
+now your own address is in `git log`. See ADR-0019.
 
 ---
 
@@ -241,6 +292,30 @@ flowchart TD
   with" credit. This is not a matter of remembering: the PreToolUse guard denies
   the `git commit` and the `gh pr create` outright if one is present.
 
+### Example F: A first prompt in a repo you cloned this morning
+
+**You type:** `fix the retry backoff in the queue worker`
+
+- SessionStart resolves the workspace: the repo has an `origin` you do not own,
+  400-odd commits, and none from your git address. Verdict `contributor`, printed
+  with that reason. Before printing anything else it writes the praxis block into
+  `$GIT_COMMON_DIR/info/exclude`, so nothing it is about to create can be staged.
+- `repo_state` is `uninitialised` (there is no `CLAUDE.local.md`), so both the
+  audit and the router instruct: bootstrap first, in this turn. The cartographer
+  maps the repo read-only, and the brief lands in `CLAUDE.local.md` with the
+  settings in `.claude/settings.local.json`. The project's own `CLAUDE.md` is read
+  and respected, never edited. Nothing is proposed for confirmation, because
+  nothing here is lossy.
+- The retry fix itself is ordinary work: spec, plan, implement, audit.
+- Phase 5b finds no `CHANGELOG.md` in the project, so `changelog.py` writes to
+  `.claude/.praxis/knowledge/CHANGELOG.md` and prints that path. The report says
+  the entry is local, rather than implying the project's changelog was updated.
+  Had the project kept one, the entry would have gone into it, in its style.
+- `git status` shows only `worker.py`. `git add -A` can reach nothing else, and
+  `git add CLAUDE.local.md` is refused outright by the guard.
+- Delivery opens a PR that matches the project's `CONTRIBUTING.md` and stops.
+  Auto-merge does not apply here, whatever the local toggle says.
+
 ---
 
 ## 7. Edge cases & how the system handles them
@@ -258,6 +333,11 @@ flowchart TD
 | **A brand-new file with a TODO** | untracked files are part of the scanned change, so a file that `git diff` cannot see is still checked. | <!-- praxis:ack -->
 | **A CSS-only change** | still UI work: the gate resolves that from the changed file list and requires the accessibility and design-consistency verdicts. |
 | **An em dash you meant to write** | `praxis:ack` on the line, or `ban_em_dash = false` under `[style]` for the whole repo. |
+| **A repo praxis has never seen** | bootstrapped before the work starts, in the same turn, and only the reconciliation of a foreign brief pauses for you. `bootstrap.auto = false` opts out. |
+| **Your own repo mistaken for someone else's** | happens on a fresh fork, or when your local `user.email` differs from the one in the history. The audit prints the reason every session; `/praxis:config mode owner` fixes it and removes the exclude block. |
+| **`git add -A` in a contributor clone** | reaches nothing of praxis's: the artifacts are excluded. If the exclusion is missing and cannot be repaired (a read-only `.git`), the guard blocks the command and names the exposed paths rather than letting them through. |
+| **Someone asks praxis to commit `CLAUDE.local.md`** | refused in either mode. It records how one machine is set up, so it belongs in no repository's history. |
+| **An upstream project with no `/docs` or changelog** | praxis adds neither. It keeps its own records under `.claude/.praxis/knowledge/` and says so in the report. |
 | **A doc that documents an old command name** | `praxis:ack` on that line; the drift checker skips it, so a migration table does not read as drift. |
 | **Trivial change / no code edited** | gate only fires on a dirty git tree; clean tree or Q&A → no gate. |
 | **You intentionally want to stop early** | `touch .claude/.praxis/skip-gate` (repo) or `PRAXIS_GATE=off` (session). |
@@ -279,7 +359,9 @@ Your stated goals mapped to what implements them:
 | --- | --- | --- |
 | Restructure a terse prompt | `prompt-architect` skill + always-on SessionStart directive | Guided |
 | Read the code-base first | `task-orchestrator` Phase 2 + `repo-cartographer` | Guided |
-| Have the right CLAUDE.md | `bootstrap` + `claudemd-living` + `session_audit` | Guided + classified |
+| Have the right brief | `bootstrap` + `claudemd-living` + `session_audit` | Guided + classified |
+| Set the repo up before working in it | `common.repo_state` / `bootstrap_required` → the SessionStart instruction and the router's per-prompt repeat | **Deterministic instruction**, guided execution |
+| Leave no praxis trace in someone else's repo | `common.workspace_mode` → local artifact paths + `$GIT_COMMON_DIR/info/exclude` + the staging guard | **Deterministic block** (the paths cannot be staged) |
 | Plan mode before code | output-style + orchestrator Phase 3 | **Guided (not a hard block)** |
 | Keep working until the task is done | `quality_gate.py` task loop + `task.json` (no `/goal` needed) | **Deterministic** |
 | Invoke the right agents/skills | `prompt_router.py` (UserPromptSubmit) names them per request + `quality-rubric` orchestration + skill descriptions | **Deterministic routing**, guided execution |
@@ -298,7 +380,7 @@ Your stated goals mapped to what implements them:
 | No em dash in any output | output-style + router directive + `scan_style.py` + `selfcheck.py` | **Deterministic block** (gate), **CI-enforced** for praxis itself |
 | No AI attribution in the history | `git-delivery` skill + `guard_paths.py` publishing check | **Deterministic block** (the command is denied) |
 | Docs that stay true when config changes | `drift.py` + live config in the SessionStart audit + `/praxis:doctor` | **Deterministic detection**, guided fix |
-| A small, coherent command surface | nine commands, modes as arguments (`task spec:`, `audit repo`, `ship release`) | Checked by `selfcheck.py`: a dangling `/praxis:` reference fails CI |
+| A small, coherent command surface | eight commands, modes as arguments (`task spec:`, `audit repo`, `ship release`, `config mode`), and none at all for the front-end pipeline | Checked by `selfcheck.py`: a dangling `/praxis:` reference fails CI |
 
 ---
 
@@ -327,6 +409,11 @@ Being honest so you can trust it correctly:
   produce a green report without both UI verdicts.
 - **Drift detection**: documents contradicting the live configuration, and
   references that no longer resolve, are reported without anyone remembering.
+- **Containment in a repo that is not yours**: the artifacts praxis writes in
+  `contributor` mode are excluded through `$GIT_COMMON_DIR/info/exclude`, so `git
+  status` and `git add -A` cannot see them, and the guard denies any command that
+  names one, `-f` included. Bootstrapping the repo is an instruction rather than a
+  block, but what that bootstrap is allowed to leave behind is not.
 - Auto-format on save; secret tripwire; session classification.
 
 **Guided (the model performs it; praxis structures and prompts it, and the gate

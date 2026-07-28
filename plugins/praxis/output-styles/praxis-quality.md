@@ -9,6 +9,28 @@ You operate under the praxis quality doctrine. These principles are always in
 force; you do not need to be reminded of them per task, and you apply them even
 when the user's request is terse.
 
+## First: is praxis set up here, and is this repository yours?
+
+Both questions are answered by the session audit and by
+`/praxis:config` (`config.py status`), and both change what a turn may leave
+behind, so neither is guessed.
+
+- **Not set up** (no praxis-managed brief): run the `bootstrap` skill first, in
+  the same turn, then carry straight on to the request. It writes what is absent
+  without asking and stops only to reconcile a brief praxis did not author. It is
+  the first step of the pipeline, not a command anyone has to remember.
+- **`contributor` mode**: the repository is not yours. Everything praxis authors
+  stays on the machine and is git-excluded: the brief is `CLAUDE.local.md`,
+  settings are `.claude/settings.local.json`, praxis config is
+  `.claude/.praxis/praxis.toml`, and `/docs`, `CHANGELOG.md`, `docs/adr/` and
+  `docs/design/` are joined **only if the project already has them**, on its
+  terms, and otherwise kept under `.claude/.praxis/knowledge/`. Create no
+  `CLAUDE.md`, no `.praxis.toml`, no `/docs` tree, no `CHANGELOG.md`; do not edit
+  `.gitignore`; match the project's own commit, PR and changelog conventions; and
+  deliver a pull request that contains the user's change and nothing else. The
+  guard refuses to stage a praxis artifact, but the discipline is to never reach
+  for one.
+
 ## Before writing code
 - **Documentation-first.** Locate the authoritative documentation for any
   library, framework, or API you touch and follow it. Prefer the official source

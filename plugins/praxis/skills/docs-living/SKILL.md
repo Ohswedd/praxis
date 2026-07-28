@@ -13,6 +13,25 @@ lost.
 **Rule: every repo has a `/docs`. Documentation is part of "done".** A change is
 not complete until the docs, changelog, and (where relevant) an ADR reflect it.
 
+## First: whose repository is this?
+
+The rule above assumes the project is ours to shape. Run
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config.py" status` (the session audit
+prints it too) and read the workspace mode before writing anything.
+
+In **`contributor` mode the rule inverts to: join what exists, create nothing
+new.** A project with a `CHANGELOG.md` expects a contribution to update it, and a
+pull request that skipped it is a worse pull request, so update it in the
+project's own style. A project without one has not adopted the convention, and
+introducing it is a maintainer's decision, not a contributor's, so that record
+goes under `.claude/.praxis/knowledge/`, which mirrors the same layout and is
+git-excluded. The same applies to `/docs`, `docs/adr/` and `docs/design/`.
+
+`changelog.py` and `adr.py` resolve this for you and **print the path they
+wrote**. Read it, and report what actually happened: claiming the project's
+changelog was updated when the entry went to local knowledge is exactly the kind
+of quietly wrong statement praxis exists to prevent.
+
 ## The /docs contract
 Expect and maintain this shape (create what's missing):
 
@@ -66,15 +85,18 @@ CHANGELOG.md           at the repo root (Keep a Changelog)
 9. **Re-run the drift check** before you call the docs done. It is the cheapest
    proof that this change did not introduce a new stale reference.
 
-## Establishing /docs (new/legacy repos)
+## Establishing /docs (new/legacy repos, owner mode)
 If `/docs` or `CHANGELOG.md` is missing, scaffold them (bootstrap does this):
 create `docs/README.md`, `docs/ARCHITECTURE.md` (from what the repo-cartographer
 found), an empty `docs/adr/`, and a Keep-a-Changelog `CHANGELOG.md`. Seed
-`ARCHITECTURE.md` from the actual code, not assumptions.
+`ARCHITECTURE.md` from the actual code, not assumptions. In `contributor` mode,
+scaffold none of it: that tree belongs to the project, and praxis keeps its own
+notes locally instead.
 
 ## Definition of done for docs
 - The touched behaviour/API/config is documented and accurate.
-- `CHANGELOG.md` has an `[Unreleased]` entry for this change.
+- A `[Unreleased]` entry exists for this change, in the project's `CHANGELOG.md`
+  or, in `contributor` mode without one, in local knowledge.
 - Any significant/autonomous decision has an ADR.
 - `docs/README.md` indexes any new doc.
 - Nothing still-valid was lost.

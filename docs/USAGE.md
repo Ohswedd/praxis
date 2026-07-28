@@ -3,8 +3,18 @@
 ## Day-to-day
 
 - **Start in any repo.** The `SessionStart` audit classifies it and injects a
-  health report + standing directives. If it reports `new`, `uninitialised`, or
-  `legacy`, run `/praxis:bootstrap`.
+  health report + standing directives. If praxis is not set up here, it
+  bootstraps the repo itself on the first prompt that does real work, then
+  carries on with your request; `/praxis:bootstrap` is only for asking
+  explicitly, or re-running it later. Turn it off with
+  `/praxis:config bootstrap off`.
+- **Working in a repo that is not yours?** praxis notices, and switches to
+  `contributor` mode: it writes `CLAUDE.local.md` instead of `CLAUDE.md`,
+  `.claude/settings.local.json` instead of `.claude/settings.json`, keeps its
+  knowledge under `.claude/.praxis/knowledge/` unless the project already has a
+  `/docs` or `CHANGELOG.md` to join, excludes all of it from git, and refuses to
+  stage any of it. Check or override with `/praxis:config mode`. See
+  [`MODES.md`](MODES.md).
 - **Just ask.** Type a normal request: *"fix the pagination bug"*, *"integrate
   Stripe checkout"*, *"refactor the auth module"* (English or Italian), and pick
   your effort level. The always-on directive applies the full pipeline to
@@ -24,12 +34,14 @@
   and confirmed findings are fixed (or deferred with a plan). Coverage-honest
   reports, resumable across sessions; `--report-only` to skip fixes. See
   [`SCAN.md`](SCAN.md).
-- **Build a front-end.** `/praxis:frontend <request>` (or just ask, the skill
-  auto-invokes on UI work) runs the front-end pipeline for any niche: business
-  research → story-first wireframes → design system → development →
-  optimization, proportional to the task, with the design artifacts kept in
-  `docs/design/` and UI changes audited on the accessibility and
-  design-consistency verticals. See [`FRONTEND.md`](FRONTEND.md).
+- **Build a front-end.** Just ask, in whatever words fit: *"make a landing
+  page"*, but equally *"fix the checkout bug"* or *"update `Header.tsx`"*. There
+  is no command, because the pipeline is triggered by the surface a change
+  touches rather than by how the request was phrased. It runs business research →
+  story-first wireframes → design system → development → optimization,
+  proportional to the task, keeps the design artifacts in `docs/design/`, and
+  audits UI changes on the accessibility and design-consistency verticals. See
+  [`FRONTEND.md`](FRONTEND.md).
 - **Knowledge upkeep.** `/praxis:docs` reconciles all of it in one pass: `/docs`,
   `CHANGELOG.md`, ADRs, and the CLAUDE.md hierarchy with regression verification.
   It starts by running the drift check, so a document that contradicts the repo's
@@ -39,8 +51,9 @@
   opens the PR; `/praxis:ship release` cuts a SemVer release from the changelog
   and the commit history.
 - **Change a setting.** `/praxis:config` prints every switch, its value, and the
-  source that decided it; `/praxis:config autopilot on` (or `auto-merge`, or
-  `gate`) toggles one.
+  source that decided it; `/praxis:config autopilot on` (or `auto-merge`,
+  `bootstrap`, or `gate`) toggles one, and `/praxis:config mode
+  owner|contributor|auto` sets the workspace mode.
 - **Missing a tool.** `/praxis:discover` finds or creates the capability,
   reusing an existing one first.
 
@@ -79,11 +92,19 @@ ever want to dial a specific auditor down, change its `model`/`effort` frontmatt
   `.claude/.praxis/skip-gate`).
 - Disable it for a session: set `PRAXIS_GATE=off`.
 - Re-enable: `/praxis:config gate on`, or unset the variable.
+- Stop praxis setting up a repo on its own: `/praxis:config bootstrap off` (which
+  writes `.claude/.praxis/no-bootstrap`), or `PRAXIS_BOOTSTRAP=off` for a session.
+- Correct the workspace verdict: `/praxis:config mode owner` or
+  `mode contributor`, or `PRAXIS_MODE=` for a session. `mode auto` hands the
+  decision back to detection. Switching to `owner` also removes praxis's block
+  from `$GIT_COMMON_DIR/info/exclude`.
 - `/praxis:config` with no argument shows every switch and, importantly, the
   source that decided it: clearing a toggle that an environment variable still
   forces prints a warning instead of quietly reporting success.
-- Per-repo opt-outs live in `.praxis.toml`: `gate.require_tests`,
-  `gate.require_ui_verticals`, `style.ban_em_dash`, `style.ban_ai_attribution`.
+- Per-repo opt-outs live in `.praxis.toml`: `workspace.mode`, `bootstrap.auto`,
+  `gate.require_tests`, `gate.require_ui_verticals`, `style.ban_em_dash`,
+  `style.ban_ai_attribution`. In `contributor` mode put them in
+  `.claude/.praxis/praxis.toml`, which layers on top and stays out of git.
 
 The guardrail hooks (secret + destructive-command blocks) are intentionally not
 disableable via those switches: remove or edit `hooks/hooks.json` if you must.
@@ -91,7 +112,10 @@ disableable via those switches: remove or edit `hooks/hooks.json` if you must.
 ## Tuning
 
 - **Permissions:** edit `.claude/settings.json` (bootstrap proposes a starting
-  point from the template).
+  point from the template), or `.claude/settings.local.json` in `contributor` mode.
+- **Workspace detection:** the signals live in `_detect_workspace_mode` in
+  `scripts/lib/common.py`. Pin `workspace.mode` explicitly rather than tuning
+  them for one repo.
 - **Auditor depth:** edit each agent's `model` / `effort` frontmatter.
 - **Formatters:** extend the table in `scripts/post_edit.py`.
 - **Sensitive paths / secret patterns:** extend `scripts/lib/common.py`.
@@ -113,6 +137,13 @@ disableable via those switches: remove or edit `hooks/hooks.json` if you must.
   want them.
 - Docs and behaviour disagree → run `/praxis:doctor`; the drift section names the
   line and the setting it contradicts.
+- praxis called your own repo `contributor` → it found a remote, real history,
+  and no commit from your configured `git config user.email`. Common in a fresh
+  fork, or when your local email differs from the one in the history. Fix it with
+  `/praxis:config mode owner`, which also drops the exclude block.
+- A praxis file will not stage → that is the guard, and it is right:
+  `CLAUDE.local.md`, `.claude/.praxis/` and `.claude/settings.local.json`
+  describe your machine, not the project. Stage the paths your change touches.
 
 ## Uninstall & cleanup
 

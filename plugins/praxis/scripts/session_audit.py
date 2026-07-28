@@ -5,14 +5,21 @@ praxis SessionStart audit.
 Runs when a session opens (and again on resume). Whatever it prints to stdout
 is injected into Claude's context, so this is where praxis orients the model:
 
+  * resolves the **workspace mode**: whether this repository is ours to set up,
+    or one we merely contribute to, in which case everything praxis writes stays
+    on the machine and is git-excluded
   * classifies the repo state (new / un-initialised / legacy CLAUDE.md / managed)
+    and, when praxis is not set up here, *instructs* the session to bootstrap
+    rather than suggesting it
   * surfaces a concise health report (secrets, missing setup, drift, TODOs)
   * states the repo's **live** configuration, so no turn ever reasons from a
     default that the repo has overridden. Documentation goes stale; the resolved
     value cannot.
-  * points Claude at the right entry command
 
-It is intentionally read-only, fast, and offline-safe. It never blocks.
+It is otherwise read-only, fast, and offline-safe, and it never blocks. Its one
+write is the per-clone exclude block in contributor mode, which has to exist
+before anything else runs: a praxis artifact that is not excluded from the moment
+it is created is one `git add -A` away from someone else's pull request.
 """
 
 from __future__ import annotations
@@ -24,46 +31,8 @@ from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
 import common  # noqa: E402
 
-PRAXIS_MARK = "<!-- praxis:managed -->"
-
 #: Drift findings shown inline before the rest is summarised as a count.
 DRIFT_PREVIEW = 5
-
-
-def classify(root: Path) -> str:
-    claude_md = root / "CLAUDE.md"
-    settings = root / ".claude" / "settings.json"
-    has_code = _has_source(root)
-
-    if not has_code and not (root / ".git").exists():
-        return "new"
-    if not claude_md.exists() and not settings.exists():
-        return "uninitialised"
-    if claude_md.exists():
-        try:
-            body = claude_md.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
-            body = ""
-        if PRAXIS_MARK in body:
-            return "managed"
-        return "legacy"
-    return "partial"
-
-
-def _has_source(root: Path) -> bool:
-    markers = [
-        "package.json", "pyproject.toml", "setup.py", "requirements.txt",
-        "go.mod", "Cargo.toml", "pom.xml", "build.gradle", "Gemfile",
-        "composer.json", "mix.exs", "pubspec.yaml", "CMakeLists.txt",
-        "Makefile", "*.sln",
-    ]
-    for m in markers:
-        if "*" in m:
-            if any(root.glob(m)):
-                return True
-        elif (root / m).exists():
-            return True
-    return False
 
 
 def quick_secret_scan(root: Path, cap: int = 400) -> list:
@@ -113,17 +82,15 @@ def live_config(root: Path) -> list:
     stale, so the resolved value wins over any prose.
     """
     cfg = common.read_config(root)
-    gate_off = (
-        os.environ.get("PRAXIS_GATE", "").lower() in ("off", "0", "false")
-        or (common.state_dir(root) / "skip-gate").exists()
-        or cfg.get("gate.enabled", True) is False
-    )
+    mode, source = common.workspace_mode_reason(root)
     items = [
-        f"quality gate: **{'OFF' if gate_off else 'ON'}**",
+        f"workspace mode: **{mode}** (from {source})",
+        f"quality gate: **{'ON' if common.gate_enabled(root) else 'OFF'}**",
         f"test evidence required: **{'yes' if cfg.get('gate.require_tests', True) else 'no'}**",
         f"UI verticals required on UI changes: "
         f"**{'yes' if cfg.get('gate.require_ui_verticals', True) else 'no'}**",
         f"auto-pilot: **{'ON' if common.autopilot_on(root) else 'OFF'}**",
+        f"auto-bootstrap: **{'ON' if common.bootstrap_auto(root) else 'OFF'}**",
     ]
     if common.is_git_repo(root):
         merge = "ON (praxis reviews and merges its own PRs after a green audit)" \
@@ -134,6 +101,87 @@ def live_config(root: Path) -> list:
         f"AI attribution in commits/PRs "
         f"**{'banned' if cfg.get('style.ban_ai_attribution', True) else 'allowed'}**")
     return items
+
+
+def workspace_block(root: Path) -> list:
+    """Whose repository this is, why praxis thinks so, and where it will write.
+
+    Stated every session and near the top, because it is the one fact that
+    changes what a turn is allowed to leave behind. A session that assumes the
+    repo is ours and is wrong does not fail loudly: it quietly adds a CLAUDE.md, a
+    /docs tree and a CHANGELOG to somebody else's project, and the mistake is only
+    visible in the pull request.
+    """
+    mode, source = common.workspace_mode_reason(root)
+    if mode != common.CONTRIBUTOR:
+        return [f"**Workspace:** `owner` ({source}). praxis maintains this repo's "
+                "CLAUDE.md, settings, `/docs`, CHANGELOG and ADRs as committed "
+                "project files."]
+
+    common.ensure_local_exclusions(root, True)
+    # Pin the verdict the first time it is reached. Without this, the ordinary
+    # contribution workflow undoes the mode: you clone (contributor), praxis sets
+    # up locally, you fix the bug and commit, and on the next session your own
+    # address is in `git log`, detection says `owner`, and praxis starts writing
+    # a CLAUDE.md and a /docs tree into a repository that is not yours.
+    pinned = common.persist_workspace_mode(root, mode)
+    return [
+        f"**⚠️ Workspace: `contributor`** ({source}). **This repository is not "
+        "ours.** Everything praxis authors stays on this machine and is excluded "
+        "in `$GIT_COMMON_DIR/info/exclude`; the repo's own files are touched only "
+        "where the user's actual change requires it.",
+        "  - operating brief → `CLAUDE.local.md` (the repo's `CLAUDE.md` is never "
+        "edited or reconciled)",
+        "  - settings → `.claude/settings.local.json`; praxis config → "
+        "`.claude/.praxis/praxis.toml`",
+        "  - `/docs`, `CHANGELOG.md`, `docs/adr/`, `docs/design/` → updated **only "
+        "if the repo already has them**, following its conventions; otherwise "
+        "written under `.claude/.praxis/knowledge/`",
+        "  - never create `.praxis.toml`, `/docs`, `CHANGELOG.md` or a `CLAUDE.md` "
+        "here, and never edit `.gitignore` on praxis's behalf",
+        "  - never stage `CLAUDE.local.md`, `.claude/.praxis/` or "
+        "`.claude/settings.local.json`; the commit belongs to the project, not to "
+        "your setup. Deliver through a fork/topic branch and match the repo's own "
+        "commit, PR and changelog conventions.",
+        "  - if this verdict is wrong, say so: `/praxis:config mode owner`."
+        + (" This verdict is now pinned in `.claude/.praxis/workspace`, so your "
+           "own commits here will not silently flip it back." if pinned else ""),
+    ]
+
+
+def bootstrap_block(root: Path, state: str) -> list:
+    """The instruction to set this repo up, issued before any other work.
+
+    Recommending it did not work. The line "Recommend /praxis:bootstrap" sat at
+    the top of every session in an unmanaged repo and was routinely stepped past,
+    leaving the session with no operating brief, no guardrails and no /docs, which
+    is the state praxis exists to prevent.
+    """
+    if not common.bootstrap_required(root):
+        return []
+    contributor = common.is_contributor(root)
+    where = common.bootstrap_targets(root)
+    lines = [
+        f"**⚠️ praxis is not set up in this repository (state: `{state}`). "
+        "Run the `bootstrap` skill NOW, before the user's first request.** It is "
+        "the first step of the pipeline, not an optional command: map the repo "
+        f"read-only, then write {where}.",
+        "  - Write what does not exist without asking, then carry straight on to "
+        "the user's actual request in the same turn. Report the setup in one line; "
+        "do not turn it into a conversation.",
+    ]
+    if contributor:
+        lines.append("  - Nothing lands in the repository itself, so there is "
+                     "nothing to confirm: the brief is additive and the repo's own "
+                     "`CLAUDE.md`, if it has one, is left exactly as it is.")
+    else:
+        lines.append("  - The one thing to stop and ask about is reconciling an "
+                     "existing non-praxis `CLAUDE.md`: that merge can drop a still-"
+                     "valid instruction, so route it through "
+                     "`@praxis:claudemd-verifier` and show the before/after first.")
+    lines.append("  - Turn this off for this repo with `/praxis:config bootstrap "
+                 "off` (or `bootstrap.auto = false`).")
+    return lines
 
 
 def nested_claude_md(root: Path) -> list:
@@ -149,18 +197,26 @@ def nested_claude_md(root: Path) -> list:
 
 
 def build_report(root: Path) -> str:
-    state = classify(root)
+    state = common.repo_state(root)
     lines = ["## praxis session audit", ""]
 
     intro = {
-        "new": "This looks like a **new / empty project**. Offer to run `/praxis:bootstrap` to establish a top-tier Claude Code setup from scratch.",
-        "uninitialised": "This is an **existing repo with no Claude Code setup**. Recommend `/praxis:bootstrap` to analyse the codebase and generate a CLAUDE.md + guardrails.",
-        "legacy": "This repo has a **CLAUDE.md not managed by praxis** (legacy or from another tool). Recommend `/praxis:bootstrap`, it will reconcile and migrate the existing file through the verifier so nothing valuable is lost.",
-        "partial": "This repo has **partial Claude Code config**. Recommend `/praxis:doctor` to reconcile it.",
-        "managed": "This repo is **managed by praxis**. Continuous quality gates are active.",
+        "new": "a **new / empty project**, so the setup is written from scratch.",
+        "uninitialised": "an **existing codebase with no Claude Code setup**: map it read-only first, then generate the brief and the guardrails from what is actually there.",
+        "legacy": "there is a **brief praxis did not write** (legacy, or from another tool). It is reconciled and migrated through the verifier so nothing valuable is lost, never overwritten.",
+        "partial": "**partial Claude Code config**. Complete it, and run `/praxis:doctor` to see what is missing.",
+        "managed": "**managed by praxis**. Continuous quality gates are active.",
     }.get(state, "")
     lines.append(f"**State:** `{state}`, {intro}")
     lines.append("")
+
+    lines += workspace_block(root)
+    lines.append("")
+
+    boot = bootstrap_block(root, state)
+    if boot:
+        lines += boot
+        lines.append("")
 
     # Health signals
     secrets = quick_secret_scan(root)
@@ -209,17 +265,23 @@ def build_report(root: Path) -> str:
                      f"({'/'.join(kinds)}): e.g. {sample}. Run and audit the tests of the "
                      "specific package(s) you change, not just the root.")
 
-    # Living-knowledge health
+    # Living-knowledge health. In a repository that is not ours, a missing /docs
+    # or CHANGELOG is the project's choice, not a gap for praxis to fill, so the
+    # answer is where praxis will keep its own records instead.
     has_docs = (root / "docs").is_dir()
     has_changelog = (root / "CHANGELOG.md").exists()
     if not has_docs or not has_changelog:
-        missing = []
-        if not has_docs:
-            missing.append("/docs")
-        if not has_changelog:
-            missing.append("CHANGELOG.md")
-        lines.append(f"**Living knowledge missing:** {', '.join(missing)}, scaffold via "
-                     "`/praxis:bootstrap` (or the `docs-living` skill); every repo should have both.")
+        missing = [name for name, present in (("/docs", has_docs),
+                                              ("CHANGELOG.md", has_changelog))
+                   if not present]
+        if common.is_contributor(root):
+            lines.append(f"**This repo has no {' and no '.join(missing)}.** Do not "
+                         "add what it chose not to have: record what this change "
+                         "needs under `.claude/.praxis/knowledge/` instead.")
+        else:
+            lines.append(f"**Living knowledge missing:** {', '.join(missing)}, "
+                         "scaffold it as part of bootstrap (or with the "
+                         "`docs-living` skill); every repo should have both.")
 
     if common.is_git_repo(root):
         dirty = common.git_status_porcelain(root)
@@ -244,6 +306,11 @@ def build_report(root: Path) -> str:
                  "restructure the prompt into a spec → investigate → plan (plan mode) → "
                  "implement → audit → structured report. Interrupt the user ONLY at a "
                  "genuine decision point.")
+    lines.append("- Bootstrap comes first: in any repo praxis has not set up, run the "
+                 "`bootstrap` skill before the work, not instead of it, then continue "
+                 "in the same turn. Respect the workspace mode above: in `contributor` "
+                 "every praxis artifact is local and git-excluded, and the repository "
+                 "gets nothing but the change the user actually asked for.")
     lines.append("- For any multi-step task, open a praxis task so the session self-drives "
                  "to completion (no need for /goal): "
                  "`python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/task_state.py\" open \"<title>\" "

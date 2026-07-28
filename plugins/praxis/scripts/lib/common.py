@@ -109,8 +109,79 @@ def _run(cmd: List[str], cwd: Optional[Path] = None, timeout: int = 10) -> str:
         return ""
 
 
+def _run_out(cmd: List[str], cwd: Optional[Path] = None, timeout: int = 10) -> tuple:
+    """(stdout, ok) where `ok` is False if the command did not answer at all.
+
+    `_run` collapses "ran cleanly and printed nothing" and "timed out" into the
+    same empty string. Most callers can treat those alike; the workspace detector
+    cannot, because reading a timeout as "no commits by you" would move a user's
+    own project into contributor mode.
+    """
+    try:
+        out = subprocess.run(cmd, cwd=str(cwd) if cwd else None,
+                             capture_output=True, text=True, timeout=timeout)
+        return (out.stdout, True) if out.returncode == 0 else ("", False)
+    except Exception:
+        return "", False
+
+
+def _run_ok(cmd: List[str], cwd: Optional[Path] = None, timeout: int = 10) -> bool:
+    """True if `cmd` exits 0. For plumbing whose answer IS the exit code.
+
+    `_run` cannot express this: it returns '' both for a clean run with no output
+    and for a failure, which is exactly the pair `git check-ignore -q` needs to
+    distinguish.
+    """
+    try:
+        return subprocess.run(
+            cmd,
+            cwd=str(cwd) if cwd else None,
+            capture_output=True,
+            timeout=timeout,
+        ).returncode == 0
+    except Exception:
+        return False
+
+
 def is_git_repo(root: Path) -> bool:
     return _run(["git", "rev-parse", "--is-inside-work-tree"], cwd=root).strip() == "true"
+
+
+def git_dir(root: Path) -> Optional[Path]:
+    """The directory whose `info/exclude` git actually reads, or None outside a repo.
+
+    `--git-common-dir`, not `--git-dir`. gitignore(5) is explicit that per-clone
+    patterns live in `$GIT_COMMON_DIR/info/exclude`, and in a linked worktree the
+    two differ: `--absolute-git-dir` answers `.git/worktrees/<name>`, whose
+    `info/exclude` git never consults. Writing there produces the worst possible
+    outcome for contributor mode, an exclusion that reports success and does
+    nothing, so the common dir is asked for first and the older flags are only a
+    fallback for git before 2.5.
+    """
+    for args in (["--git-common-dir"], ["--absolute-git-dir"], ["--git-dir"]):
+        out = _run(["git", "rev-parse"] + args, cwd=root).strip()
+        if not out:
+            continue
+        # --git-common-dir and --git-dir may answer relatively; resolve against
+        # the working tree they were asked about.
+        p = Path(out) if os.path.isabs(out) else (root / out)
+        try:
+            if p.is_dir():
+                return p.resolve()
+        except Exception:
+            continue
+    return None
+
+
+def git_is_ignored(root: Path, rel: str) -> bool:
+    """True if git would ignore `rel`, whatever the source of the rule.
+
+    Asks git instead of reading `.gitignore`, so `.git/info/exclude` and a global
+    `core.excludesFile` count exactly as much as a committed rule. That matters
+    for contributor mode, where the only correct place for praxis's patterns is
+    the per-clone exclude file.
+    """
+    return _run_ok(["git", "check-ignore", "-q", rel], cwd=root)
 
 
 def git_default_branch(root: Path) -> str:
@@ -167,9 +238,24 @@ def untracked_files(root: Path, limit: int = 2000) -> List[str]:
 
 
 def _is_praxis_state(path: str) -> bool:
-    """True for praxis's own state files, which are never part of a change."""
+    """True for praxis's own files, which are never part of the user's change.
+
+    Covers every local artifact, not just the state directory. The exclusion in
+    `$GIT_COMMON_DIR/info/exclude` normally keeps these out of git's answers
+    entirely, but it fails open (a read-only `.git`, a clone that predates
+    praxis), and when it does, `CLAUDE.local.md` would otherwise count as an
+    unreviewed change: the Stop gate would see a permanently dirty tree and the
+    scanners would audit praxis's own brief.
+    """
     norm = path.replace("\\", "/").strip().strip('"')
-    return norm.startswith(".claude/.praxis") or norm in (".claude", ".claude/")
+    # A prefix, not a character set: lstrip("./") would eat the leading dot of
+    # `.claude` and turn every artifact path into a miss.
+    while norm.startswith("./"):
+        norm = norm[2:]
+    if norm in (".claude", ".claude/"):
+        return True
+    return any(norm == a.rstrip("/") or norm.startswith(a if a.endswith("/") else a + "/")
+               for a in LOCAL_ARTIFACTS)
 
 
 # Files whose content is not reviewable text: scanning them yields noise, not signal.
@@ -285,6 +371,390 @@ def changed_files(root: Path) -> List[str]:
     result = sorted(f for f in files if f and not _is_praxis_state(f))
     _CHANGED_FILES_CACHE[key] = result
     return result
+
+
+# --------------------------------------------------------------------------- #
+# Workspace mode: whose repository is this?
+# --------------------------------------------------------------------------- #
+# praxis writes real files into a project: an operating brief, settings, a /docs
+# tree, a changelog, ADRs. In your own repository that is the point. In a
+# repository you merely contribute to, every one of them is a file the project
+# never asked for, one `git add -A` away from a polluted pull request.
+#
+# So praxis resolves whose repo it is, and in `contributor` mode keeps everything
+# it authors on the machine: the locations Claude Code documents for local,
+# uncommitted configuration (`CLAUDE.local.md`, `.claude/settings.local.json`),
+# plus its own already-local state directory.
+OWNER = "owner"
+CONTRIBUTOR = "contributor"
+AUTO = "auto"
+#: Detection ran and could not answer (git failed or timed out). Distinct from
+#: `owner`, because "I could not tell" is not evidence that the repo is yours.
+UNKNOWN = "unknown"
+
+#: Toggle file holding the chosen mode. Three states are needed (owner,
+#: contributor, and "let praxis decide"), so unlike the boolean switches this one
+#: records its value rather than its existence.
+WORKSPACE_TOGGLE = "workspace"
+
+#: Below this, a repository is too young for its authorship to mean anything: a
+#: repo you started yesterday has almost no history to find yourself in.
+MIN_HISTORY_FOR_DETECTION = 20
+
+#: Commits inspected when looking for the local author. Bounded because this runs
+#: in a SessionStart budget, and an author who has never appeared in the last few
+#: hundred commits is not the person maintaining the project.
+AUTHOR_SCAN_DEPTH = 500
+
+#: Wall-clock ceiling for the author scan. It has to stay comfortably inside the
+#: UserPromptSubmit hook budget (15s), because the prompt router resolves the mode
+#: on every actionable prompt and a hook that overruns is a hook that is killed.
+AUTHOR_SCAN_TIMEOUT = 5
+
+_DETECTED_MODE_CACHE: Dict[str, tuple] = {}
+
+
+def _detect_workspace_mode(root: Path) -> tuple:
+    """(mode, reason) inferred from git alone. Never touches the network.
+
+    The question "is this repository mine?" has one cheap, honest proxy: whether
+    the person configured to commit here has ever actually committed here. A repo
+    with a remote, real history, and not one commit from your address is somebody
+    else's project that you have cloned.
+
+    Every uncertain case resolves to `owner`, because `owner` is the behaviour
+    praxis has always had; a wrong `contributor` verdict would silently withhold
+    the setup a user expected in their own project. The one exception is a git
+    call that fails or times out rather than answering: "I could not tell" is not
+    evidence of ownership, so it is reported as its own state and the caller
+    keeps whatever verdict it had.
+    """
+    if not is_git_repo(root):
+        return OWNER, "not a git repository"
+    remotes, ok = _run_out(["git", "remote"], cwd=root)
+    if not ok:
+        return UNKNOWN, "git could not be read here"
+    if not remotes.strip():
+        return OWNER, "no git remote, so nothing to contribute to"
+    email = _run(["git", "config", "user.email"], cwd=root).strip()
+    if not email:
+        return OWNER, "no git user.email is configured, so authorship cannot be read"
+
+    # Bounded: the only question is "at least MIN_HISTORY_FOR_DETECTION?", and an
+    # unbounded rev-list walks the whole history of a repo that may have a million
+    # commits, inside a hook budget measured in seconds.
+    count, ok = _run_out(["git", "rev-list", "--count",
+                          f"--max-count={MIN_HISTORY_FOR_DETECTION}", "HEAD"], cwd=root)
+    if not ok:
+        return UNKNOWN, "git could not count this repository's history"
+    commits = int(count.strip()) if count.strip().isdigit() else 0
+    # A shallow clone reports only the commits it fetched, so its count says
+    # nothing about the project's age and must not be read as "young repo".
+    shallow = _run(["git", "rev-parse", "--is-shallow-repository"],
+                   cwd=root).strip() == "true"
+    if not shallow and commits < MIN_HISTORY_FOR_DETECTION:
+        return OWNER, f"only {commits} commit(s) of history"
+
+    log, ok = _run_out(["git", "log", f"-n{AUTHOR_SCAN_DEPTH}", "--format=%ae"],
+                       cwd=root, timeout=AUTHOR_SCAN_TIMEOUT)
+    if not ok:
+        # Without this, a timed-out author scan reads as "your address appears
+        # nowhere", which is the harmful direction: it would relocate praxis's
+        # files in a repository that is in fact yours.
+        return UNKNOWN, "the author scan did not complete"
+    authors = log.lower().split()
+    if email.lower() in authors:
+        return OWNER, "you have commits in this repository"
+    return CONTRIBUTOR, (f"a remote, {len(authors)} commit(s) examined, none "
+                         f"authored by {email}")
+
+
+def _detected_mode(root: Path) -> tuple:
+    """`_detect_workspace_mode` memoised per root (it costs five git calls).
+
+    Only the *detection* is cached, never the resolved mode: a toggle flipped
+    mid-session must take effect on the next call, while a repository's authorship
+    cannot meaningfully change inside one hook process.
+    """
+    key = str(root)
+    if key not in _DETECTED_MODE_CACHE:
+        try:
+            _DETECTED_MODE_CACHE[key] = _detect_workspace_mode(root)
+        except Exception:
+            _DETECTED_MODE_CACHE[key] = (OWNER, "detection failed")
+    return _DETECTED_MODE_CACHE[key]
+
+
+def workspace_mode_reason(root: Path) -> tuple:
+    """(mode, source) in force here, most specific source first.
+
+    env PRAXIS_MODE -> .claude/.praxis/workspace -> .praxis.toml -> detection.
+    The source is returned with the value so a surprising verdict can always be
+    traced to the thing that produced it.
+
+    One asymmetry, and it is a trust boundary rather than a preference: a
+    *committed* `.praxis.toml` belongs to the repository, and a repository does
+    not get to tell praxis that it is ours. It may declare `contributor`, which
+    only ever withholds writes, and its `owner` is ignored in favour of
+    detection. Local sources (the env var, the toggle, the git-excluded config)
+    are the user's own and may say either.
+    """
+    env = os.environ.get("PRAXIS_MODE", "").strip().lower()
+    if env in (OWNER, CONTRIBUTOR):
+        return env, f"env PRAXIS_MODE={env}"
+
+    try:
+        toggle = state_path(root, WORKSPACE_TOGGLE).read_text(
+            encoding="utf-8").strip().lower()
+    except Exception:
+        toggle = ""
+    if toggle in (OWNER, CONTRIBUTOR):
+        return toggle, f".claude/.praxis/{WORKSPACE_TOGGLE}"
+
+    cfg, sources = read_config_sources(root)
+    configured = str(cfg.get("workspace.mode", AUTO)).strip().lower()
+    layer = sources.get("workspace.mode", "")
+    if configured in (OWNER, CONTRIBUTOR):
+        if configured == CONTRIBUTOR or layer != ".praxis.toml":
+            return configured, f"{layer} [workspace] mode"
+        # A committed `owner` is the one value a cloned repo could use to make
+        # praxis treat it as ours. Say so rather than silently ignoring it.
+        mode, why = _detected_mode(root)
+        if mode != UNKNOWN:
+            return mode, (f"detected: {why} (the committed .praxis.toml asks for "
+                          "owner; only a local setting may grant that)")
+
+    mode, why = _detected_mode(root)
+    if mode == UNKNOWN:
+        # Detection could not answer. Keep praxis's historical behaviour rather
+        # than guessing, but do not dress the guess up as a finding.
+        return OWNER, f"undetermined ({why}), defaulting to owner"
+    return mode, f"detected: {why}"
+
+
+def persist_workspace_mode(root: Path, mode: str) -> bool:
+    """Pin a detected mode so a later commit of your own cannot flip it.
+
+    This exists for one specific, entirely normal sequence: you clone someone's
+    project (detected `contributor`), praxis sets up locally, you fix the bug and
+    commit it. On the next session your address is in `git log`, detection says
+    `owner`, and praxis would start writing a CLAUDE.md and a /docs tree into
+    their repository, with nothing excluding any of it. Pinning the verdict the
+    first time it is reached makes the contribution workflow safe.
+
+    Only `contributor` is pinned. `owner` is the default and needs no memory, and
+    pinning it would be the direction that causes harm when wrong.
+    """
+    if mode != CONTRIBUTOR:
+        return False
+    target = state_dir(root) / WORKSPACE_TOGGLE
+    if target.exists():
+        return False
+    try:
+        target.write_text(mode + "\n", encoding="utf-8")
+        return True
+    except Exception:
+        return False
+
+
+def workspace_mode(root: Path) -> str:
+    return workspace_mode_reason(root)[0]
+
+
+def is_contributor(root: Path) -> bool:
+    """True when praxis must leave no trace in the repository itself."""
+    try:
+        return workspace_mode(root) == CONTRIBUTOR
+    except Exception:
+        return False
+
+
+# --------------------------------------------------------------------------- #
+# Where praxis writes, per mode
+# --------------------------------------------------------------------------- #
+#: Everything praxis authors that belongs to the machine rather than to the
+#: project. Committing any of these is wrong in either mode, so the guard and the
+#: exclude block both read this one list.
+LOCAL_ARTIFACTS = (
+    ".claude/.praxis/",
+    ".claude/settings.local.json",
+    "CLAUDE.local.md",
+)
+
+#: Local knowledge root, under the state directory so it inherits its exclusion.
+#: It mirrors the repo layout (`docs/`, `docs/adr/`, `CHANGELOG.md`) so a skill's
+#: instructions differ only in where the tree is rooted.
+KNOWLEDGE_DIR = "knowledge"
+
+
+def brief_path(root: Path) -> Path:
+    """The operating brief praxis maintains.
+
+    In contributor mode this is `CLAUDE.local.md`, which Claude Code loads
+    alongside the project's own `CLAUDE.md` and appends after it. praxis therefore
+    adds its brief without editing, replacing, or reconciling a file the project
+    owns.
+    """
+    return root / ("CLAUDE.local.md" if is_contributor(root) else "CLAUDE.md")
+
+
+def settings_path(root: Path) -> Path:
+    """The settings file praxis proposes: the local one when the repo is not ours."""
+    name = "settings.local.json" if is_contributor(root) else "settings.json"
+    return root / ".claude" / name
+
+
+def knowledge_root(root: Path) -> Path:
+    return (state_dir(root) / KNOWLEDGE_DIR) if is_contributor(root) else root
+
+
+def staged_local_artifacts(root: Path) -> List[str]:
+    """praxis artifacts currently in the index, asked of git rather than inferred.
+
+    `git add -f` overrides an exclude file by design, and a shell expands a glob
+    after a PreToolUse hook has already read the command, so no amount of string
+    matching can answer this. The index can.
+    """
+    out = _run(["git", "diff", "--cached", "--name-only"], cwd=root, timeout=15)
+    return sorted({f.strip() for f in out.splitlines()
+                   if f.strip() and _is_praxis_state(f.strip())})
+
+
+def tracked_local_artifacts(root: Path) -> List[str]:
+    """praxis artifacts this repo already tracks.
+
+    `git check-ignore` says nothing about a tracked path, so without this the
+    guard would diagnose an already-committed artifact as a broken exclude file
+    and send the user to fix something that is not wrong.
+    """
+    out = _run(["git", "ls-files", "--"] + [a.rstrip("/") for a in LOCAL_ARTIFACTS],
+               cwd=root, timeout=15)
+    return sorted({f.strip() for f in out.splitlines() if f.strip()})
+
+
+def bootstrap_targets(root: Path) -> str:
+    """What bootstrap will write here, named from the paths it will actually use.
+
+    Both hooks that instruct a session to bootstrap have to state this, and a
+    hand-written copy in each would re-hardcode exactly what the path helpers
+    above exist to centralise: rename the knowledge directory and the two
+    directives would confidently keep naming the old one.
+    """
+    if is_contributor(root):
+        return (f"`{brief_path(root).name}` + "
+                f"`{settings_path(root).relative_to(root)}` + "
+                f"`{knowledge_root(root).relative_to(root)}/`, all git-excluded")
+    return (f"`{brief_path(root).name}` + "
+            f"`{settings_path(root).relative_to(root)}` + `/docs` + `CHANGELOG.md`")
+
+
+def knowledge_path(root: Path, rel: str) -> Path:
+    """Where a living-knowledge artifact (`CHANGELOG.md`, `docs/adr`) belongs.
+
+    In a repository that is not ours the rule is: join what already exists, create
+    nothing new. A project with a `CHANGELOG.md` expects a contribution to update
+    it, and a pull request that skipped it is a worse pull request. A project
+    without one did not ask praxis to introduce the convention, so that record is
+    kept locally instead.
+    """
+    if is_contributor(root) and not (root / rel).exists():
+        return knowledge_root(root) / rel
+    return root / rel
+
+
+# The block praxis manages inside the per-clone exclude file. Marked at both ends
+# so it can be rewritten or removed without disturbing anything else in there.
+LOCAL_EXCLUDE_BEGIN = "# >>> praxis local-only (managed) >>>"
+LOCAL_EXCLUDE_END = "# <<< praxis local-only (managed) <<<"
+
+_LOCAL_EXCLUDE_NOTE = (
+    "# praxis is running in contributor mode in this clone: the paths below are\n"
+    "# yours, not the repository's, and must never reach a commit or a pull\n"
+    "# request. Remove this block by running: /praxis:config mode owner\n"
+)
+
+
+def _exclude_block() -> str:
+    # Leading '/' anchors each pattern to the repository root, so an unrelated
+    # CLAUDE.local.md deep in the tree is not silently hidden from its owner.
+    patterns = "".join(f"/{p}\n" for p in LOCAL_ARTIFACTS)
+    return f"{LOCAL_EXCLUDE_BEGIN}\n{_LOCAL_EXCLUDE_NOTE}{patterns}{LOCAL_EXCLUDE_END}\n"
+
+
+def _strip_exclude_block(text: str) -> str:
+    """Remove every complete praxis block, leaving everything else untouched.
+
+    A block whose END marker is missing is left exactly as it is. The file
+    belongs to the user, praxis only rents a marked region of it, and the
+    alternative (treating everything after an unterminated BEGIN as ours) would
+    silently delete the patterns below it: the precise harm this module exists to
+    prevent, inflicted by it, on the user's own data.
+    """
+    while True:
+        start = text.find(LOCAL_EXCLUDE_BEGIN)
+        if start == -1:
+            return text
+        end = text.find(LOCAL_EXCLUDE_END, start)
+        if end == -1:
+            return text
+        text = text[:start] + text[end + len(LOCAL_EXCLUDE_END):].lstrip("\n")
+
+
+def ensure_local_exclusions(root: Path, enabled: bool) -> bool:
+    """Add or remove praxis's block in `$GIT_COMMON_DIR/info/exclude`. True if changed.
+
+    `info/exclude` is the file gitignore(5) reserves for patterns "specific to a
+    particular repository but which do not need to be shared": it is never
+    committed and never appears in a diff, which is precisely the guarantee
+    contributor mode needs. Claude Code likewise arranges for git to ignore
+    `.claude/settings.local.json` when it creates it; its documentation states the
+    effect rather than the mechanism, so praxis picks the one git documents for
+    exactly this purpose instead of editing a committed `.gitignore`.
+
+    The effect is not cosmetic: once excluded, praxis's own files are invisible to
+    `git status`, to `git add -A`, and to praxis's `untracked_files()`, so they can
+    neither be swept into a commit nor make the Stop gate see a dirty tree.
+
+    Fails open, returning False: a clone where the exclude file cannot be written
+    (a read-only .git, a permission problem) must not break the session. The
+    PreToolUse guard still refuses to stage these paths.
+    """
+    gd = git_dir(root)
+    if gd is None:
+        return False
+    info = gd / "info"
+    exclude = info / "exclude"
+    try:
+        current = exclude.read_text(encoding="utf-8") if exclude.exists() else ""
+    except Exception:
+        return False
+
+    stripped = _strip_exclude_block(current)
+    if enabled:
+        desired = stripped + ("\n" if stripped and not stripped.endswith("\n") else "")
+        desired += _exclude_block()
+    else:
+        desired = stripped
+    if desired == current:
+        return False
+    try:
+        info.mkdir(parents=True, exist_ok=True)
+        # Written the way praxis writes its own state: temp file plus os.replace.
+        # This is the user's file, two Claude Code windows on one clone both fire
+        # SessionStart, and a torn write here loses the project's own patterns.
+        tmp = exclude.with_name(exclude.name + ".praxis.tmp")
+        try:
+            tmp.write_text(desired, encoding="utf-8")
+            os.replace(tmp, exclude)
+        except Exception:
+            try:
+                tmp.unlink()
+            except Exception:
+                pass
+            raise
+        return True
+    except Exception:
+        return False
 
 
 # --------------------------------------------------------------------------- #
@@ -520,12 +990,24 @@ def find_files_multi(root: Path, names: set, limit: int = 500,
 # praxis state directory (per-project, git-ignored)
 # --------------------------------------------------------------------------- #
 def state_dir(root: Path) -> Path:
-    d = root / ".claude" / ".praxis"
+    """The state directory, created if absent. For writers."""
+    d = state_path(root, "")
     try:
         d.mkdir(parents=True, exist_ok=True)
     except Exception:
         pass
     return d
+
+
+def state_path(root: Path, name: str) -> Path:
+    """A path inside the state directory, without creating anything.
+
+    For readers. Resolving a setting must not leave a directory behind in a
+    repository praxis may not even be set up in, and in contributor mode that
+    directory would exist before the exclusions that hide it were written.
+    """
+    base = root / ".claude" / ".praxis"
+    return base / name if name else base
 
 
 def read_state(root: Path, name: str) -> Dict[str, Any]:
@@ -602,30 +1084,84 @@ def cli_opt(args: List[str], name: str, default=None):
     return default
 
 
+# --------------------------------------------------------------------------- #
+# Switches: one ladder, resolved in one place
+# --------------------------------------------------------------------------- #
+# switch -> (toggle filename, env var, config key, inverted?)
+#
+# Two switches are inverted: their toggle files (`skip-gate`, `no-bootstrap`)
+# record the OFF state by existing, so turning the feature off is an explicit act
+# rather than the absence of one. Encoding that here keeps one code path instead
+# of special-casing them at every call site.
+#
+# This table lives in `common` rather than in `config.py` because `config.py`
+# imports `common` and not the other way round, and because every reader of a
+# switch is a hook. Hand-rolled copies of this ladder had already drifted: the
+# same `PRAXIS_GATE=on` could be reported ON by the settings command and treated
+# as OFF by the gate that enforces it.
+SWITCHES = {
+    "autopilot": ("autopilot", "PRAXIS_AUTOPILOT", "autopilot.default", False),
+    "auto-merge": ("auto-merge", "PRAXIS_AUTO_MERGE", "git.auto_merge", False),
+    "bootstrap": ("no-bootstrap", "PRAXIS_BOOTSTRAP", "bootstrap.auto", True),
+    "gate": ("skip-gate", "PRAXIS_GATE", "gate.enabled", True),
+}
+
+ON_WORDS = ("on", "1", "true", "yes", "enable", "enabled")
+OFF_WORDS = ("off", "0", "false", "no", "disable", "disabled")
+
+
+def resolve_switch(root: Path, switch: str):
+    """(value, source) for one switch, most specific source first.
+
+    Only the toggle *file* is inverted. `PRAXIS_GATE=off` disables the gate and
+    `gate.enabled = true` enables it, both read the natural way round; it is
+    solely the file that records the off state by existing. Applying the
+    inversion to all three sources would make `PRAXIS_GATE=on` report the gate as
+    disabled, which is the opposite of what the hook does with it.
+    """
+    toggle, env_var, key, inverted = SWITCHES[switch]
+    env = os.environ.get(env_var, "").strip().lower()
+    if env in ON_WORDS:
+        return True, f"env {env_var}={env}"
+    if env in OFF_WORDS:
+        return False, f"env {env_var}={env}"
+    if state_path(root, toggle).exists():
+        return (False if inverted else True), f".claude/.praxis/{toggle}"
+    cfg = read_config(root)
+    return bool(cfg.get(key)), (".praxis.toml" if (root / ".praxis.toml").exists()
+                                else "default")
+
+
+def switch_on(root: Path, switch: str) -> bool:
+    try:
+        return bool(resolve_switch(root, switch)[0])
+    except Exception:
+        # A switch that cannot be resolved falls back to its default rather than
+        # breaking the hook that asked.
+        return bool(_CONFIG_DEFAULTS.get(SWITCHES[switch][2], False))
+
+
 def autopilot_on(root: Path) -> bool:
-    """True if auto-pilot is enabled (env PRAXIS_AUTOPILOT or the toggle file).
+    """True if auto-pilot is enabled.
 
     In auto-pilot praxis does not ask the user design/approach questions; it
     decides by best-practice and logs the decision instead.
     """
-    if os.environ.get("PRAXIS_AUTOPILOT", "").lower() in ("on", "1", "true"):
-        return True
-    if (state_dir(root) / "autopilot").exists():
-        return True
-    return bool(read_config(root).get("autopilot.default", False))
+    return switch_on(root, "autopilot")
 
 
 def auto_merge_on(root: Path) -> bool:
-    """True if autonomous review-and-merge is enabled (env, toggle file, or config).
+    """True if autonomous review-and-merge is enabled.
 
     When on, praxis may merge its own PRs after a green audit. When off (default),
     it opens the PR and stops for a human to review and merge.
     """
-    if os.environ.get("PRAXIS_AUTO_MERGE", "").lower() in ("on", "1", "true"):
-        return True
-    if (state_dir(root) / "auto-merge").exists():
-        return True
-    return bool(read_config(root).get("git.auto_merge", False))
+    return switch_on(root, "auto-merge")
+
+
+def gate_enabled(root: Path) -> bool:
+    """True if the Stop gate holds a turn open until the change is audited."""
+    return switch_on(root, "gate")
 
 
 _CONFIG_DEFAULTS = {
@@ -634,11 +1170,19 @@ _CONFIG_DEFAULTS = {
     "gate.require_ui_verticals": True,  # UI diffs need the a11y + design verdicts
     "autopilot.default": False,       # start sessions in auto-pilot
     "audit.depth": "high",            # informational hint for the auditors
+    "bootstrap.auto": True,           # set the repo up on its own, before any work
+    "workspace.mode": AUTO,           # "auto" | "owner" | "contributor"
     "git.auto_merge": False,          # auto-review and merge PRs; off = PR only, human merges
     "git.default_branch": "",         # PR base branch ("" = auto-detect)
     "style.ban_em_dash": True,        # refuse em dashes in authored text
     "style.ban_ai_attribution": True,  # refuse AI co-author / generated-by credits
 }
+
+#: A second, git-excluded config layer inside the state directory, read after
+#: `.praxis.toml` and overriding it. It is what lets a contributor hold local
+#: preferences without editing (or fighting) a `.praxis.toml` the upstream
+#: project committed.
+LOCAL_CONFIG = "praxis.toml"
 
 
 def _coerce(v: str):
@@ -654,18 +1198,29 @@ def _coerce(v: str):
         return v
 
 
-def read_config(root: Path) -> Dict[str, Any]:
-    """Read `.praxis.toml` (a small, flat subset: [section] + key = value).
+#: The size above which a config file is not a config file. Read unconditionally
+#: on every prompt and before every publishing command, and a repository we may
+#: not own supplies it.
+MAX_CONFIG_BYTES = 256_000
 
-    Stdlib-only (works on 3.8+; no tomllib dependency). Returns defaults merged
-    with any values found; unknown keys are ignored; malformed files fall back to
-    defaults rather than raising.
+
+def _apply_toml(f: Path, cfg: Dict[str, Any]) -> tuple:
+    """Overlay one config file onto `cfg`. Returns (ok, keys it set).
+
+    A small, flat subset of TOML ([section] + key = value), parsed by hand so
+    praxis stays stdlib-only on Python 3.8 (tomllib arrived in 3.11). Unknown keys
+    are ignored rather than rejected: a newer praxis writing a key this one does
+    not know must not invalidate the whole file.
+
+    The key list is what lets a caller say which layer a value came from, which
+    is the whole point of reporting a source at all.
     """
-    cfg = dict(_CONFIG_DEFAULTS)
-    f = root / ".praxis.toml"
     if not f.exists():
-        return cfg
+        return True, ()
+    keys = []
     try:
+        if f.stat().st_size > MAX_CONFIG_BYTES:
+            return False, ()
         section = ""
         for raw in f.read_text(encoding="utf-8", errors="ignore").splitlines():
             line = raw.split("#", 1)[0].strip()
@@ -679,9 +1234,120 @@ def read_config(root: Path) -> Dict[str, Any]:
                 key = f"{section}.{k.strip()}" if section else k.strip()
                 if key in _CONFIG_DEFAULTS:
                     cfg[key] = _coerce(val)
+                    keys.append(key)
     except Exception:
-        return dict(_CONFIG_DEFAULTS)
-    return cfg
+        return False, tuple(keys)
+    return True, tuple(keys)
+
+
+def config_layers(root: Path) -> list:
+    """(label, path) for each config layer, least specific first."""
+    return [(".praxis.toml", root / ".praxis.toml"),
+            # state_dir() would mkdir, and a plain read must not create
+            # directories in a repository praxis may not even be set up in.
+            (f".claude/.praxis/{LOCAL_CONFIG}",
+             root / ".claude" / ".praxis" / LOCAL_CONFIG)]
+
+
+def read_config_sources(root: Path) -> tuple:
+    """(config, {key: the layer that last set it}).
+
+    Two layers, least specific first: the committed `.praxis.toml` the team
+    shares, then `.claude/.praxis/praxis.toml`, which is git-excluded and yours
+    alone. A malformed file falls back to the defaults rather than raising, since
+    every caller is a hook that must not break the session.
+    """
+    cfg = dict(_CONFIG_DEFAULTS)
+    sources: Dict[str, str] = {}
+    for label, path in config_layers(root):
+        ok, keys = _apply_toml(path, cfg)
+        if not ok:
+            # A half-parsed file leaves half its values behind, so drop what it
+            # set rather than keeping an arbitrary prefix of it. The other layer
+            # still applies: one corrupt file is not a reason to discard both.
+            for key in keys:
+                cfg[key] = _CONFIG_DEFAULTS[key]
+                sources.pop(key, None)
+            continue
+        for key in keys:
+            sources[key] = label
+    return cfg, sources
+
+
+def read_config(root: Path) -> Dict[str, Any]:
+    """The resolved praxis configuration for a repo.
+
+    Not memoised on purpose: `config.py` writes a value and re-reads it in the
+    same process to report what actually took effect.
+    """
+    return read_config_sources(root)[0]
+
+
+# --------------------------------------------------------------------------- #
+# Repo state: is praxis set up here?
+# --------------------------------------------------------------------------- #
+#: Marker praxis writes into the brief it manages, so it recognises its own work
+#: on the next session instead of proposing the setup again.
+PRAXIS_MARK = "<!-- praxis:managed -->"
+
+#: Build-system markers. Their presence means "there is a real project here",
+#: which separates an empty directory from a codebase with no Claude Code setup.
+_SOURCE_MARKERS = (
+    "package.json", "pyproject.toml", "setup.py", "requirements.txt",
+    "go.mod", "Cargo.toml", "pom.xml", "build.gradle", "Gemfile",
+    "composer.json", "mix.exs", "pubspec.yaml", "CMakeLists.txt",
+    "Makefile", "*.sln",
+)
+
+
+def has_source(root: Path) -> bool:
+    for marker in _SOURCE_MARKERS:
+        try:
+            if any(root.glob(marker)) if "*" in marker else (root / marker).exists():
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def repo_state(root: Path) -> str:
+    """One of new | uninitialised | legacy | partial | managed.
+
+    Lives here rather than in the session audit because three callers now need
+    the same verdict (the audit, the prompt router, and the doctor), and a second
+    copy of this ladder would be a second place for it to drift.
+
+    In contributor mode the brief is `CLAUDE.local.md`, so a clone praxis has
+    already set up reads as `managed` even though the repository's own
+    `CLAUDE.md` (if any) was never touched.
+    """
+    brief = brief_path(root)
+    settings = settings_path(root)
+
+    if not has_source(root) and not (root / ".git").exists():
+        return "new"
+    if not brief.exists() and not settings.exists():
+        return "uninitialised"
+    if brief.exists():
+        try:
+            body = brief.read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            body = ""
+        return "managed" if PRAXIS_MARK in body else "legacy"
+    return "partial"
+
+
+def bootstrap_auto(root: Path) -> bool:
+    """True if praxis may set an unmanaged repo up on its own."""
+    return switch_on(root, "bootstrap")
+
+
+def bootstrap_required(root: Path) -> bool:
+    """True when this repo has no praxis setup and praxis is allowed to add one."""
+    try:
+        return repo_state(root) != "managed" and bootstrap_auto(root)
+    except Exception:
+        return False
 
 
 def change_signature(root: Path) -> str:

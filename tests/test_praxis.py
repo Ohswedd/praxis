@@ -60,6 +60,12 @@ class GitRepoCase(unittest.TestCase):
         sh(["git", "add", "-A"], cwd=self.tmp)
         sh(["git", "commit", "-qm", "init"], cwd=self.tmp)
 
+    def tearDown(self):
+        # Detection is memoised per root, and tempfile reuses paths often enough
+        # that a stale verdict would leak between cases.
+        common._DETECTED_MODE_CACHE.pop(str(self.root), None)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
     def payload(self, **kw):
         base = {"cwd": str(self.root), "session_id": "s1"}
         base.update(kw)
@@ -984,6 +990,596 @@ class TestDoctorIntegrityLine(GitRepoCase):
         r = run_script("doctor.py", self.payload(), self.root)
         self.assertEqual(r.returncode, 0)
         self.assertIn("plugin integrity: **OK (full source tree)**", r.stdout)
+
+
+# --------------------------------------------------------------------------- #
+# Workspace mode: whose repository is this?
+# --------------------------------------------------------------------------- #
+class ContributorRepoCase(unittest.TestCase):
+    """A clone of somebody else's project: foreign history, a remote, and you.
+
+    Deliberately built the way the real case arrives: the commits are authored by
+    a maintainer, `origin` points somewhere you do not own, and your own address
+    is configured but appears nowhere in the log.
+    """
+
+    OURS = "me@example.test"
+    THEIRS = "maintainer@upstream.test"
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.root = Path(self.tmp)
+        sh(["git", "init", "-q", "-b", "main"], cwd=self.tmp)
+        self._author(self.THEIRS, "maintainer")
+        (self.root / "app.py").write_text("x = 0\n")
+        for i in range(common.MIN_HISTORY_FOR_DETECTION + 2):
+            (self.root / "app.py").write_text(f"x = {i}\n")
+            sh(["git", "add", "-A"], cwd=self.tmp)
+            sh(["git", "commit", "-qm", f"upstream commit {i}"], cwd=self.tmp)
+        sh(["git", "remote", "add", "origin",
+            "https://github.com/someone-else/upstream.git"], cwd=self.tmp)
+        self._author(self.OURS, "me")
+        common._DETECTED_MODE_CACHE.pop(str(self.root), None)
+
+    def _author(self, email, name):
+        sh(["git", "config", "user.email", email], cwd=self.tmp)
+        sh(["git", "config", "user.name", name], cwd=self.tmp)
+
+    def tearDown(self):
+        common._DETECTED_MODE_CACHE.pop(str(self.root), None)
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def payload(self, **kw):
+        base = {"cwd": str(self.root), "session_id": "s1"}
+        base.update(kw)
+        return base
+
+    def fresh_mode(self):
+        common._DETECTED_MODE_CACHE.pop(str(self.root), None)
+        return common.workspace_mode(self.root)
+
+
+class TestWorkspaceDetection(ContributorRepoCase):
+    def test_a_clone_of_someone_elses_project_is_contributor(self):
+        mode, source = common.workspace_mode_reason(self.root)
+        self.assertEqual(mode, common.CONTRIBUTOR)
+        self.assertIn("none authored by", source)
+
+    def test_one_commit_of_your_own_makes_it_yours(self):
+        (self.root / "mine.py").write_text("y = 1\n")
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "my change"], cwd=self.tmp)
+        self.assertEqual(self.fresh_mode(), common.OWNER)
+
+    def test_a_repo_with_no_remote_is_yours(self):
+        sh(["git", "remote", "remove", "origin"], cwd=self.tmp)
+        self.assertEqual(self.fresh_mode(), common.OWNER)
+
+    def test_a_young_repo_is_yours(self):
+        """Barely any history means there is nothing to find yourself in."""
+        shallow = Path(tempfile.mkdtemp())
+        try:
+            sh(["git", "init", "-q", "-b", "main"], cwd=str(shallow))
+            sh(["git", "config", "user.email", self.OURS], cwd=str(shallow))
+            sh(["git", "config", "user.name", "me"], cwd=str(shallow))
+            sh(["git", "remote", "add", "origin", "https://example.test/x.git"],
+               cwd=str(shallow))
+            (shallow / "a.txt").write_text("a\n")
+            sh(["git", "add", "-A"], cwd=str(shallow))
+            sh(["git", "commit", "-qm", "only commit", "--author",
+                "Someone <them@x.test>"], cwd=str(shallow))
+            self.assertEqual(common.workspace_mode(shallow), common.OWNER)
+        finally:
+            shutil.rmtree(shallow, ignore_errors=True)
+
+    def test_a_directory_that_is_not_a_repo_is_yours(self):
+        plain = Path(tempfile.mkdtemp())
+        try:
+            self.assertEqual(common.workspace_mode(plain), common.OWNER)
+        finally:
+            shutil.rmtree(plain, ignore_errors=True)
+
+    def test_every_explicit_source_outranks_detection(self):
+        """The ladder, using the local config for `owner`: a committed one may not
+        claim the repo is ours (see the trust-boundary case below)."""
+        self.assertEqual(self.fresh_mode(), common.CONTRIBUTOR)
+
+        (common.state_dir(self.root) / common.LOCAL_CONFIG).write_text(
+            '[workspace]\nmode = "owner"\n')
+        self.assertEqual(common.workspace_mode(self.root), common.OWNER)
+
+        (common.state_dir(self.root) / common.WORKSPACE_TOGGLE).write_text(
+            "contributor\n")
+        self.assertEqual(common.workspace_mode(self.root), common.CONTRIBUTOR)
+
+        os.environ["PRAXIS_MODE"] = "owner"
+        try:
+            self.assertEqual(common.workspace_mode(self.root), common.OWNER)
+        finally:
+            del os.environ["PRAXIS_MODE"]
+
+    def test_a_garbage_value_falls_through_instead_of_being_obeyed(self):
+        (common.state_dir(self.root) / common.WORKSPACE_TOGGLE).write_text("maybe\n")
+        self.assertEqual(common.workspace_mode(self.root), common.CONTRIBUTOR)
+
+    def test_your_own_commit_does_not_flip_a_pinned_clone_back_to_owner(self):
+        """The whole point of the mode, against the workflow that used to undo it.
+
+        Clone, set up, fix the bug, commit: on the next session your address is in
+        `git log` and detection alone would say `owner`, at which point praxis
+        would start writing a CLAUDE.md and a /docs tree into someone else's repo.
+        """
+        mode, _ = common.workspace_mode_reason(self.root)
+        self.assertEqual(mode, common.CONTRIBUTOR)
+        self.assertTrue(common.persist_workspace_mode(self.root, mode))
+
+        (self.root / "app.py").write_text("fixed = True\n")
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "fix: the bug I came to fix"], cwd=self.tmp)
+
+        common._DETECTED_MODE_CACHE.pop(str(self.root), None)
+        self.assertEqual(common._detect_workspace_mode(self.root)[0], common.OWNER,
+                         "detection alone would now say owner")
+        self.assertEqual(common.workspace_mode(self.root), common.CONTRIBUTOR,
+                         "but the pinned verdict holds")
+
+    def test_only_contributor_is_pinned(self):
+        self.assertFalse(common.persist_workspace_mode(self.root, common.OWNER))
+        self.assertFalse((common.state_dir(self.root) / common.WORKSPACE_TOGGLE).exists())
+
+    def test_the_session_audit_pins_it(self):
+        run_script("session_audit.py", self.payload(), self.root)
+        self.assertEqual(
+            (common.state_dir(self.root) / common.WORKSPACE_TOGGLE).read_text().strip(),
+            common.CONTRIBUTOR)
+
+    def test_a_committed_config_may_not_claim_the_repo_is_ours(self):
+        """A repository we cloned does not get to tell praxis that it is ours."""
+        (self.root / ".praxis.toml").write_text('[workspace]\nmode = "owner"\n')
+        mode, source = common.workspace_mode_reason(self.root)
+        self.assertEqual(mode, common.CONTRIBUTOR)
+        self.assertIn("only a local setting may grant that", source)
+
+    def test_a_committed_config_may_withhold_writes(self):
+        """The safe direction is allowed: it only ever makes praxis write less."""
+        os.environ["PRAXIS_MODE"] = ""
+        del os.environ["PRAXIS_MODE"]
+        (self.root / ".praxis.toml").write_text('[workspace]\nmode = "contributor"\n')
+        mode, source = common.workspace_mode_reason(self.root)
+        self.assertEqual(mode, common.CONTRIBUTOR)
+        self.assertIn(".praxis.toml", source)
+
+    def test_a_local_config_may_claim_the_repo_is_ours(self):
+        (common.state_dir(self.root) / common.LOCAL_CONFIG).write_text(
+            '[workspace]\nmode = "owner"\n')
+        mode, source = common.workspace_mode_reason(self.root)
+        self.assertEqual(mode, common.OWNER)
+        self.assertIn(common.LOCAL_CONFIG, source)
+
+    def test_a_failed_git_call_is_not_read_as_ownership(self):
+        """A timeout means 'could not tell', never 'no commits by you'."""
+        self.assertEqual(common._detect_workspace_mode(Path(self.tmp) / "nope")[0],
+                         common.OWNER)
+        real = common._run_out
+        common._run_out = lambda *a, **k: ("", False)
+        try:
+            common._DETECTED_MODE_CACHE.pop(str(self.root), None)
+            mode, why = common._detect_workspace_mode(self.root)
+            self.assertEqual(mode, common.UNKNOWN)
+            common._DETECTED_MODE_CACHE.pop(str(self.root), None)
+            resolved, source = common.workspace_mode_reason(self.root)
+            self.assertEqual(resolved, common.OWNER)
+            self.assertIn("undetermined", source)
+        finally:
+            common._run_out = real
+            common._DETECTED_MODE_CACHE.pop(str(self.root), None)
+
+
+class TestLocalOnlyArtifacts(ContributorRepoCase):
+    """Everything praxis writes in someone else's repo stays out of their history."""
+
+    def test_paths_move_to_their_local_equivalents(self):
+        self.assertEqual(common.brief_path(self.root).name, "CLAUDE.local.md")
+        self.assertEqual(common.settings_path(self.root).name, "settings.local.json")
+        self.assertEqual(common.knowledge_root(self.root),
+                         common.state_dir(self.root) / common.KNOWLEDGE_DIR)
+
+    def test_knowledge_joins_what_exists_and_creates_nothing_new(self):
+        local = common.knowledge_root(self.root)
+        self.assertEqual(common.knowledge_path(self.root, "CHANGELOG.md"),
+                         local / "CHANGELOG.md")
+        (self.root / "CHANGELOG.md").write_text("# Changelog\n\n## [Unreleased]\n")
+        self.assertEqual(common.knowledge_path(self.root, "CHANGELOG.md"),
+                         self.root / "CHANGELOG.md")
+
+    def test_owner_mode_keeps_every_artifact_in_the_repo(self):
+        os.environ["PRAXIS_MODE"] = "owner"
+        try:
+            self.assertEqual(common.brief_path(self.root).name, "CLAUDE.md")
+            self.assertEqual(common.settings_path(self.root).name, "settings.json")
+            self.assertEqual(common.knowledge_path(self.root, "CHANGELOG.md"),
+                             self.root / "CHANGELOG.md")
+        finally:
+            del os.environ["PRAXIS_MODE"]
+
+    def test_exclusions_hide_every_artifact_from_git(self):
+        self.assertTrue(common.ensure_local_exclusions(self.root, True))
+        (self.root / "CLAUDE.local.md").write_text("# local\n")
+        common.settings_path(self.root).parent.mkdir(parents=True, exist_ok=True)
+        common.settings_path(self.root).write_text("{}\n")
+        (common.knowledge_root(self.root)).mkdir(parents=True, exist_ok=True)
+        (common.knowledge_root(self.root) / "CHANGELOG.md").write_text("# c\n")
+
+        self.assertEqual(common.git_status_porcelain(self.root), [])
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        staged = sh(["git", "diff", "--staged", "--name-only"], cwd=self.tmp)
+        self.assertEqual(staged.stdout.strip(), "")
+        for rel in common.LOCAL_ARTIFACTS:
+            self.assertTrue(common.git_is_ignored(self.root, rel), rel)
+
+    def test_the_exclusion_lands_where_git_reads_it_in_a_worktree(self):
+        """`--absolute-git-dir` answers the worktree's private dir; git reads the
+        common one, so writing there produced an exclusion that did nothing."""
+        linked = Path(self.tmp + "-wt")
+        sh(["git", "worktree", "add", "-q", str(linked), "-b", "side"], cwd=self.tmp)
+        try:
+            common.ensure_local_exclusions(linked, True)
+            (linked / "CLAUDE.local.md").write_text("# local\n")
+            self.assertTrue(common.git_is_ignored(linked, "CLAUDE.local.md"))
+            self.assertEqual(common.git_status_porcelain(linked), [])
+        finally:
+            sh(["git", "worktree", "remove", "--force", str(linked)], cwd=self.tmp)
+            shutil.rmtree(linked, ignore_errors=True)
+
+    def test_an_unterminated_block_is_left_alone_rather_than_truncating(self):
+        """The file is the user's; praxis only rents a marked region of it."""
+        exclude = common.git_dir(self.root) / "info" / "exclude"
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        exclude.write_text(f"{common.LOCAL_EXCLUDE_BEGIN}\n/.claude/.praxis/\n"
+                           "build-cache/\nnotes-not-for-git/\n")
+        common.ensure_local_exclusions(self.root, True)
+        body = exclude.read_text()
+        self.assertIn("build-cache/", body)
+        self.assertIn("notes-not-for-git/", body)
+
+    def test_every_block_is_removed_not_just_the_first(self):
+        exclude = common.git_dir(self.root) / "info" / "exclude"
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        common.ensure_local_exclusions(self.root, True)
+        exclude.write_text(exclude.read_text() + common._exclude_block())
+        common.ensure_local_exclusions(self.root, False)
+        self.assertNotIn(common.LOCAL_EXCLUDE_BEGIN, exclude.read_text())
+
+    def test_a_local_artifact_is_never_part_of_the_users_change(self):
+        """So a failed exclusion cannot make the gate audit praxis's own brief."""
+        for rel in common.LOCAL_ARTIFACTS:
+            self.assertTrue(common._is_praxis_state(rel), rel)
+        self.assertFalse(common._is_praxis_state("src/app.py"))
+        self.assertFalse(common._is_praxis_state("CLAUDE.md"))
+
+    def test_writing_the_block_is_idempotent_and_reversible(self):
+        exclude = common.git_dir(self.root) / "info" / "exclude"
+        exclude.parent.mkdir(parents=True, exist_ok=True)
+        exclude.write_text("# the project's own local rule\n*.scratch\n")
+
+        self.assertTrue(common.ensure_local_exclusions(self.root, True))
+        self.assertFalse(common.ensure_local_exclusions(self.root, True),
+                         "a second identical write is not a change")
+        body = exclude.read_text()
+        self.assertEqual(body.count(common.LOCAL_EXCLUDE_BEGIN), 1)
+        self.assertIn("*.scratch", body, "the existing rules survived")
+
+        self.assertTrue(common.ensure_local_exclusions(self.root, False))
+        body = exclude.read_text()
+        self.assertNotIn(common.LOCAL_EXCLUDE_BEGIN, body)
+        self.assertIn("*.scratch", body)
+
+    def test_local_config_layers_over_the_committed_one(self):
+        (self.root / ".praxis.toml").write_text("[gate]\nrequire_tests = true\n")
+        self.assertTrue(common.read_config(self.root)["gate.require_tests"])
+        (common.state_dir(self.root) / common.LOCAL_CONFIG).write_text(
+            "[gate]\nrequire_tests = false\n")
+        self.assertFalse(common.read_config(self.root)["gate.require_tests"])
+
+    def test_a_corrupt_shared_config_does_not_disable_local_preferences(self):
+        (self.root / ".praxis.toml").write_text("[[[not toml\n")
+        (common.state_dir(self.root) / common.LOCAL_CONFIG).write_text(
+            "[autopilot]\ndefault = true\n")
+        self.assertTrue(common.read_config(self.root)["autopilot.default"])
+
+    def test_changelog_and_adr_follow_the_mode(self):
+        env = {**os.environ, "CLAUDE_PROJECT_DIR": str(self.root),
+               "CLAUDE_PLUGIN_ROOT": str(PLUGIN)}
+        sh([sys.executable, str(SCRIPTS / "changelog.py"), "add",
+            "--type", "fixed", "an upstream bug"], env=env)
+        sh([sys.executable, str(SCRIPTS / "adr.py"), "new", "A local decision",
+            "--status", "accepted"], env=env)
+        local = common.knowledge_root(self.root)
+        self.assertTrue((local / "CHANGELOG.md").exists())
+        self.assertFalse((self.root / "CHANGELOG.md").exists())
+        self.assertTrue(list((local / "docs" / "adr").glob("0001-*.md")))
+        self.assertFalse((self.root / "docs").exists())
+
+    def test_an_existing_changelog_is_joined_rather_than_duplicated(self):
+        (self.root / "CHANGELOG.md").write_text("# Changelog\n\n## [Unreleased]\n")
+        sh([sys.executable, str(SCRIPTS / "changelog.py"), "add",
+            "--type", "fixed", "an upstream bug"],
+           env={**os.environ, "CLAUDE_PROJECT_DIR": str(self.root)})
+        self.assertIn("an upstream bug", (self.root / "CHANGELOG.md").read_text())
+        self.assertFalse((common.knowledge_root(self.root) / "CHANGELOG.md").exists())
+
+
+class TestLocalArtifactGuard(ContributorRepoCase):
+    """Staging praxis's own files is refused, in either mode."""
+
+    def guard(self, tool_input, tool="Bash"):
+        return run_script("guard_paths.py",
+                          self.payload(tool_name=tool, tool_input=tool_input),
+                          self.root)
+
+    def bash(self, command):
+        return self.guard({"command": command})
+
+    def test_blocks_staging_a_local_artifact_by_name(self):
+        for cmd in ("git add CLAUDE.local.md",
+                    "git add -f .claude/.praxis/knowledge/CHANGELOG.md",
+                    "git commit -m msg .claude/settings.local.json",
+                    "git -C . add CLAUDE.local.md"):
+            self.assertEqual(self.bash(cmd).returncode, 2, cmd)
+
+    def test_allows_staging_the_actual_change(self):
+        for cmd in ("git add app.py", "git commit -m 'fix: the bug'",
+                    "cat CLAUDE.local.md"):
+            self.assertEqual(self.bash(cmd).returncode, 0, cmd)
+
+    def test_the_refusal_holds_in_owner_mode_too(self):
+        r = run_script("guard_paths.py",
+                       self.payload(tool_name="Bash",
+                                    tool_input={"command": "git add CLAUDE.local.md"}),
+                       self.root, extra_env={"PRAXIS_MODE": "owner"})
+        self.assertEqual(r.returncode, 2)
+
+    def test_broad_staging_is_allowed_once_the_artifacts_are_excluded(self):
+        common.ensure_local_exclusions(self.root, True)
+        (self.root / "CLAUDE.local.md").write_text("# local\n")
+        self.assertEqual(self.bash("git add -A").returncode, 0)
+
+    def test_broad_staging_is_refused_while_an_artifact_is_exposed(self):
+        """The exclude write fails open, so the guard verifies instead of trusting."""
+        (self.root / "CLAUDE.local.md").write_text("# local\n")
+        common.ensure_local_exclusions(self.root, False)
+        info = common.git_dir(self.root) / "info"
+        exclude = info / "exclude"
+        exclude.touch()
+        os.chmod(exclude, 0o444)
+        os.chmod(info, 0o555)
+        try:
+            r = self.bash("git add -A")
+            self.assertEqual(r.returncode, 2)
+            self.assertIn("CLAUDE.local.md", r.stderr)
+        finally:
+            os.chmod(info, 0o755)
+            os.chmod(exclude, 0o644)
+
+    def test_broad_staging_repairs_a_deleted_block_instead_of_refusing(self):
+        (self.root / "CLAUDE.local.md").write_text("# local\n")
+        common.ensure_local_exclusions(self.root, False)
+        self.assertEqual(self.bash("git add .").returncode, 0)
+        self.assertTrue(common.git_is_ignored(self.root, "CLAUDE.local.md"))
+
+    def test_refuses_to_put_praxis_paths_in_someone_elses_gitignore(self):
+        r = self.guard({"file_path": str(self.root / ".gitignore"),
+                        "new_string": ".claude/.praxis/\n"}, tool="Edit")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("info/exclude", r.stderr)
+
+    def test_an_ordinary_gitignore_rule_is_not_blocked(self):
+        r = self.guard({"file_path": str(self.root / ".gitignore"),
+                        "new_string": "*.log\n"}, tool="Edit")
+        self.assertEqual(r.returncode, 0)
+
+    def test_a_forced_stage_everything_is_refused_outright(self):
+        """--force exists to override the exclusion, so verifying it is pointless."""
+        common.ensure_local_exclusions(self.root, True)
+        (self.root / "CLAUDE.local.md").write_text("# local\n")
+        for cmd in ("git add -f .", "git add -A -f", "git add --force ."):
+            self.assertEqual(self.bash(cmd).returncode, 2, cmd)
+
+    def test_a_commit_is_refused_while_an_artifact_is_staged(self):
+        """The layer that actually holds: whatever staged it, publishing is refused."""
+        (self.root / "CLAUDE.local.md").write_text("# local\n")
+        sh(["git", "add", "-f", "CLAUDE.local.md"], cwd=self.tmp)
+        for cmd in ("git commit -m 'fix: the bug'", "git push origin main",
+                    "git stash"):
+            r = self.bash(cmd)
+            self.assertEqual(r.returncode, 2, cmd)
+            self.assertIn("CLAUDE.local.md", r.stderr)
+        sh(["git", "reset", "-q"], cwd=self.tmp)
+        self.assertEqual(self.bash("git commit -m 'fix: the bug'").returncode, 0)
+
+    def test_a_commit_message_naming_an_artifact_is_not_a_commit_of_it(self):
+        """praxis's own history is full of these, and a commit is not cheap to retry."""
+        for cmd in ('git commit -m "docs: keep CLAUDE.local.md out of git"',
+                    "git commit -m 'note about .claude/.praxis/ layout'"):
+            self.assertEqual(self.bash(cmd).returncode, 0, cmd)
+
+    def test_the_shell_route_into_gitignore_is_guarded_too(self):
+        """A rule that holds for Edit but not for `echo >>` is not a rule."""
+        r = self.bash("echo '.claude/.praxis/' >> .gitignore")
+        self.assertEqual(r.returncode, 2)
+        self.assertEqual(self.bash("echo '*.log' >> .gitignore").returncode, 0)
+
+    def test_a_gitignore_that_already_lists_the_paths_stays_editable(self):
+        """Removing a praxis path is the correct cleanup, not a violation."""
+        (self.root / ".gitignore").write_text(".claude/.praxis/\n*.log\n")
+        r = self.guard({"file_path": str(self.root / ".gitignore"),
+                        "content": ".claude/.praxis/\n"}, tool="Write")
+        self.assertEqual(r.returncode, 0)
+
+    def test_an_already_tracked_artifact_is_diagnosed_correctly(self):
+        """`git check-ignore` says nothing about a tracked path, so the old message
+        blamed a perfectly good exclude file."""
+        # As a real session does on first contact, before anything is committed.
+        common.persist_workspace_mode(self.root, common.CONTRIBUTOR)
+        (self.root / "CLAUDE.local.md").write_text("# local\n")
+        sh(["git", "add", "-f", "CLAUDE.local.md"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "oops"], cwd=self.tmp)
+        r = self.bash("git add -A")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("git rm --cached", r.stderr)
+
+    def test_owner_mode_may_gitignore_praxis_state(self):
+        r = run_script("guard_paths.py",
+                       self.payload(tool_name="Write",
+                                    tool_input={"file_path": str(self.root / ".gitignore"),
+                                                "content": ".claude/.praxis/\n"}),
+                       self.root, extra_env={"PRAXIS_MODE": "owner"})
+        self.assertEqual(r.returncode, 0)
+
+
+# --------------------------------------------------------------------------- #
+# Auto-bootstrap
+# --------------------------------------------------------------------------- #
+class TestRepoStateAndBootstrap(GitRepoCase):
+    def test_state_ladder(self):
+        self.assertEqual(common.repo_state(self.root), "uninitialised")
+        (self.root / "CLAUDE.md").write_text("# Brief\n")
+        self.assertEqual(common.repo_state(self.root), "legacy")
+        (self.root / "CLAUDE.md").write_text(f"{common.PRAXIS_MARK}\n# Brief\n")
+        self.assertEqual(common.repo_state(self.root), "managed")
+
+    def test_a_managed_local_brief_counts_in_contributor_mode(self):
+        (self.root / "CLAUDE.local.md").write_text(f"{common.PRAXIS_MARK}\n# Brief\n")
+        os.environ["PRAXIS_MODE"] = "contributor"
+        try:
+            self.assertEqual(common.repo_state(self.root), "managed")
+            self.assertFalse(common.bootstrap_required(self.root))
+        finally:
+            del os.environ["PRAXIS_MODE"]
+
+    def test_the_repos_own_brief_does_not_count_for_a_contributor(self):
+        """Their CLAUDE.md is theirs; praxis still has nothing set up here."""
+        (self.root / "CLAUDE.md").write_text(f"{common.PRAXIS_MARK}\n# Brief\n")
+        os.environ["PRAXIS_MODE"] = "contributor"
+        try:
+            self.assertTrue(common.bootstrap_required(self.root))
+        finally:
+            del os.environ["PRAXIS_MODE"]
+
+    def test_required_until_managed_and_switchable_off(self):
+        self.assertTrue(common.bootstrap_required(self.root))
+        (self.root / ".praxis.toml").write_text("[bootstrap]\nauto = false\n")
+        self.assertFalse(common.bootstrap_required(self.root))
+        (self.root / ".praxis.toml").write_text("")
+        (common.state_dir(self.root) / "no-bootstrap").write_text("on\n")
+        self.assertFalse(common.bootstrap_required(self.root))
+        (common.state_dir(self.root) / "no-bootstrap").unlink()
+        os.environ["PRAXIS_BOOTSTRAP"] = "off"
+        try:
+            self.assertFalse(common.bootstrap_required(self.root))
+        finally:
+            del os.environ["PRAXIS_BOOTSTRAP"]
+
+    def test_session_audit_instructs_rather_than_recommends(self):
+        r = run_script("session_audit.py", self.payload(), self.root)
+        self.assertIn("Run the `bootstrap` skill NOW", r.stdout)
+        self.assertIn("before the user's first request", r.stdout)
+
+    def test_session_audit_stays_quiet_once_the_repo_is_managed(self):
+        (self.root / "CLAUDE.md").write_text(f"{common.PRAXIS_MARK}\n# Brief\n")
+        r = run_script("session_audit.py", self.payload(), self.root)
+        self.assertNotIn("Run the `bootstrap` skill NOW", r.stdout)
+
+    def test_router_repeats_the_instruction_on_actionable_prompts(self):
+        r = run_script("prompt_router.py",
+                       self.payload(prompt="add rate limiting to the API"), self.root)
+        self.assertIn("Run the `bootstrap` skill", r.stdout)
+        self.assertIn("task-orchestrator", r.stdout)
+
+    def test_router_stays_silent_on_a_question_even_when_unmanaged(self):
+        """Answering a question does not require writing a brief first."""
+        r = run_script("prompt_router.py",
+                       self.payload(prompt="what does this module do?"), self.root)
+        self.assertEqual(r.stdout.strip(), "")
+
+    def test_router_drops_the_instruction_once_managed(self):
+        (self.root / "CLAUDE.md").write_text(f"{common.PRAXIS_MARK}\n# Brief\n")
+        r = run_script("prompt_router.py",
+                       self.payload(prompt="add rate limiting"), self.root)
+        self.assertNotIn("bootstrap", r.stdout)
+
+
+class TestContributorDirectives(ContributorRepoCase):
+    def test_the_session_audit_states_the_mode_and_the_artifact_map(self):
+        r = run_script("session_audit.py", self.payload(), self.root)
+        self.assertIn("Workspace: `contributor`", r.stdout)
+        self.assertIn("CLAUDE.local.md", r.stdout)
+        self.assertIn(".claude/.praxis/knowledge/", r.stdout)
+        self.assertIn("workspace mode: **contributor**", r.stdout)
+
+    def test_the_session_audit_writes_the_exclusions(self):
+        run_script("session_audit.py", self.payload(), self.root)
+        self.assertTrue(common.git_is_ignored(self.root, "CLAUDE.local.md"))
+
+    def test_the_router_names_where_this_turn_may_write(self):
+        r = run_script("prompt_router.py",
+                       self.payload(prompt="fix the pagination bug"), self.root)
+        self.assertIn("this repository is not ours", r.stdout)
+        self.assertIn(".claude/.praxis/knowledge/", r.stdout)
+
+    def test_delivery_stops_at_the_pull_request_whatever_auto_merge_says(self):
+        r = run_script("prompt_router.py",
+                       self.payload(prompt="commit this and open a PR"), self.root,
+                       extra_env={"PRAXIS_AUTO_MERGE": "on"})
+        self.assertIn("Never merge", r.stdout)
+
+    def test_owner_mode_says_so_plainly(self):
+        r = run_script("session_audit.py", self.payload(), self.root,
+                       extra_env={"PRAXIS_MODE": "owner"})
+        self.assertIn("**Workspace:** `owner`", r.stdout)
+
+
+class TestModeSetting(ContributorRepoCase):
+    def cfg(self, *args, **env):
+        return sh([sys.executable, str(SCRIPTS / "config.py"), *args],
+                  env={**os.environ, "CLAUDE_PROJECT_DIR": str(self.root), **env})
+
+    def test_status_reports_the_mode_its_source_and_the_paths(self):
+        out = self.cfg("status").stdout
+        self.assertIn("mode        contributor", out)
+        self.assertIn("brief=CLAUDE.local.md", out)
+        self.assertIn("settings=.claude/settings.local.json", out)
+
+    def test_setting_owner_also_removes_the_exclusions(self):
+        self.cfg("mode", "contributor")
+        self.assertTrue(common.git_is_ignored(self.root, "CLAUDE.local.md"))
+        r = self.cfg("mode", "owner")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("owner", r.stdout)
+        self.assertFalse(common.git_is_ignored(self.root, "CLAUDE.local.md"))
+
+    def test_auto_returns_control_to_detection(self):
+        self.cfg("mode", "owner")
+        self.assertEqual(self.cfg("mode").stdout.split()[2], "owner")
+        self.cfg("mode", "auto")
+        self.assertIn("contributor", self.cfg("mode").stdout)
+
+    def test_a_stronger_source_is_reported_not_silently_ignored(self):
+        r = self.cfg("mode", "contributor", PRAXIS_MODE="owner")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("WARNING", r.stdout)
+
+    def test_an_invalid_mode_is_rejected(self):
+        r = self.cfg("mode", "sideways")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("not a workspace mode", r.stdout)
+
+    def test_bootstrap_is_a_switch_like_the_others(self):
+        self.assertIn("bootstrap", self.cfg("status").stdout)
+        self.assertEqual(self.cfg("bootstrap", "off").returncode, 0)
+        self.assertFalse(common.bootstrap_auto(self.root))
+        self.cfg("bootstrap", "on")
+        self.assertTrue(common.bootstrap_auto(self.root))
 
 
 if __name__ == "__main__":

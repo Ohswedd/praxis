@@ -56,10 +56,27 @@ design tokens, or `docs/design/`, it is front-end work even when the prompt said
 question from the changed file list and rejects the report without both UI
 verdicts, so deciding late costs a full re-audit.
 
+## Phase 0: Is praxis set up here, and is this repo ours?
+
+Two questions come before the spec, because both change what the rest of the run
+is allowed to do. The session audit answers both, and
+`python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config.py" status` reprints them.
+
+- **Not set up** (`repo_state` is anything but `managed`): run the **bootstrap**
+  skill first, in this turn, then continue to Phase 1 without pausing. It writes
+  what is absent and only stops to ask when reconciling a brief praxis did not
+  author. This is a step of the pipeline, not a command the user has to remember.
+- **`contributor` mode**: this repository is not ours. Everything praxis authors
+  stays local and git-excluded (`CLAUDE.local.md`, `.claude/settings.local.json`,
+  `.claude/.praxis/knowledge/`), the repo's `/docs`, `CHANGELOG.md` and
+  `docs/adr/` are joined **only if they already exist** and then on the project's
+  terms, and the change you deliver contains nothing but the work the user asked
+  for. Do not create a `CLAUDE.md`, a `.praxis.toml`, a `/docs` tree or a
+  `CHANGELOG.md`, and do not edit `.gitignore`.
+
 ## Phase 2: Investigate (read before you write)
-- Confirm the **CLAUDE.md** hierarchy exists and is accurate. If the session
-  audit flagged `new/uninitialised/legacy`, run **bootstrap** first. If memory is
-  stale, run **claudemd-living**.
+- Confirm the brief hierarchy exists and is accurate (Phase 0 has already
+  bootstrapped it if it did not). If memory is stale, run **claudemd-living**.
 - **Trust the resolved configuration over any document.** The SessionStart audit
   prints the live values (gate, auto-pilot, auto-merge, base branch, house style);
   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/config.py" status` reprints them on
@@ -128,6 +145,12 @@ Documentation is part of "done". Using the `docs-living` skill:
   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/adr.py" new "<title>" --status accepted --context "..." --decision "..." --consequences "..."`.
 - Keep `docs/README.md` indexed.
 
+In `contributor` mode the rule is *join what exists, create nothing new*: update
+the project's `/docs` and `CHANGELOG.md` if it has them, on its terms, and let
+`changelog.py` and `adr.py` place the rest under `.claude/.praxis/knowledge/`.
+Both print the path they wrote; read it and report it accurately rather than
+claiming the project's changelog was updated when it was not.
+
 ## Phase 6: Report (precise, linear, structured)
 End with the canonical praxis report. Keep it scannable and complete:
 
@@ -189,8 +212,10 @@ Resolve the merge policy rather than recalling it: `config.py status` reports th
 value in force and where it came from. With auto-merge off the merge is
 human-in-the-loop and praxis stops at the PR; with it on, praxis self-reviews and
 merges, but never without a green audit and passing checks, and never by
-force-pushing the base branch. No commit, tag, PR, or release carries an AI
-co-author trailer or a "generated with" credit; the guard blocks the command.
+force-pushing the base branch. In `contributor` mode praxis never merges at all:
+it opens the pull request in the project's own style and stops. No commit, tag,
+PR, or release carries an AI co-author trailer or a "generated with" credit; the
+guard blocks the command.
 
 ---
 

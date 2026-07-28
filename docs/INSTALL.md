@@ -94,5 +94,8 @@ plugin to opt out.
 /praxis:doctor
 ```
 
-You should see the plugin version and a health report. Open a session in any
-repo and the `SessionStart` audit will classify it and print standing directives.
+You should see the plugin version and a health report, including the workspace
+mode and where it came from. Open a session in any repo and the `SessionStart`
+audit classifies it, prints the standing directives, and, if Praxis does not
+manage that repo yet, instructs the session to bootstrap it before doing anything
+else. You do not have to run `/praxis:bootstrap` yourself.

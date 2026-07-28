@@ -22,6 +22,13 @@ Decide the correct scope: a change local to a subsystem belongs in that
 subsystem's nested `CLAUDE.md`, not the root. Only genuinely global facts go in
 the root. Create a nested file if the scope warrants one and none exists.
 
+**In `contributor` mode the file praxis maintains is `CLAUDE.local.md`**, which
+Claude Code loads alongside the project's `CLAUDE.md` and appends after it. The
+repository's own brief is read, respected, and never edited, reconciled, or
+replaced: it is not ours to rewrite, and a diff against it would land in the pull
+request. There are no nested files in that mode either, for the same reason; keep
+everything in the single local brief.
+
 ## Step 2: Draft the update
 Write the minimal edit that captures the change. Preserve the existing structure
 and the `<!-- praxis:managed -->` marker. Keep it high-signal; do not let the

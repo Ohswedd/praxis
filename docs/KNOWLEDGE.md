@@ -20,10 +20,26 @@ every change, with the same no-regression discipline Praxis applies to code.
    was made. In auto-pilot, every non-trivial autonomous decision is persisted
    here, so the reasoning survives beyond the session that made it.
 
+## Whose knowledge is it? (owner vs contributor)
+
+The three stores above describe a repository Praxis owns. In a repository you
+only contribute to, the rule inverts to **join what exists, create nothing new**:
+
+- The project has a `CHANGELOG.md` or a `/docs`? Update it, in its own style. A
+  pull request that changes behaviour and skips the project's changelog is a
+  worse pull request.
+- It has neither? It did not ask a contributor to introduce the convention. That
+  record goes to `.claude/.praxis/knowledge/`, which mirrors the same layout and
+  is excluded from git.
+
+`changelog.py` and `adr.py` resolve this themselves and print the path they
+wrote, so a session reports where the knowledge actually landed rather than
+assuming it went into the project. See [MODES.md](MODES.md).
+
 ## Why this matters
 
 - **No regression of knowledge.** Docs are updated, never silently dropped; the
-  same verifier discipline that protects `CLAUDE.md` protects `/docs`.
+  same verifier discipline that protects the brief protects `/docs`.
 - **Onboarding & audit.** A new engineer (or a future Praxis session) can
   reconstruct the system and the reasoning behind it from these three stores.
 - **Enterprise fit.** ADRs + a disciplined changelog + current docs are what
