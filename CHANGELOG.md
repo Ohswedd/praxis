@@ -6,6 +6,8 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.1.1] - 2026-07-29
+
 ### Added
 - debt.py paid <n> --by "<how>" records how an entry was settled. An entry that says only repaid cannot tell the next reader whether the principal was paid, the debt was designed away, or the premise turned out to be wrong.
 
