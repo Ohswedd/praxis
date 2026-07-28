@@ -20,7 +20,7 @@ Usage:
         --why "The release was date-bound and the refactor is two days" \\
         --where "src/orders/list.tsx"
     debt.py list                # the register, newest first
-    debt.py paid <n>            # mark entry n repaid, with the date
+    debt.py paid <n> --by "..."  # mark entry n repaid, and record how
 
 Entries live in docs/DEBT.md, or under .claude/.praxis/knowledge/ when the
 repository is not ours (contributor mode), like every other knowledge artifact.
@@ -170,14 +170,27 @@ def paid(root, args) -> int:
 
     at, end = block
     body = text[at:end]
+    by = common.cli_opt(args, "--by", "")
+
     new_body, count = re.subn(r"(?m)^- Status: open$",
                               f"- Status: repaid {_dt.date.today().isoformat()}",
                               body, count=1)
-    if not count:
-        print(f"praxis: debt entry {num} is not open.")
+    if not count and not by:
+        print(f"praxis: debt entry {num} is not open. Pass --by \"<how it was "
+              "repaid>\" to record that against it.")
         return 1
+
+    if by:
+        # An entry that says only "repaid" is a dead line: the next reader cannot
+        # tell whether the principal was paid, the debt was designed away, or the
+        # premise turned out to be wrong. Recording *how* is what makes the
+        # register worth keeping, and it is the only place a mistaken premise
+        # gets corrected without rewriting the history of what was believed.
+        new_body = re.sub(r"(?m)^\*\*Repaid by\.\*\*.*$", "", new_body).rstrip("\n")
+        new_body += f"\n\n**Repaid by.** {by}\n"
     _write(path(root), text[:at] + new_body + text[end:])
-    print(f"praxis: debt entry {num} marked repaid.")
+    print(f"praxis: debt entry {num} marked repaid."
+          if count else f"praxis: recorded how entry {num} was repaid.")
     return 0
 
 
@@ -225,7 +238,7 @@ def main() -> int:
     args = sys.argv[1:]
     if not args:
         print("usage: debt.py add \"<title>\" --interest \"...\" --principal \"...\" "
-              "[--why ...] [--where ...] | list | paid <n>")
+              "[--why ...] [--where ...] | list | paid <n> [--by \"how\"]")
         return 1
     if args[0] == "add":
         if len(args) < 2:

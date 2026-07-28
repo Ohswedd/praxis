@@ -87,7 +87,10 @@ CHANGELOG.md           at the repo root (Keep a Changelog)
    because the next person meets the consequence without the reason. The
    `debt-auditor` reads this register: what is listed here it will not re-report,
    and what it finds that is *not* here is a finding. `debt.py list` shows the
-   register; `debt.py paid <n>` closes an entry when it is repaid.
+   register; `debt.py paid <n> --by "<how>"` closes an entry and records how it
+   was repaid. Record the *how*: an entry that says only "repaid" cannot tell the
+   next reader whether the principal was paid, the debt was designed away, or the
+   premise turned out to be wrong.
 8. **ADR for significant or autonomous decisions.** When you make an architectural
    or non-obvious design decision, especially any decision taken autonomously in
    auto-pilot: persist it:

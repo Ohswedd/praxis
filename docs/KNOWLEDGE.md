@@ -27,7 +27,8 @@ every change, with the same no-regression discipline Praxis applies to code.
    reason and written down is a decision, while the same shortcut taken silently
    is the defect, because the next person meets the consequence without the
    reason. `debt.py` refuses an entry that does not state its interest and
-   principal, since a register of complaints stops being read.
+   principal, since a register of complaints stops being read, and `paid --by`
+   records how each one was actually settled.
 
 ## Whose knowledge is it? (owner vs contributor)
 

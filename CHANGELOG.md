@@ -6,6 +6,12 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- debt.py paid <n> --by "<how>" records how an entry was settled. An entry that says only repaid cannot tell the next reader whether the principal was paid, the debt was designed away, or the premise turned out to be wrong.
+
+### Changed
+- The auditors' scoping rules live in one place. They were copied into ten agent briefs on the belief that agent files have no include mechanism; they do, the skills frontmatter field, which preloads a skill's full content into a subagent at startup. The rules are now the review-scope skill, each brief keeps only a byte-checked pointer for the case where a preload is silently skipped, and selfcheck fails on all five ways the wiring can break. Debt entry 1 is repaid, with the false premise corrected in the register rather than quietly dropped.
+
 ## [3.1.0] - 2026-07-28
 
 ### Added
