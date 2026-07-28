@@ -6,6 +6,8 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.1.0] - 2026-07-28
+
 ### Added
 - The technical-debt vertical. @praxis:debt-auditor asks what a change will cost later rather than whether it is correct now: shortcuts and workarounds, coupling and duplication something will have to keep in sync by hand, abstractions the change has made wrong, deprecated or pinned dependencies, and tests that lock in implementation rather than behaviour. It runs in the quality rubric and as a repo-scan dimension.
 - debt.py and docs/DEBT.md, the debt register. Debt taken for a stated reason and written down is a decision; the same shortcut taken silently is the defect, because the next person meets the consequence without the reason. Entries carry the interest (what it costs, and how often) and the principal (what the real fix is), and an entry without both is refused, since a register of complaints stops being read. The debt-auditor does not re-report what is listed there, and treats what it finds that is not listed as a finding.
