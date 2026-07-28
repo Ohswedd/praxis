@@ -46,6 +46,10 @@ NAME = "task.json"
 
 PENDING, IN_PROGRESS, DONE = "pending", "in_progress", "done"
 
+#: Ceiling for --max. The task loop has no session-level release, so an
+#: unbounded cap is a gate that never lets go.
+MAX_ITERATIONS = 200
+
 
 def load(root):
     return common.read_state(root, NAME)
@@ -90,8 +94,23 @@ def render_plan(data) -> str:
 
 
 def _index(args, data):
-    """The 1-based subtask number in `args`, validated against the plan."""
-    nums = [a for a in args if a.isdigit()]
+    """The 1-based subtask number in `args`, validated against the plan.
+
+    Positional only. Scanning argv for the first digit made `subtask done
+    --commit 3` mark subtask 3, because a flag's value is a digit too.
+    """
+    nums = []
+    skip = False
+    for arg in args:
+        if skip:
+            skip = False
+            continue
+        if arg.startswith("--"):
+            skip = "=" not in arg
+            continue
+        nums.append(arg)
+        break
+    nums = [a for a in nums if a.isdigit()]
     if not nums:
         raise SystemExit("praxis: which subtask? usage: task_state.py subtask "
                          "start|done <n>")
@@ -110,9 +129,11 @@ def cmd_open(root, args) -> int:
     max_iter = 25
     if "--max" in args:
         try:
-            # At least one turn: a cap of 0 is reached before any work happens,
-            # which would silently disable the loop it configures.
-            max_iter = max(1, int(args[args.index("--max") + 1]))
+            # Bounded at both ends. A cap of 0 is reached before any work
+            # happens, which silently disables the loop it configures; an
+            # unbounded one produces a gate that holds a session essentially
+            # forever, and the task loop has no session-level release.
+            max_iter = min(MAX_ITERATIONS, max(1, int(args[args.index("--max") + 1])))
         except Exception:
             pass
     branch = (common.cli_opt(args, "--branch", "") or "").strip()
@@ -129,6 +150,11 @@ def cmd_open(root, args) -> int:
         "delivery": {
             "branch": branch or common.current_branch(root),
             "base": common.git_default_branch(root) if common.is_git_repo(root) else "",
+            # The sha the task started from, so the first subtask can be checked
+            # for a commit of its own like every other one.
+            "opened_at": (common._run(["git", "rev-parse", "--short", "HEAD"],
+                                      cwd=root).strip()
+                          if common.is_git_repo(root) else ""),
             "pr": "",
         },
     })
@@ -141,7 +167,13 @@ def cmd_open(root, args) -> int:
 
 
 def cmd_plan(root, data, args) -> int:
-    titles = [a for a in args[1:] if not a.startswith("--")]
+    # `collect`-style: stop at the first option, so `plan "s1" --branch x`
+    # does not turn "x" into a phantom subtask that can never be finished.
+    titles = []
+    for arg in args[1:]:
+        if arg.startswith("--"):
+            break
+        titles.append(arg)
     if not titles:
         print("usage: task_state.py plan \"subtask 1\" \"subtask 2\" ...")
         return 1
@@ -175,10 +207,15 @@ def cmd_subtask(root, data, args) -> int:
     if not commit and common.is_git_repo(root):
         commit = common._run(["git", "rev-parse", "--short", "HEAD"],
                              cwd=root).strip()
-    # A subtask that ends on the same commit as the one before it produced no
-    # commit of its own, which is the tracking this whole mechanism exists for.
-    previous = [s.get("commit") for s in data["subtasks"][:i] if s.get("commit")]
-    uncommitted = bool(previous and commit and commit == previous[-1])
+    # A subtask that ends on a commit some other subtask already claimed, or on
+    # the commit the task opened at, produced no commit of its own: the tracking
+    # this whole mechanism exists for is gone. Checked against every recorded
+    # commit, not just the previous one, so finishing subtasks out of order does
+    # not slip past it.
+    claimed = {s.get("commit") for j, s in enumerate(data["subtasks"])
+               if j != i and s.get("commit")}
+    opened_at = (data.get("delivery") or {}).get("opened_at", "")
+    uncommitted = bool(commit and (commit in claimed or commit == opened_at))
     sub["commit"] = "" if uncommitted else commit
     save(root, data)
 
@@ -197,7 +234,7 @@ def cmd_subtask(root, data, args) -> int:
 
 def cmd_delivery(root, data, args) -> int:
     delivery = data.get("delivery") or {}
-    for flag, key in (("--branch", "branch"), ("--pr", "pr"), ("--base", "base")):
+    for flag, key in (("--branch", "branch"), ("--pr", "pr")):
         value = common.cli_opt(args, flag, None)
         if value is not None:
             delivery[key] = value

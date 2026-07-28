@@ -72,8 +72,8 @@ agents:
   dead code, and no scope silently dropped relative to the spec; every acceptance
   criterion met. Back it with the deterministic scan:
   `python3 ${CLAUDE_PLUGIN_ROOT}/scripts/scan_placeholders.py --json`. That scan
-  covers the unstaged diff, the staged diff, **and** every untracked file, so a
-  brand-new file is not invisible to it.
+  covers the branch's commits, the working tree, **and** every untracked file, so
+  neither a committed subtask nor a brand-new file is invisible to it.
 
 **UI-touching changes** (markup/templates, components, styles, `docs/design/`,
 client-side view logic) additionally dispatch the two UI verticals. These are not

@@ -137,10 +137,16 @@ def _plan_status(task) -> str:
     a plan is that the next step is never in doubt, and the point of one commit
     per subtask is that the pull request ends up reading like the plan.
     """
-    subs = task.get("subtasks") or []
+    subs = task.get("subtasks")
+    # Coerced, not trusted. task.json is read straight off disk, and a hand
+    # edit, a 3.0 file or a torn write can make `subtasks` a string or a list of
+    # strings. `s.get` would then raise inside the argument to `common.block`,
+    # the exception would reach main's handler, and that handler calls `allow()`:
+    # a malformed plan would release the gate on an open, unfinished task.
+    subs = [s for s in subs if isinstance(s, dict)] if isinstance(subs, list) else []
     if not subs:
         return ""
-    mark = {"done": "x", "in_progress": ">"}
+    mark = {"done": "x", "in_progress": ">", "pending": " "}
     lines = [f"Plan ({sum(1 for s in subs if s.get('status') == 'done')}/{len(subs)} "
              "subtasks done):"]
     for i, sub in enumerate(subs, 1):
@@ -363,7 +369,7 @@ def _escalating_message(root, sig, attempt: int, unfinished: list, style: list) 
             + _report_status(root, sig) +
             "Run it before finishing: the `quality-rubric` skill (or `/praxis:audit`). "
             "It dispatches the read-only vertical auditors: adversarial, regression, "
-            "duplication, performance, edge-case, doc-reference, completeness (plus "
+            "duplication, performance, edge-case, doc-reference, debt, completeness (plus "
             "accessibility and design-consistency if this change touches UI), then a "
             "horizontal pass, and records the green report."
         )

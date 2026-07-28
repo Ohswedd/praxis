@@ -67,7 +67,7 @@ Two caps and a fail-open path guarantee it can never trap a session.
 Four layers, only one of which has authority:
 
 <p align="center">
-  <img src="assets/layers.svg" alt="Four layers: the output style sets the doctrine every turn; skills carry the reasoning workflows; nine read-only subagents perform the vertical audits in isolated context; hooks are the deterministic gates and the only layer that can refuse." width="900">
+  <img src="assets/layers.svg" alt="Four layers: the output style sets the doctrine every turn; skills carry the reasoning workflows; ten read-only subagents perform the vertical audits in isolated context; hooks are the deterministic gates and the only layer that can refuse." width="900">
 </p>
 
 ## Workflows
@@ -77,13 +77,13 @@ router reads what you typed, and the gate resolves the rest from the files you
 actually changed.
 
 <p align="center">
-  <img src="assets/workflows.svg" alt="Four kinds of request and the workflow each runs. Fix the pagination bug runs task-orchestrator, quality-rubric with seven auditors, and docs-living, and the gate requires a green report backed by a test run praxis executed itself. Build the pricing page runs frontend-pipeline, task-orchestrator, and the rubric with nine auditors, and the gate additionally requires the accessibility and design-consistency verdicts. Audit the whole repo runs repo-audit, finding-verifier, and a coverage report, and the gate requires every shard audited on every dimension. Commit this and open a PR runs git-delivery, commit and PR, and the merge policy, and the gate requires a green audit." width="900">
+  <img src="assets/workflows.svg" alt="Four kinds of request and the workflow each runs. Fix the pagination bug runs task-orchestrator, quality-rubric with eight auditors, and docs-living, and the gate requires a green report backed by a test run praxis executed itself. Build the pricing page runs frontend-pipeline, task-orchestrator, and the rubric with ten auditors, and the gate additionally requires the accessibility and design-consistency verdicts. Audit the whole repo runs repo-audit, finding-verifier, and a coverage report, and the gate requires every shard audited on every dimension. Commit this and open a PR runs git-delivery, commit and PR, and the merge policy, and the gate requires a green audit." width="900">
 </p>
 
 | You type | What runs | Where it stops |
 | --- | --- | --- |
-| *"fix the pagination bug"* | spec → investigate → plan → implement → 7 auditors → docs | a green report whose test run Praxis executed itself |
-| *"build the pricing page"* | brief → wireframes → design system → build → 9 auditors | the same, plus the accessibility and design-consistency verdicts |
+| *"fix the pagination bug"* | spec → investigate → plan → implement → 8 auditors → docs | a green report whose test run Praxis executed itself |
+| *"build the pricing page"* | brief → wireframes → design system → build → 10 auditors | the same, plus the accessibility and design-consistency verdicts |
 | *"update `Header.tsx`"* | the front-end route, from the file name alone | as above: naming a `.tsx` file is enough to make it design work |
 | *"why is this slow?"* | nothing. It is a question | Praxis answers it and stays out of the way |
 | *"audit the whole repo"* | shard ledger → every dimension → reverse audit → fixes | a coverage report computed from the ledger, gaps stated |
@@ -154,7 +154,7 @@ got there.
 
 | Refused | Detected by |
 | --- | --- |
-| A `TODO`, stub, or `NotImplementedError` in your own diff | deterministic scan of both diffs **and every untracked file**, so a brand-new file is not invisible | <!-- praxis:ack naming the marker is the point here -->
+| A `TODO`, stub, or `NotImplementedError` in your own diff | deterministic scan of the branch's commits, the working tree **and every untracked file**, so a brand-new file is not invisible | <!-- praxis:ack naming the marker is the point here -->
 | Deferral prose: *"for now"*, *"in a real implementation"*, *"future work will"* | comment-level scan; `praxis:ack` exempts a genuine case |
 | A test suite that was never run | `report.py` executes the suite itself and records the real exit code |
 | Scope quietly narrowed | the completeness auditor checks the change against its own spec |
@@ -327,7 +327,7 @@ conservative about that:
   blocks secret-file access, force-pushes, destructive resets, broad `rm -rf`, and
   secret exfiltration. It is a backstop: your permission settings remain the
   primary control.
-- **Read-only auditors.** The nine vertical subagents get `Read, Grep, Glob` and
+- **Read-only auditors.** The ten vertical subagents get `Read, Grep, Glob` and
   nothing else (doc-reference also has web search).
 - **Additive setup, never a silent overwrite.** Bootstrap writes what is absent
   and stops to ask before reconciling a brief it did not author; valid

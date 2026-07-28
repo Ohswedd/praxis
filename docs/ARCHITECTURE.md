@@ -20,7 +20,7 @@ layers that fire automatically.
 │    claudemd-living, docs-living, capability-discovery, git-delivery │
 │    Reasoning workflows, auto-invoked when their description matches.│
 ├─────────────────────────────────────────────────────────────────────┤
-│ 3. SUBAGENTS  (read-only, Opus: 9 vertical auditors + verifiers)    │
+│ 3. SUBAGENTS  (read-only, Opus: 10 vertical auditors + verifiers)    │
 │    Deep, verbose analysis in isolated context, one concern each.   │
 ├─────────────────────────────────────────────────────────────────────┤
 │ 4. HOOKS  (SessionStart, UserPromptSubmit, PreToolUse,             │
@@ -60,7 +60,7 @@ user: "fix the pagination bug" + chosen effort
                          ensure CLAUDE.md is right (bootstrap/sync)
   Phase 3  Plan          plan mode; no edits until the plan is set
   Phase 4  Implement     to the plan, code-craft standards, reuse over reinvent
-  Phase 5  Audit         quality-rubric: 7 verticals (incl. completeness) +
+  Phase 5  Audit         quality-rubric: 8 verticals (incl. completeness) +
                          accessibility & design-consistency on UI changes +
                          horizontal pass; fix every finding; tests green
   Phase 6  Report        canonical structured report; record green report; task done
@@ -82,9 +82,10 @@ to ask.
 - **Deterministic:** `scan_placeholders.py` scans the change for TODO/FIXME/stub/  <!-- praxis:ack: the rule has to name the markers it looks for -->
   NotImplemented/debug markers and for deferral prose, language-agnostically, and  <!-- praxis:ack -->
   feeds the Stop gate's block message and the completeness auditor. "The change"
-  is the union of the unstaged diff, the staged diff, and every untracked file:
-  a file created during the work is untracked until it is staged, so a scanner
-  reading only `git diff` never sees the new code at all.
+  is everything this branch has committed since it left its base, plus the
+  working tree, plus every untracked file: a file created during the work is
+  untracked until it is staged, and work that has been committed appears in no
+  diff at all, so a scanner reading only `git diff` sees neither.
 - **Semantic:** `@praxis:completeness-auditor` judges each marker, checks every
   acceptance criterion, and flags any scope quietly dropped.
 - **Reported:** anything genuinely out of scope must appear in the report's

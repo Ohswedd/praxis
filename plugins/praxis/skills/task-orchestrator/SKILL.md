@@ -146,7 +146,7 @@ Documentation is part of "done". Using the `docs-living` skill:
 - Add a `[Unreleased]` entry to `CHANGELOG.md`:
   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/changelog.py" add --type <added|changed|fixed|removed> "<desc>"`.
 - Record any debt this change knowingly took on:
-  `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/debt.py" add "<what>" --interest "<cost>" --principal "<the real fix>" --why "<why now>"`.
+  `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/debt.py" add "<what>" --interest "<cost>" --principal "<the real fix>" --why "<why now>" --where "<where>"`.
   A shortcut with a written reason is a decision; the same shortcut unrecorded is
   a defect the next person meets without the reason.
 - Record an ADR for any significant or autonomously-taken decision:

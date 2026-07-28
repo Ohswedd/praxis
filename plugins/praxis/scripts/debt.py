@@ -58,11 +58,40 @@ def path(root):
 
 
 def ensure(root) -> str:
+    """The register's text, creating it if absent. For writers only."""
     p = path(root)
     if not p.exists():
         p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(HEADER, encoding="utf-8")
+        _write(p, HEADER)
     return p.read_text(encoding="utf-8")
+
+
+def read(root) -> str:
+    """The register's text, or "" if there is none. Creates nothing.
+
+    `list` and `paid` used `ensure`, so merely reading the register wrote a new
+    `docs/DEBT.md` into a repo that never had one: an untracked file that makes
+    the tree dirty and arms the Stop gate over a file praxis itself just created.
+    """
+    p = path(root)
+    try:
+        return p.read_text(encoding="utf-8") if p.exists() else ""
+    except Exception:
+        return ""
+
+
+def _write(p, text: str) -> None:
+    """Atomic, like every other praxis writer: the register is the user's file."""
+    tmp = p.with_name(f"{p.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(text, encoding="utf-8")
+        os.replace(tmp, p)
+    except Exception:
+        try:
+            tmp.unlink()
+        except Exception:
+            pass
+        raise
 
 
 def next_number(text: str) -> int:
@@ -71,7 +100,7 @@ def next_number(text: str) -> int:
 
 
 def add(root, args) -> int:
-    title = args[0]
+    title = " ".join(args[0].split())   # a newline would inject a fake heading
     if title.startswith("-"):
         print("praxis: the title comes first, before the flags: "
               "debt.py add \"<title>\" [--interest ...] [--principal ...]")
@@ -96,7 +125,7 @@ def add(root, args) -> int:
     entry = [
         f"\n## {num}. {title}\n",
         f"- Recorded: {_dt.date.today().isoformat()}",
-        f"- Status: open",
+        "- Status: open",
     ]
     if where:
         entry.append(f"- Where: {where}")
@@ -111,8 +140,8 @@ def add(root, args) -> int:
     entry.append("")
 
     p = path(root)
-    p.write_text(text.rstrip("\n") + "\n" + "\n".join(entry), encoding="utf-8")
-    print(f"praxis: debt recorded as {_rel(root, p)} entry {num}: {title}")
+    _write(p, text.rstrip("\n") + "\n" + "\n".join(entry))
+    print(f"praxis: debt recorded as {common.rel_path(root, p)} entry {num}: {title}")
     return 0
 
 
@@ -121,37 +150,74 @@ def paid(root, args) -> int:
         print("usage: debt.py paid <entry number>")
         return 1
     num = int(args[0])
-    text = ensure(root)
-    pattern = re.compile(rf"(^## {num}\. .*?^- Status: )open", re.MULTILINE | re.DOTALL)
-    new, count = pattern.subn(rf"\1repaid {_dt.date.today().isoformat()}", text)
-    if not count:
-        print(f"praxis: no open debt entry {num}.")
+    text = read(root)
+
+    # Bounded to the named entry's own block. A regex spanning `## N.` to the
+    # next `- Status: open` looks right and is not: with `.*?` it backtracks past
+    # an entry that is already repaid and closes the *next* open one, reporting
+    # success for the number the user asked for. That silently retires a debt
+    # nobody decided to retire, in a file the auditor then trusts.
+    starts = [(int(m.group(1)), m.start()) for m in ENTRY_RE.finditer(text)]
+    block = None
+    for i, (n, at) in enumerate(starts):
+        if n == num:
+            end = starts[i + 1][1] if i + 1 < len(starts) else len(text)
+            block = (at, end)
+            break
+    if block is None:
+        print(f"praxis: there is no debt entry {num}.")
         return 1
-    path(root).write_text(new, encoding="utf-8")
+
+    at, end = block
+    body = text[at:end]
+    new_body, count = re.subn(r"(?m)^- Status: open$",
+                              f"- Status: repaid {_dt.date.today().isoformat()}",
+                              body, count=1)
+    if not count:
+        print(f"praxis: debt entry {num} is not open.")
+        return 1
+    _write(path(root), text[:at] + new_body + text[end:])
     print(f"praxis: debt entry {num} marked repaid.")
     return 0
 
 
+def entries(text: str) -> list:
+    """(number, title, status) per entry, parsed block by block.
+
+    Block by block rather than with one spanning regex: a single pattern from
+    `## N.` to the next `- Status:` backtracks across entry boundaries, so one
+    malformed entry swallows the next and that debt vanishes from the register
+    the auditor reads.
+    """
+    starts = [(int(m.group(1)), m.start(), m.end()) for m in ENTRY_RE.finditer(text)]
+    out = []
+    for i, (num, at, after) in enumerate(starts):
+        end = starts[i + 1][1] if i + 1 < len(starts) else len(text)
+        block = text[at:end]
+        title = block[after - at:].splitlines()[0].strip() if block else ""
+        status = "unknown"
+        for line in block.splitlines():
+            if line.startswith("- Status: "):
+                status = line[len("- Status: "):].strip().split()[0]
+                break
+        out.append((num, title, status))
+    return out
+
+
 def list_debt(root) -> int:
-    text = ensure(root)
-    entries = re.findall(r"^## (\d+)\. (.+?)$.*?^- Status: (\S+)",
-                         text, re.MULTILINE | re.DOTALL)
-    if not entries:
+    text = read(root)
+    found = entries(text)
+    if not found:
         print("praxis: the debt register is empty.")
         return 0
-    open_n = sum(1 for _, _, s in entries if s == "open")
-    print(f"praxis: {len(entries)} entry(ies), {open_n} open, in "
-          f"{_rel(root, path(root))}")
-    for num, title, status in entries:
-        print(f"  [{'open' if status == 'open' else 'paid'}] {num}. {title}")
+    entries_ = [(str(n), t, s) for n, t, s in found]
+    open_n = sum(1 for _, _, s in entries_ if s == "open")
+    print(f"praxis: {len(entries_)} entry(ies), {open_n} open, in "
+          f"{common.rel_path(root, path(root))}")
+    for num, title, status in entries_:
+        label = {"open": "open", "unknown": "????"}.get(status, "paid")
+        print(f"  [{label}] {num}. {title}")
     return 0
-
-
-def _rel(root, p) -> str:
-    try:
-        return str(p.relative_to(root))
-    except ValueError:
-        return str(p)
 
 
 def main() -> int:

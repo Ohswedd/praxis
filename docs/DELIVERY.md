@@ -31,7 +31,8 @@ with no pull request recorded.
 
 This is also why the audit scope is the branch rather than the working tree: with
 one commit per subtask, `git diff` is empty for most of a task's life, and a
-review scoped to it would read nothing. See [`AUDIT.md`](AUDIT.md) and
+review scoped to it would read nothing. See [`ARCHITECTURE.md`](ARCHITECTURE.md) (Review scope),
+[ADR-0022](adr/0022-a-review-is-scoped-to-the-branch-not-the-working-tree.md), and
 `scope.py`.
 
 ## The default: human-in-the-loop

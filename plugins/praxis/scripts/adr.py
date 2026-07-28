@@ -91,11 +91,7 @@ def new(root, args) -> None:
     if alternatives:
         body += f"\n## Alternatives considered\n{alternatives}\n"
     (d / fname).write_text(body, encoding="utf-8")
-    try:
-        where = str((d / fname).relative_to(root))
-    except ValueError:
-        where = str(d / fname)
-    print(f"praxis: ADR created, {where}")
+    print(f"praxis: ADR created, {common.rel_path(root, d / fname)}")
 
 
 def list_adrs(root) -> None:

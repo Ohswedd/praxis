@@ -215,7 +215,11 @@ def git_default_branch(root: Path) -> str:
 # is the point of one-commit-per-subtask) would switch the entire audit off. The
 # scope is therefore the whole branch: every commit since it left its base, plus
 # whatever is still uncommitted.
-_MERGE_BASE_CACHE: Dict[str, Optional[str]] = {}
+_MERGE_BASE_CACHE: Dict[str, tuple] = {}
+
+
+class _BaseUnresolved(Exception):
+    """The review base could not be worked out. Never confused with 'no base'."""
 
 #: Commits inspected when describing the branch. A review scope larger than this
 #: is not a change under review, it is a history.
@@ -226,39 +230,89 @@ def current_branch(root: Path) -> str:
     return _run(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=root).strip()
 
 
+def review_scope_base(root: Path) -> tuple:
+    """(base, unresolved_reason).
+
+    Exactly one of the two is set. `(sha, "")` is a branch to review, `("", "")`
+    is the integration branch with nothing to compare against, and `("", reason)`
+    is praxis not knowing, which callers must treat as "there may be work here"
+    rather than "there is none".
+    """
+    key = str(root)
+    if key not in _MERGE_BASE_CACHE:
+        try:
+            _MERGE_BASE_CACHE[key] = (_review_base(root) or "", "")
+        except _BaseUnresolved as exc:
+            _MERGE_BASE_CACHE[key] = ("", str(exc))
+        except Exception as exc:
+            _MERGE_BASE_CACHE[key] = ("", f"{exc.__class__.__name__} while resolving")
+    return _MERGE_BASE_CACHE[key]
+
+
 def review_base(root: Path) -> Optional[str]:
     """The commit this branch's work should be reviewed against, or None.
 
-    None means "there is no branch range here": praxis is on the integration
-    branch itself, or the base cannot be resolved. Callers then fall back to the
-    working tree alone, which is exactly the pre-3.1 behaviour, so a repo that
-    never branches sees no change at all.
+    None means only "no range to review": praxis is on the integration branch, or
+    it could not work the base out. Callers that decide whether anything is
+    *pending* must use `review_scope_base` instead, because those two cases point
+    in opposite directions.
     """
-    key = str(root)
-    if key in _MERGE_BASE_CACHE:
-        return _MERGE_BASE_CACHE[key]
-    _MERGE_BASE_CACHE[key] = base = _review_base(root)
-    return base
+    return review_scope_base(root)[0] or None
 
 
 def _review_base(root: Path) -> Optional[str]:
+    """The base, or None. `None` means *on the integration branch*, nothing more.
+
+    Every other failure raises `_BaseUnresolved`, because the two must not share
+    an answer. "There is no range here" and "I could not work out the range" look
+    identical to a caller and mean opposite things: the first is a clean tree, the
+    second is a branch full of unreviewed commits that praxis is about to declare
+    empty. A stale `origin/HEAD` left by an upstream branch rename is enough to
+    reach the second, and the consequence would be the gate releasing a whole
+    branch unaudited.
+    """
     if not is_git_repo(root):
-        return None
-    default = git_default_branch(root)
+        raise _BaseUnresolved("not a git repository")
     branch = current_branch(root)
-    # On the integration branch there is nothing to compare against: its commits
-    # are history, not a change awaiting review.
-    if not branch or branch == "HEAD" or branch == default:
-        return None
-    for ref in (f"origin/{default}", default):
+    if not branch:
+        raise _BaseUnresolved("the current branch could not be read")
+    if branch == "HEAD":
+        raise _BaseUnresolved("HEAD is detached, so there is no branch to review")
+
+    default = git_default_branch(root)
+    if branch == default:
+        return None  # the integration branch: its commits are history
+
+    # Candidates, nearest first. A repo-supplied `git.default_branch` that does
+    # not resolve must not silently disable the review, so the built-in names are
+    # always tried as well: `.praxis.toml` is committed and repo-controlled, and
+    # a repository does not get to switch praxis's audit off.
+    seen, bases = set(), []
+    for ref in (f"origin/{default}", default, "origin/main", "main",
+                "origin/master", "master"):
+        if ref in seen or ref == branch:
+            continue
+        seen.add(ref)
         if not _run(["git", "rev-parse", "--verify", "--quiet", ref], cwd=root).strip():
             continue
         base = _run(["git", "merge-base", ref, "HEAD"], cwd=root).strip()
         if base:
-            head = git_head(root)
-            # A branch that has not diverged yet has nothing committed to review.
-            return None if base == head else base
-    return None
+            bases.append(base)
+    if not bases:
+        raise _BaseUnresolved(f"no base branch resolved (tried {', '.join(seen)})")
+
+    # The *nearest* base, not the first that resolved. `origin/main` can be far
+    # behind a local `main`, and taking it would pull commits this branch never
+    # made into the review: the gate would then report unfinished markers in
+    # files the change never touched, and the obvious way to clear that is to
+    # edit already-landed code.
+    nearest = bases[0]
+    for base in bases[1:]:
+        if _run_ok(["git", "merge-base", "--is-ancestor", nearest, base], cwd=root):
+            nearest = base
+    head = git_head(root)
+    # A branch that has not diverged yet has nothing committed to review.
+    return None if nearest == head else nearest
 
 
 def branch_commits(root: Path) -> List[str]:
@@ -356,6 +410,17 @@ _LOCK_FILES = {
 MAX_SCAN_BYTES = 400_000
 
 
+def _is_diff_scannable(rel: str) -> bool:
+    """`is_scannable` by name alone, for a path known only from a diff header.
+
+    The size test cannot apply: a deleted or since-modified path may not exist on
+    disk at its diffed size. The suffix and lock-file rules still do, and they are
+    the ones that matter for generated content.
+    """
+    p = Path(rel)
+    return p.suffix.lower() not in _BINARY_SUFFIXES and p.name not in _LOCK_FILES
+
+
 def is_scannable(root: Path, rel: str) -> bool:
     p = Path(rel)
     if p.suffix.lower() in _BINARY_SUFFIXES or p.name in _LOCK_FILES:
@@ -375,11 +440,12 @@ MAX_UNTRACKED_BYTES = 4_000_000
 def added_line_pairs(root: Path) -> List[tuple]:
     """Every line the current change adds, as (file, lineno, text).
 
-    The union of four sources, because a change is spread across all of them and
-    auditing only one under-reports: what this branch has committed since it left
-    its base, the unstaged diff, the staged diff, and the whole content of
-    untracked files. Deduplicated, since a hunk that is committed and then edited
-    again appears more than once.
+    A change is spread across three places and auditing only one under-reports:
+    what this branch has committed since it left its base, what is still
+    uncommitted, and the whole content of untracked files (which appear in no
+    diff at all). On a branch the first two come from a single `git diff <base>`
+    against the working tree, so a line that was committed and then corrected is
+    counted once, in its corrected form.
     """
     seen = set()
     pairs: List[tuple] = []
@@ -399,7 +465,7 @@ def added_line_pairs(root: Path) -> List[tuple]:
     sources = [[base]] if base else [[], ["--staged"]]
     for extra in sources:
         diff = _run(["git", "diff", "--unified=0", "--no-color"] + extra, cwd=root, timeout=20)
-        for fname, lineno, text in _parse_diff_added(diff):
+        for fname, lineno, text in _parse_diff_added(diff, root):
             if fname and not _is_praxis_state(fname):
                 add(fname, lineno, text)
 
@@ -419,14 +485,22 @@ def added_line_pairs(root: Path) -> List[tuple]:
     return pairs
 
 
-def _parse_diff_added(diff: str) -> List[tuple]:
-    """(file, new-file lineno, text) for '+' lines in a unified=0 diff."""
+def _parse_diff_added(diff: str, root: Optional[Path] = None) -> List[tuple]:
+    """(file, new-file lineno, text) for '+' lines in a unified=0 diff.
+
+    Paths are filtered the same way untracked content already is. Without it a
+    committed lock file or minified bundle is scanned while the identical file
+    untracked is skipped, and a marker inside generated content produces a gate
+    block the user cannot fix in code they wrote.
+    """
     results: List[tuple] = []
     cur_file = None
     new_ln = 0
     for line in diff.splitlines():
         if line.startswith("+++ b/"):
             cur_file = line[6:].strip()
+            if root is not None and cur_file and not _is_diff_scannable(cur_file):
+                cur_file = None
         elif line.startswith("+++ "):
             cur_file = None          # /dev/null: a deletion has no added lines
         elif line.startswith("@@"):
@@ -477,8 +551,43 @@ def review_pending(root: Path) -> bool:
     unfinished work and no to finished-and-committed work, which is precisely
     backwards for a gate whose job is to see a change before it becomes a pull
     request.
+
+    When the base cannot be resolved (a stale `origin/HEAD` after an upstream
+    branch rename is enough), this says *pending* if the branch has any commit at
+    all that HEAD does not share with the default branch's name. Guessing "no"
+    there would release a whole unreviewed branch, and the cost of guessing "yes"
+    is one audit that turns out to be unnecessary.
     """
-    return bool(working_tree_dirty(root) or committed_files(root))
+    if working_tree_dirty(root):
+        return True
+    base, unresolved = review_scope_base(root)
+    if base:
+        return bool(committed_files(root))
+    if not unresolved:
+        return False           # the integration branch: its commits are history
+    return _has_unmerged_commits(root)
+
+
+def _has_unmerged_commits(root: Path) -> bool:
+    """'This branch has commits no other ref has', without naming a base.
+
+    Asked without reference to `main` or `master`, because this runs precisely
+    when those names failed to resolve: a repo whose integration branch is called
+    something else is the common case here, not an exotic one.
+    """
+    branch = current_branch(root)
+    if not branch or branch == "HEAD":
+        return False
+    out, ok = _run_out(["git", "branch", "--all", "--contains", "HEAD",
+                        "--format=%(refname)"], cwd=root, timeout=20)
+    if not ok:
+        return False
+    mine = {f"refs/heads/{branch}", f"refs/remotes/origin/{branch}"}
+    others = [ln.strip() for ln in out.splitlines()
+              if ln.strip() and ln.strip() not in mine]
+    # If no other ref contains HEAD, this branch is carrying commits nothing else
+    # has, which is a change awaiting review however the base failed to resolve.
+    return not others
 
 
 # --------------------------------------------------------------------------- #
@@ -850,7 +959,7 @@ def ensure_local_exclusions(root: Path, enabled: bool) -> bool:
         # Written the way praxis writes its own state: temp file plus os.replace.
         # This is the user's file, two Claude Code windows on one clone both fire
         # SessionStart, and a torn write here loses the project's own patterns.
-        tmp = exclude.with_name(exclude.name + ".praxis.tmp")
+        tmp = exclude.with_name(f"{exclude.name}.praxis.{os.getpid()}.tmp")
         try:
             tmp.write_text(desired, encoding="utf-8")
             os.replace(tmp, exclude)
@@ -1154,7 +1263,10 @@ def write_state_strict(root: Path, name: str, data: Dict[str, Any]) -> None:
     fail-open write_state wrapper instead.
     """
     f = state_dir(root) / name
-    tmp = f.with_name(f.name + ".tmp")
+    # Per-process temp name. Two Claude Code windows on one clone both fire
+    # SessionStart and Stop, and a shared temp path means one truncates the
+    # other's half-written file before os.replace publishes it.
+    tmp = f.with_name(f"{f.name}.{os.getpid()}.tmp")
     try:
         tmp.write_text(json.dumps(data, indent=2), encoding="utf-8")
         os.replace(tmp, f)
@@ -1183,6 +1295,14 @@ def run_scanner(script: str, root: Path, timeout: int = 25) -> List[Dict[str, An
         return findings if isinstance(findings, list) else []
     except Exception:
         return []
+
+
+def rel_path(root: Path, p: Path) -> str:
+    """`p` relative to `root`, or its absolute form when it lies outside."""
+    try:
+        return str(p.relative_to(root))
+    except ValueError:
+        return str(p)
 
 
 def cli_opt(args: List[str], name: str, default=None):

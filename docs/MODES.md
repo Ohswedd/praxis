@@ -245,7 +245,7 @@ the project's own style and stops.
 | Does praxis leave a trace in a repo that is not yours? | `$GIT_COMMON_DIR/info/exclude`, the staging guard, and an index check before `commit`/`push`/`stash` | Yes: whatever staged it, the command that would publish it is refused |
 | Keep working until done | Stop gate + `task.json` (turn cap, `waiting`, `done`) | Yes |
 | No secrets / destructive ops | PreToolUse guard (holds even in auto mode) | Yes |
-| No placeholders / stubs / deferral | `scan_placeholders.py` over both diffs and every untracked file (literal markers + deferral prose in comments) | Yes |
+| No placeholders / stubs / deferral | `scan_placeholders.py` over the branch's commits, the working tree and every untracked file (literal markers + deferral prose in comments) | Yes |
 | No em dash, no AI attribution | `scan_style.py` at the Stop gate; `guard_paths.py` at the commit/PR command | Yes |
 | UI changes get the UI audits | resolved from the changed file list, not from the request's wording | Yes |
 | Docs match the live configuration | `drift.py` at SessionStart, in the doctor, and in `/praxis:docs` | Yes (detection) |

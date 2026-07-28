@@ -285,10 +285,20 @@ def build_report(root: Path) -> str:
 
     if common.is_git_repo(root):
         dirty = common.git_status_porcelain(root)
+        commits = common.branch_commits(root)
         if dirty:
             lines.append(f"**Uncommitted changes:** {len(dirty)} file(s), the quality "
                          "gate will require a passing `/praxis:audit` before the turn "
                          "can finish while code is unreviewed.")
+        if commits:
+            # Committed work is still a change awaiting review. Reporting only the
+            # dirty tree meant a session resumed on a branch full of unaudited
+            # commits was told nothing at all.
+            lines.append(f"**This branch has {len(commits)} commit(s) since "
+                         f"`{common.git_default_branch(root)}`**, and they are part of "
+                         "the change under review, not history. Scope any audit with "
+                         "`python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/scope.py\"`, never "
+                         "`git diff` alone, which is empty here.")
     lines.append("")
 
     # Surface any open praxis task so it can be resumed or cleared.
@@ -358,7 +368,7 @@ def build_report(root: Path) -> str:
                  "scans your own diff AND your new untracked files for unfinished markers.")
     lines.append("- After any non-trivial change, run the quality rubric (`/praxis:audit`) "
                  "(vertical auditors: doc-reference, duplication, regression, adversarial, "
-                 "edge-case, performance, completeness, plus a horizontal pass) and fix every "
+                 "edge-case, performance, debt, completeness, plus a horizontal pass) and fix every "
                  "finding before declaring done.")
     lines.append("- praxis is effort-agnostic: it works identically at `/effort high` or "
                  "`/effort ultracode`; higher effort only deepens execution. Auditors are "

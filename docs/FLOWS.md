@@ -15,7 +15,7 @@ flowchart TB
     U["User prompt"] --> H1["Layer 4 · Hooks<br/>deterministic, can block"]
     H1 --> OS["Layer 1 · Output style<br/>praxis-quality: always-on doctrine"]
     OS --> SK["Layer 2 · Skills · twelve<br/>orchestrator, prompt-architect, best-practices, code-craft,<br/>quality-rubric, docs-living, claudemd-living, frontend-pipeline,<br/>repo-audit, git-delivery, bootstrap, capability-discovery"]
-    SK --> AG["Layer 3 · Subagents · read-only, Opus<br/>9 vertical auditors + cartographer + claudemd-verifier"]
+    SK --> AG["Layer 3 · Subagents · read-only, Opus<br/>10 vertical auditors + cartographer + claudemd-verifier"]
     AG --> OUT["Structured report back to user"]
 
     classDef det fill:#1f2937,color:#fff;
@@ -51,7 +51,7 @@ flowchart TD
     J --> K{"Plan approved?"}
     K -->|No| J
     K -->|Yes| L["Phase 4 · Implement to plan<br/>code-craft standards"]
-    L --> M["Phase 5 · Quality rubric<br/>7 verticals (+2 when the changed files are UI)<br/>+ horizontal pass + the three scanners"]
+    L --> M["Phase 5 · Quality rubric<br/>8 verticals (+2 when the changed files are UI)<br/>+ horizontal pass + the three scanners"]
     M --> N{"All PASS?"}
     N -->|No| O["Fix findings, re-run auditor"]
     O --> M

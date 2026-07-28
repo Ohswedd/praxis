@@ -32,18 +32,25 @@ PREVIEW = 40
 
 
 def collect(root) -> dict:
-    base = common.review_base(root)
-    committed = common.committed_files(root)
-    working = sorted(set(common.changed_files(root)) - set(committed))
+    base, unresolved = common.review_scope_base(root)
+    files = common.changed_files(root)
+    # Intersected with the files actually under review, so the counts add up:
+    # committed_files is the branch range, changed_files is its net effect, and a
+    # file committed then reverted is in the first and not the second.
+    committed = [f for f in common.committed_files(root) if f in files]
+    working = sorted(set(files) - set(committed))
+    commits = common.branch_commits(root)
     return {
+        "unresolved": unresolved,
+        "commits_truncated": len(commits) >= common.MAX_BRANCH_COMMITS,
         "is_git_repo": common.is_git_repo(root),
         "branch": common.current_branch(root),
         "default_branch": common.git_default_branch(root) if common.is_git_repo(root) else "",
         "base": base or "",
-        "commits": common.branch_commits(root),
+        "commits": commits,
         "committed_files": committed,
         "working_files": working,
-        "files": common.changed_files(root),
+        "files": files,
         "ui_files": common.ui_files_in_change(root),
         "review_pending": common.review_pending(root),
         "signature": common.change_signature(root) if common.is_git_repo(root) else "",
@@ -55,6 +62,11 @@ def render(scope: dict) -> str:
         return ("praxis scope: not a git repository. The change is whatever is on "
                 "disk; there is no base to diff against.")
     if not scope["review_pending"]:
+        if scope["unresolved"]:
+            return (f"praxis scope: could not resolve a base on `{scope['branch']}` "
+                    f"({scope['unresolved']}), and this branch carries no commits "
+                    "another ref does not already have. Treat the working tree as "
+                    "the scope, and say so in your verdict.")
         return (f"praxis scope: nothing to review on `{scope['branch']}`. No commits "
                 "since the base, and the working tree is clean.")
 
@@ -67,17 +79,32 @@ def render(scope: dict) -> str:
             lines.append(f"  - {c}")
         if len(scope["commits"]) > PREVIEW:
             lines.append(f"  - ... and {len(scope['commits']) - PREVIEW} more")
+        if scope["commits_truncated"]:
+            # A checker that stops at a cap and still prints a count is claiming
+            # coverage it does not have, which is the one thing this file exists
+            # to prevent.
+            lines.append(f"  - **the listing stops at {common.MAX_BRANCH_COMMITS}; "
+                         "this branch has more. Its scope is larger than shown.**")
     else:
-        lines.append(f"**Base:** none. This is `{scope['default_branch']}` itself, or "
-                     "the branch has committed nothing yet, so the review scope is "
-                     "the working tree alone.")
+        if scope["unresolved"]:
+            lines.append(f"**⚠️ Base: could not be resolved** ({scope['unresolved']}). "
+                         "The scope below is the working tree only and may be "
+                         "narrower than the real change. Say so in your verdict "
+                         "rather than reporting a clean pass.")
+        else:
+            lines.append(f"**Base:** none. This is `{scope['default_branch']}` itself, "
+                         "or the branch has committed nothing yet, so the review "
+                         "scope is the working tree alone.")
     lines.append("")
 
     lines.append(f"**Files under review: {len(scope['files'])}** "
                  f"({len(scope['committed_files'])} committed, "
                  f"{len(scope['working_files'])} uncommitted)")
     for f in scope["files"][:PREVIEW]:
-        where = "committed" if f in scope["committed_files"] else "working tree"
+        in_commit = f in scope["committed_files"]
+        in_work = f in scope["working_files"]
+        where = ("committed, then edited again" if in_commit and in_work
+                 else "committed" if in_commit else "working tree")
         lines.append(f"  - {f}  ({where})")
     if len(scope["files"]) > PREVIEW:
         lines.append(f"  - ... and {len(scope['files']) - PREVIEW} more")

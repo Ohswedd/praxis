@@ -79,7 +79,8 @@ CHANGELOG.md           at the repo root (Keep a Changelog)
    ```bash
    python3 "${CLAUDE_PLUGIN_ROOT}/scripts/debt.py" add "<what was borrowed>" \
      --interest "<what it costs, and how often>" \
-     --principal "<what the real fix is>" --why "<why this was the right call now>"
+     --principal "<what the real fix is>" --why "<why this was the right call now>" \
+     --where "<the file or module>"
    ```
    Debt is not a synonym for bad code. A shortcut taken for a stated reason and
    written down is a decision; the same shortcut taken silently is the defect,

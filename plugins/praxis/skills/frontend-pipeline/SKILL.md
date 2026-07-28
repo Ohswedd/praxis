@@ -189,7 +189,7 @@ long and the empty cases.
    breakpoints and states the change claims to support (use the session's
    browser/run tooling when available). Screenshots or observed behaviour beat
    assumptions.
-2. **Full quality rubric**: all seven verticals **plus the UI verticals**:
+2. **Full quality rubric**: all eight code verticals **plus the UI verticals**:
    `@praxis:accessibility-auditor` and `@praxis:design-consistency-auditor`
    (the quality-rubric skill dispatches them automatically for UI-touching
    changes; the perf vertical covers Core Web Vitals for UI scope).

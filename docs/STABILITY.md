@@ -1,4 +1,4 @@
-# Stability & Public Surface (v3.0)
+# Stability & Public Surface (v3.1)
 
 From v1.0, the following surface is **stable** and changes to it follow Semantic
 Versioning (breaking changes → a new MAJOR).

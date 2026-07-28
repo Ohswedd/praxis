@@ -1833,6 +1833,138 @@ class TestDebtRegister(GitRepoCase):
         r = self.debt("nonsense")
         self.assertEqual(r.returncode, 1)
 
+    def test_repaying_one_entry_never_closes_another(self):
+        """A spanning regex backtracks past a repaid entry into the next open one,
+        silently retiring a debt nobody decided to retire."""
+        self.add_one("First")
+        self.add_one("Second")
+        self.debt("paid", "1")
+        r = self.debt("paid", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("not open", r.stdout)
+        self.assertIn("[open] 2. Second", self.debt("list").stdout)
+
+    def test_reading_the_register_does_not_create_it(self):
+        """`list` used to write docs/DEBT.md, dirtying a tree and arming the gate."""
+        self.assertEqual(self.debt("list").returncode, 0)
+        self.assertFalse((self.root / "docs").exists())
+        self.assertEqual(self.debt("paid", "1").returncode, 1)
+        self.assertFalse((self.root / "docs").exists())
+
+    def test_a_malformed_entry_does_not_hide_the_next_one(self):
+        self.add_one("First")
+        with (self.root / "docs" / "DEBT.md").open("a") as fh:
+            fh.write("\n## 5. Hand-written, no status line\n\nprose\n")
+        self.add_one("Third")
+        out = self.debt("list").stdout
+        for expected in ("1. First", "5. Hand-written", "6. Third"):
+            self.assertIn(expected, out)
+
+    def test_a_title_cannot_inject_a_heading(self):
+        """Flattened to one line, so it cannot become an entry or skew numbering."""
+        self.debt("add", "Bad\n## 999. injected", "--interest", "i",
+                  "--principal", "p")
+        body = (self.root / "docs" / "DEBT.md").read_text()
+        self.assertNotIn("\n## 999.", body, "no heading at the start of a line")
+        self.assertIn("[open] 1. Bad ## 999. injected", self.debt("list").stdout)
+        self.add_one("Next")
+        self.assertIn("[open] 2. Next", self.debt("list").stdout,
+                      "numbering must not have jumped to 1000")
+
+
+class TestScopeResolutionFailsSafe(BranchCase):
+    """An unresolvable base must mean 'review everything', never 'review nothing'."""
+
+    def test_a_stale_origin_head_still_resolves_a_base(self):
+        self.branch()
+        self.commit("a.py", "x = 2\n", "work")
+        sh(["git", "symbolic-ref", "refs/remotes/origin/HEAD",
+            "refs/remotes/origin/renamed-away"], cwd=self.tmp)
+        common._MERGE_BASE_CACHE.pop(str(self.root), None)
+        self.assertTrue(common.review_pending(self.root))
+
+    def test_an_unresolvable_base_still_reports_pending(self):
+        sh(["git", "branch", "-m", "main", "trunk"], cwd=self.tmp)
+        self.branch("feat/y")
+        self.commit("a.py", "x = 3\n", "work")
+        common._MERGE_BASE_CACHE.pop(str(self.root), None)
+        base, why = common.review_scope_base(self.root)
+        self.assertFalse(base)
+        self.assertTrue(why, "the failure must be reported, not silently None")
+        self.assertTrue(common.review_pending(self.root))
+
+    def test_a_repo_cannot_switch_the_review_off_through_its_config(self):
+        """`.praxis.toml` is committed, so a cloned repo must not disable the audit."""
+        self.branch()
+        self.commit("a.py", "x = 4\n", "work")
+        (self.root / ".praxis.toml").write_text('[git]\ndefault_branch = "nope"\n')
+        common._MERGE_BASE_CACHE.pop(str(self.root), None)
+        self.assertTrue(common.review_base(self.root),
+                        "the built-in names must still be tried")
+
+    def test_the_nearest_base_is_used_not_the_first_that_resolves(self):
+        """A stale origin/main would drag unrelated commits into the review."""
+        sh(["git", "update-ref", "refs/remotes/origin/main", "HEAD"], cwd=self.tmp)
+        self.commit("main-only.py", "m = 1\n", "unpushed main commit")
+        self.branch()
+        self.commit("a.py", "x = 5\n", "branch work")
+        common._MERGE_BASE_CACHE.pop(str(self.root), None)
+        common._CHANGED_FILES_CACHE.pop(str(self.root), None)
+        self.assertNotIn("main-only.py", common.changed_files(self.root))
+
+    def test_generated_content_is_not_scanned_from_a_commit(self):
+        """An untracked lock file is skipped; a committed one must be too."""
+        self.branch()
+        marker = "# TO" + "DO: generated"
+        self.commit("package-lock.json", f'{{"x":1}}\n{marker}\n', "lockfile")
+        common._CHANGED_FILES_CACHE.pop(str(self.root), None)
+        files = {f for f, _, _ in common.added_line_pairs(self.root)}
+        self.assertNotIn("package-lock.json", files)
+
+
+class TestGateSurvivesMalformedState(GitRepoCase):
+    def test_a_malformed_plan_does_not_release_the_gate(self):
+        """`_plan_status` raising would reach main's handler, which calls allow()."""
+        (self.root / "a.py").write_text("x = 2\n")
+        common.write_state(self.root, "task.json", {
+            "open": True, "title": "T", "criteria": ["c"], "status": "in_progress",
+            "iterations": 0, "max_iterations": 5, "session": "",
+            "subtasks": "not a list",
+        })
+        r = run_script("quality_gate.py", self.payload(), self.root)
+        self.assertEqual(r.returncode, 2, "an open task must still hold the turn")
+
+    def test_a_plan_of_strings_does_not_release_the_gate(self):
+        (self.root / "a.py").write_text("x = 3\n")
+        common.write_state(self.root, "task.json", {
+            "open": True, "title": "T", "criteria": ["c"], "status": "in_progress",
+            "iterations": 0, "max_iterations": 5, "session": "",
+            "subtasks": ["just a string", {"title": "real", "status": "pending"}],
+        })
+        r = run_script("quality_gate.py", self.payload(), self.root)
+        self.assertEqual(r.returncode, 2)
+
+
+class TestLedgerMigration(GitRepoCase):
+    def test_a_ledger_predating_a_dimension_does_not_certify_coverage(self):
+        env = {**os.environ, "CLAUDE_PROJECT_DIR": str(self.root)}
+        sh([sys.executable, str(SCRIPTS / "repo_scan.py"), "init"], env=env)
+        ledger = common.read_state(self.root, "repo_scan.json")
+        old = [d for d in ledger["dimensions"] if d != "debt"]
+        ledger["dimensions"] = old
+        for shard in ledger["shards"]:
+            shard["done"] = list(old)
+        common.write_state(self.root, "repo_scan.json", ledger)
+
+        r = sh([sys.executable, str(SCRIPTS / "repo_scan.py"), "status"], env=env)
+        self.assertIn("predates debt", r.stdout)
+        self.assertIn("0/1 shards fully audited", r.stdout)
+        # And the new dimension becomes recordable rather than "unknown".
+        shard_id = ledger["shards"][0]["id"]
+        r = sh([sys.executable, str(SCRIPTS / "repo_scan.py"), "mark", shard_id,
+                "debt"], env=env)
+        self.assertEqual(r.returncode, 0, r.stdout)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

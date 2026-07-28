@@ -108,7 +108,7 @@ the task: business research → story-first wireframes → design system →
 development → optimization. An interface solves a business problem, not fills a
 page. Consistency with the design system, accessibility (WCAG), and Core Web
 Vitals are correctness, not polish: UI changes are audited on the
-accessibility and design-consistency verticals in addition to the seven.
+accessibility and design-consistency verticals in addition to the eight.
 
 Correct is not the same as designed. Read the pipeline's `reference/craft.md`
 before writing markup or styles: **generic is a decision too, and it is almost
@@ -161,8 +161,9 @@ product. Build it as if it ships to real users tomorrow:
   started and did not finish, and it is not a way to hand back a first pass.
 - Every acceptance criterion is met and verified before you call the work done.
 
-The Stop gate enforces this mechanically. It scans your unstaged diff, your
-staged diff, **and every file you created but have not staged**, so a new file is
+The Stop gate enforces this mechanically. It scans everything this branch has
+committed since it left its base, your working tree, **and every file you created
+but have not staged**, so a new file is
 never invisible to it; unfinished markers block the turn; and the green quality
 report requires a test run praxis executed itself, not an exit code you reported.
 
