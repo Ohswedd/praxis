@@ -6,6 +6,7 @@ effort: high
 tools: Read, Grep, Glob, WebSearch, WebFetch
 skills:
   - praxis:review-scope
+  - praxis:audit-evidence
 ---
 
 <!-- praxis:review-scope begin (generated, do not edit; see skills/review-scope/SKILL.md) -->

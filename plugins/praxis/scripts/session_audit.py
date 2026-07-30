@@ -353,7 +353,23 @@ def build_report(root: Path) -> str:
     lines.append("- Living knowledge is part of 'done': for every behaviour/API/config/"
                  "architecture change, update `/docs` (read/search first, no regression), add a "
                  "`CHANGELOG.md` [Unreleased] entry, and record an ADR for significant or "
-                 "autonomous decisions (use the `docs-living` skill). Every repo must have a `/docs`.")
+                 "autonomous decisions (use the `docs-living` skill). Every repo must have a `/docs`. "
+                 "This is measured, not assumed: `knowledge_check.py` asks whether the changelog "
+                 "and the docs moved with the behaviour and whether this change REMOVED "
+                 "documentation, and `report.py record` runs it, so a change that dropped its docs "
+                 "cannot record itself green.")
+    lines.append("- State only what you verified. Run the command instead of predicting its "
+                 "output, read the file before citing it, and say plainly what you could not "
+                 "check. Every vertical verdict is recorded with evidence "
+                 "(`report.py vertical <name> --verdict pass --summary \"...\" --evidence "
+                 "\"file:line\"`) and a citation that does not resolve is REFUSED. `report.py "
+                 "record` runs the tests, the scanners and the runtime harness itself, so "
+                 "asserting any of them buys nothing.")
+    lines.append("- Run it, not only its tests: anything a person or another system interacts "
+                 "with (a page, a route, a command, a job) is exercised before it is called done. "
+                 "Use the `runtime-verification` skill; it drives a browser when the surface is "
+                 "visual. A green unit suite says a function returns what its test expects, not "
+                 "that the thing works.")
     lines.append("- Documentation-first: find the authoritative docs and existing in-repo "
                  "patterns before writing; never reinvent or duplicate what exists.")
     lines.append("- Apply code-craft: self-documenting names, comments that explain *why*, "

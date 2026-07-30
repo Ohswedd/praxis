@@ -103,9 +103,13 @@ changes shape:
 - **The commit carries the change and nothing else.** No `CLAUDE.md`, no
   `.praxis.toml`, no `/docs` tree, no `CHANGELOG.md`, no `.gitignore` edit that
   praxis wanted. Those are praxis's setup, and praxis keeps them out of git
-  through `$GIT_COMMON_DIR/info/exclude` so `git add -A` cannot reach them. Review
-  `git status` and `git diff --staged` before committing anyway: the guard is a
-  backstop, not a substitute for looking.
+  through `$GIT_COMMON_DIR/info/exclude` so `git add -A` cannot reach them. The
+  project-facing ones are refused outright: the guard blocks creating *or
+  committing* a `CHANGELOG.md`, a `/docs` skeleton, a `CLAUDE.md` or a
+  `.praxis.toml` that the repository does not already have, since a pull request
+  carrying one asks reviewers to accept a convention they never discussed
+  alongside the fix they did. Review `git status` and `git diff --staged` before
+  committing anyway: the guard is a backstop, not a substitute for looking.
 - **Match their conventions, not ours.** Read `CONTRIBUTING.md`, the PR template,
   and the last several merged commits, and follow what you find: their commit
   format even if it is not Conventional Commits, their branch naming, their

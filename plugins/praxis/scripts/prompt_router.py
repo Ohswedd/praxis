@@ -228,7 +228,12 @@ def _contributor_directive(root) -> list:
         "written under `.claude/.praxis/knowledge/`. Do not create a `CLAUDE.md`, "
         "a `.praxis.toml`, a `/docs` tree or a `CHANGELOG.md` here, do not edit "
         "`.gitignore`, and never stage a praxis artifact: the commit carries the "
-        "user's change and nothing else.",
+        "user's change and nothing else. The guard refuses all four of those "
+        "writes and refuses to commit them, so reach for the helper instead: "
+        "`changelog.py`, `adr.py` and `debt.py` resolve the right path and print "
+        "it. If the maintainers genuinely want one of these files, propose it in "
+        "the pull request or turn it on with `/praxis:config project-artifacts "
+        "on` rather than adding it quietly.",
     ]
 
 

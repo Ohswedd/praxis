@@ -19,6 +19,15 @@ finish, and it is not a way to hand back a first pass. Everything the spec puts 
 scope, including the error paths, the empty and failure states, the validation,
 and the tests, ships in this change.
 
+The second golden rule: **state only what you verified.** Every phase below
+produces claims (this passes, that is covered, the docs are updated), and a claim
+that turns out on a second look to be untrue costs more than the work it was
+meant to save, because it is believed. Run the command instead of predicting its
+output, read the file before citing it, and when something could not be checked,
+say so in the report. praxis measures what it can: `report.py` runs the tests,
+the runtime harness and the scanners itself, and refuses a vertical citation that
+does not resolve. What it cannot measure is on you.
+
 Two house rules apply to every phase, and both are enforced deterministically, so
 they are not worth testing: **no em dashes** in anything you write (code,
 comments, docs, commit messages, or your reply to the user), and **no AI
@@ -127,16 +136,26 @@ reviews nothing and passes everything.
   costs later, and whether any of it was recorded), **and completeness**
   (`@praxis:completeness-auditor` + `scan_placeholders.py`);
 - horizontal consistency pass;
+- **record each verdict with its evidence as the auditor finishes**
+  (`report.py vertical <name> --verdict pass --summary "..." --evidence
+  "file:line,..."`). Citations are verified to resolve, so a reference you did
+  not read is refused at the moment you write it rather than believed;
 - fix every FAIL and actionable note, then re-run the affected auditor;
 - confirm the test command passes and no regression was introduced;
+- **run the product, not only its tests**, for anything a person or another
+  system interacts with (the `runtime-verification` skill). A green unit suite
+  does not say the page renders or the command exits zero;
 - confirm **zero** unacknowledged placeholders/TODOs/stubs and **zero** silently
   narrowed scope;
-- run the three deterministic scanners and clear every finding:
+- run the four deterministic scanners and clear every finding:
   `scan_placeholders.py` (unfinished work, including in untracked new files),
-  `scan_style.py` (em dashes, AI attribution), `drift.py` (docs that this change
-  just made untrue);
+  `scan_style.py` (em dashes, AI attribution), `knowledge_check.py` (the docs
+  and changelog this change owes, and any documentation it removed),
+  `drift.py` (docs that this change just made untrue);
 - confirm the relevant best-practices were actually applied (not just cited).
-Record the green quality report so the Stop gate can pass.
+Record the green quality report so the Stop gate can pass. `report.py record`
+runs the tests, the runtime harness and the scanners itself, so a report is
+evidence of what happened rather than a summary of what you intended.
 
 ## Phase 5b: Update the living knowledge (mandatory)
 Documentation is part of "done". Using the `docs-living` skill:
@@ -152,12 +171,23 @@ Documentation is part of "done". Using the `docs-living` skill:
 - Record an ADR for any significant or autonomously-taken decision:
   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/adr.py" new "<title>" --status accepted --context "..." --decision "..." --consequences "..."`.
 - Keep `docs/README.md` indexed.
+- Check it, rather than believing it:
+  `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge_check.py"`. It asks whether
+  the changelog recorded this change, whether any document moved with the
+  behaviour, and whether this change *removed* documentation. The third is the
+  one nobody catches by reading a diff, because every other scan reads added
+  lines. `report.py record` runs it too, so an unresolved finding here is a
+  report that will not go green.
 
 In `contributor` mode the rule is *join what exists, create nothing new*: update
 the project's `/docs` and `CHANGELOG.md` if it has them, on its terms, and let
 `changelog.py` and `adr.py` place the rest under `.claude/.praxis/knowledge/`.
 Both print the path they wrote; read it and report it accurately rather than
-claiming the project's changelog was updated when it was not.
+claiming the project's changelog was updated when it was not. The guard now
+refuses the write outright: creating a `CHANGELOG.md`, a `/docs` skeleton or a
+`CLAUDE.md` that the project never had is blocked at the file tool, at the shell,
+and at the index, because a pull request carrying one asks reviewers to accept a
+convention they never discussed.
 
 ## Phase 6: Report (precise, linear, structured)
 End with the canonical praxis report. Keep it scannable and complete:
@@ -196,6 +226,11 @@ user-facing surface. The report is not green without them.)
 
 ### Tests
 - <what was added/updated>; result of <test command>.
+
+### Verified by running it
+- <what you actually executed or drove, and what you observed>
+- <anything you could NOT verify, and why> (say this plainly; an honest gap is
+  actionable, a vague "verified" is a defect the user meets later)
 
 ### Docs & knowledge
 - Docs updated: <files under /docs>

@@ -123,6 +123,14 @@ complement.
   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/doctor.py"`, which reports whether the
   local state is genuinely excluded rather than assuming it.
 
+**A praxis config file is optional in both modes, and a bootstrap that does not
+write one has not failed.** praxis runs from its defaults, so a repository with
+no config is configured; the file exists to *version a deviation* from them. In
+`contributor` mode the committed `.praxis.toml` is not ours to write at all, and
+the local `.claude/.praxis/praxis.toml` is written only when there is a per-clone
+choice to record. `config.py status` and `doctor.py` name the layers that exist
+and the one praxis would write here, so this never has to be guessed.
+
 ## Step 6: Living knowledge (/docs, CHANGELOG, ADRs)
 In `owner` mode every repo must have a `/docs` tree and a `CHANGELOG.md`. If
 missing, scaffold them (use the `docs-living` skill and the templates):
@@ -137,6 +145,10 @@ In `contributor` mode, create none of these. Join what the project already has,
 following its conventions, and keep anything else under
 `.claude/.praxis/knowledge/`, which mirrors the same layout. `changelog.py` and
 `adr.py` already resolve this for you: run them and read the path they print.
+This is enforced, not advised: the guard refuses to create or commit a
+`CHANGELOG.md`, a `/docs` skeleton, a `CLAUDE.md` or a `.praxis.toml` the project
+does not have, whether the write comes from the file tool, the shell, or `git
+add`. Editing one the project *does* have stays right and is untouched.
 
 ## Step 7: Capabilities (propose, don't force)
 - **LSP**: if the language has an LSP the user could enable for automatic

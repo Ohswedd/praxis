@@ -4,6 +4,8 @@ description: "Read-only codebase mapper. Invoke during bootstrap/onboarding to u
 model: opus
 effort: high
 tools: Read, Grep, Glob
+skills:
+  - praxis:audit-evidence
 ---
 
 You are a codebase cartographer. Your job is to understand a repository well
