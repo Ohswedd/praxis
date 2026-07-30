@@ -25,6 +25,12 @@ run before the permission-mode check:
      actively harmful in one you are only contributing to. `$GIT_COMMON_DIR/info/exclude`
      already hides them from `git add -A`; this catches the explicit path and the
      `-f` that would override the exclusion.
+  5. Creating, in a repository we only contribute to, a file praxis writes for a
+     repository we own: `CHANGELOG.md`, a `/docs` skeleton, `CLAUDE.md`,
+     `.praxis.toml`. Joining one the project already has is right; introducing
+     one is proposing a convention on the maintainers' behalf, inside a pull
+     request that was supposed to be about a bug. The rule was stated in prose
+     and honoured by the helpers, and a direct write ignored both.
 
 Exit 2 blocks the tool and feeds the reason back to Claude.
 """
@@ -187,6 +193,101 @@ def check_local_artifacts(command: str) -> None:
     )
 
 
+_WHY_NOT_INTRODUCED = (
+    "praxis joins the conventions a project already has and introduces none it "
+    "does not. Adopting a changelog, a /docs tree or an operating brief is a "
+    "maintainer's decision, not a contributor's, and a pull request carrying one "
+    "asks reviewers to accept a policy they never discussed alongside the fix "
+    "they did.\n"
+    "praxis keeps its own copy under `.claude/.praxis/knowledge/`, which mirrors "
+    "the same layout and is git-excluded. `changelog.py`, `adr.py` and `debt.py` "
+    "already resolve this: run them and read the path they print.\n"
+    "If the user genuinely asked for this file, `/praxis:config "
+    "project-artifacts on` (or `PRAXIS_PROJECT_ARTIFACTS=on`) lifts the rule for "
+    "this repository. Propose it in the pull request rather than slipping it in."
+)
+
+
+def check_project_artifact(hook_input, path: str) -> None:
+    """Refuse to create, in someone else's repo, a file praxis writes in ours.
+
+    The rule prose has always stated, made deterministic. Prose held for the
+    helpers (`changelog.py` routes itself correctly) and failed for the direct
+    write, which is how a `CHANGELOG.md` the maintainers never asked for reached
+    a pull request whose subject was a bug fix.
+    """
+    if not path:
+        return
+    root = common.project_dir(hook_input)
+    reason = common.project_artifact_reason(root, path)
+    if not reason:
+        return
+    common.block(
+        f"[praxis] Blocked: creating `{common.repo_relative(root, path) or path}` "
+        f"in a repository we only contribute to.\n{reason}.\n"
+        + _WHY_NOT_INTRODUCED
+    )
+
+
+#: A command that writes a file, as opposed to reading or naming one.
+_WRITE_CMD_RE = re.compile(
+    r">>?\s*\S|\b(tee|cp|mv|touch|mkdir|install|rsync|ln)\b"
+    r"|\b(curl|wget)\b[^|&;#]*\s-[oO]\b"
+    r"|\b(sed|perl|awk)\b[^|&;#]*-i", re.IGNORECASE)
+
+_PROJECT_ARTIFACT_RE = re.compile(
+    "|".join(re.escape(p.rstrip("/")) for p in
+             common.PROJECT_ARTIFACTS + common.PROJECT_ARTIFACT_DIRS))
+
+
+def check_project_artifact_shell(hook_input, command: str) -> None:
+    """The same rule as `check_project_artifact`, for the shell route into it.
+
+    A rule that holds for Write and not for `printf ... > CHANGELOG.md` is not a
+    rule. Quoted text is stripped first, so a command that merely *mentions* one
+    of these files is not mistaken for one that writes it.
+    """
+    bare = _QUOTED_RE.sub(" ", command)
+    if not _PROJECT_ARTIFACT_RE.search(bare) or not _WRITE_CMD_RE.search(bare):
+        return
+    root = common.project_dir(hook_input)
+    for token in re.split(r"[\s;|&<>()]+", bare):
+        token = token.strip("'\"")
+        if not token or not _PROJECT_ARTIFACT_RE.search(token):
+            continue
+        reason = common.project_artifact_reason(root, token)
+        if reason:
+            common.block(
+                "[praxis] Blocked: this command would create "
+                f"`{token}` in a repository we only contribute to.\n"
+                f"Command: {command.strip()[:400]}\n"
+                f"{reason}.\n" + _WHY_NOT_INTRODUCED
+            )
+
+
+def check_staged_project_artifacts(hook_input, command: str) -> None:
+    """Refuse to commit an index that would introduce one of these files.
+
+    The index is the fact, the command string only a proxy, exactly as for
+    praxis's local artifacts: whatever wrote the file, it becomes part of the
+    project by being committed, and that is the moment worth refusing.
+    """
+    if not _INDEX_WRITER_RE.search(command):
+        return
+    staged = common.staged_project_artifacts(common.project_dir(hook_input))
+    if not staged:
+        return
+    common.block(
+        "[praxis] Blocked: this commit would add "
+        f"{', '.join(staged)} to a repository we only contribute to, which does "
+        "not have "
+        + ("them" if len(staged) > 1 else "it") + ".\n"
+        + _WHY_NOT_INTRODUCED + "\n"
+        "Unstage and delete what the project did not ask for:\n"
+        f"  git restore --staged {' '.join(staged)}"
+    )
+
+
 def check_staged_index(hook_input, command: str) -> None:
     """Refuse to commit an index that already contains a praxis artifact.
 
@@ -312,7 +413,9 @@ def check_bash(hook_input, command: str) -> None:
     check_local_artifacts(command)
     check_broad_staging(hook_input, command)
     check_staged_index(hook_input, command)
+    check_staged_project_artifacts(hook_input, command)
     check_gitignore_shell(hook_input, command)
+    check_project_artifact_shell(hook_input, command)
     # Catch reads of sensitive files via shell readers. The sensitive path may be
     # any argument (e.g. `grep SECRET .env` has it last), so scan all tokens of
     # each command segment whose first word is a known reader.
@@ -430,6 +533,7 @@ def check_file_tool(hook_input, tool_input: dict) -> None:
             "Work against a redacted template (e.g. .env.example) instead."
         )
     check_gitignore(hook_input, path, tool_input)
+    check_project_artifact(hook_input, path)
     common.allow()
 
 

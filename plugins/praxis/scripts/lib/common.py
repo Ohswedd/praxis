@@ -1021,6 +1021,42 @@ def project_artifact_reason(root: Path, path) -> str:
     return ""
 
 
+def staged_project_artifacts(root: Path) -> List[str]:
+    """Project artifacts this commit would ADD to a repo that does not have them.
+
+    The last line of defence, and the one that actually holds. Refusing the write
+    stops the ordinary case; this stops every route around it, because whatever
+    created the file, it becomes the project's only by being committed.
+
+    Additions are asked of git (`--diff-filter=A`), so a file the repository
+    already tracks is never mistaken for one praxis introduced, and membership of
+    a directory is read from HEAD rather than the index: `git ls-files` counts
+    what was just staged, which would make the first new ADR prove that
+    `docs/adr/` was already the project's convention.
+    """
+    if not is_contributor(root) or switch_on(root, "project-artifacts"):
+        return []
+    out = _run(["git", "diff", "--cached", "--diff-filter=A", "--name-only"],
+               cwd=root, timeout=15)
+    found = []
+    for rel in {f.strip() for f in out.splitlines() if f.strip()}:
+        if rel in PROJECT_ARTIFACTS:
+            found.append(rel)
+            continue
+        for parent in PROJECT_ARTIFACT_DIRS:
+            if rel.startswith(parent) and not _tracked_in_head(root, parent):
+                found.append(rel)
+                break
+    return sorted(found)
+
+
+def _tracked_in_head(root: Path, prefix: str) -> bool:
+    """True if the last commit already contains a file under `prefix`."""
+    out = _run(["git", "ls-tree", "-r", "--name-only", "HEAD", "--", prefix],
+               cwd=root, timeout=15)
+    return bool(out.strip())
+
+
 # The block praxis manages inside the per-clone exclude file. Marked at both ends
 # so it can be rewritten or removed without disturbing anything else in there.
 LOCAL_EXCLUDE_BEGIN = "# >>> praxis local-only (managed) >>>"
