@@ -89,8 +89,22 @@ def checks(root: Path):
     out.append(("test evidence required", "yes" if cfg.get("gate.require_tests", True) else "no"))
     out.append(("UI verticals required on UI changes",
                 "yes" if cfg.get("gate.require_ui_verticals", True) else "no"))
+    out.append(("living knowledge required (docs + changelog move with behaviour)",
+                "yes" if cfg.get("gate.require_knowledge", True) else "no"))
+    out.append(("vertical verdicts must cite what they read",
+                "yes" if cfg.get("gate.require_evidence", True) else "no"))
+    runtime = common.detect_runtime_command(root)
+    required = "required on UI changes" if cfg.get("gate.require_runtime", True) else "optional"
+    out.append(("end-to-end harness",
+                f"`{runtime}` ({required})" if runtime
+                else "none detected (verify user-facing changes by hand)"))
     out.append(("auto-pilot", "ON" if common.autopilot_on(root) else "OFF"))
     out.append(("auto-bootstrap", "ON" if common.bootstrap_auto(root) else "OFF"))
+    if contributor:
+        out.append(("may create files the project never had",
+                    "YES (project-artifacts is on)"
+                    if common.switch_on(root, "project-artifacts")
+                    else "no (praxis joins what exists and introduces nothing)"))
     if common.is_git_repo(root):
         merge = "auto-merge ON" if common.auto_merge_on(root) else "PR only (human merges)"
         out.append((f"git delivery (base: {common.git_default_branch(root)})", merge))
@@ -98,7 +112,13 @@ def checks(root: Path):
                 "banned" if cfg.get("style.ban_em_dash", True) else "allowed"))
     out.append(("house style: AI attribution",
                 "banned" if cfg.get("style.ban_ai_attribution", True) else "allowed"))
-    out.append((".praxis.toml config", "present" if (root / ".praxis.toml").exists() else "defaults"))
+    # Named per mode, and named as optional. Reporting the owner-mode path
+    # unconditionally told a contributor their fully-configured local layer was
+    # "defaults", which is how a normal, complete setup came to look unfinished.
+    present = [label for label, p in common.config_layers(root) if p.exists()]
+    out.append(("praxis config (optional: praxis runs from defaults)",
+                ", ".join(present) if present
+                else f"none; version a choice in {common.config_target(root)}"))
     return out
 
 

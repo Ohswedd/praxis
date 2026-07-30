@@ -2,11 +2,12 @@
 """
 praxis settings, read and toggled in one place.
 
-praxis has four switches a user actually flips: auto-pilot (ask nothing, decide
+praxis has five switches a user actually flips: auto-pilot (ask nothing, decide
 by best-practice), auto-merge (praxis merges its own PRs, or a human does),
-auto-bootstrap (set an unmanaged repo up on its own), and the Stop gate. Each
-used to have its own script and its own command, which made the surface larger
-without making anything clearer, and left some with no command at all.
+auto-bootstrap (set an unmanaged repo up on its own), the Stop gate, and, in
+contributor mode only, whether praxis may create a file the project never had.
+Each used to have its own script and its own command, which made the surface
+larger without making anything clearer, and left some with no command at all.
 
 Every switch resolves the same way, most specific first:
 
@@ -29,6 +30,11 @@ Usage:
     config.py auto-merge on|off
     config.py bootstrap  on|off
     config.py gate       on|off
+    config.py project-artifacts on|off    # contributor mode only
+
+Every setting also has a `.praxis.toml` key, and the file itself is optional:
+praxis runs from the defaults, so a repository without one is configured rather
+than unfinished. `status` names the layer that is actually in force.
 """
 
 from __future__ import annotations
@@ -64,6 +70,11 @@ DESCRIPTIONS = {
     "gate": ("ON: the Stop hook holds the turn open until the change is audited "
              "and any open task is finished.",
              "OFF: praxis can end a turn with the change unreviewed."),
+    "project-artifacts": ("ON: praxis may create files this project never had "
+                          "(CHANGELOG.md, a /docs skeleton, CLAUDE.md). Turn it "
+                          "on only when the maintainers asked for one.",
+                          "OFF: praxis joins the conventions the project already "
+                          "has and introduces none it does not."),
 }
 
 MODE_DESCRIPTIONS = {
@@ -143,27 +154,45 @@ def status(root: Path) -> int:
           f"settings={common.settings_path(root).relative_to(root)}  "
           f"knowledge={_knowledge_label(root)}")
     for switch in SWITCHES:
+        # Only meaningful where praxis is otherwise forbidden to write, so it
+        # would be a line of noise in every repository a user actually owns.
+        if switch == "project-artifacts" and mode != common.CONTRIBUTOR:
+            continue
         value, source = resolve(root, switch)
         state = "ON " if value else "OFF"
-        print(f"  {switch:<11} {state}  (from {source})")
+        print(f"  {switch:<17} {state}  (from {source})")
         print(f"              {DESCRIPTIONS[switch][0 if value else 1]}")
     cfg = common.read_config(root)
-    print(f"  {'test evidence':<11} {'required' if cfg.get('gate.require_tests') else 'optional'}"
-          f"  (gate.require_tests)")
-    print(f"  {'UI verticals':<11} "
-          f"{'required' if cfg.get('gate.require_ui_verticals') else 'optional'} on UI changes"
-          f"  (gate.require_ui_verticals)")
-    print(f"  {'em dashes':<11} {'banned' if cfg.get('style.ban_em_dash') else 'allowed'}"
+    for label, key, suffix in (
+            ("test evidence", "gate.require_tests", ""),
+            ("UI verticals", "gate.require_ui_verticals", " on UI changes"),
+            ("living knowledge", "gate.require_knowledge",
+             " (docs and changelog move with the behaviour)"),
+            ("audit evidence", "gate.require_evidence",
+             " (each verdict cites what it read)"),
+            ("runtime check", "gate.require_runtime",
+             " on UI changes, when the project has an e2e harness")):
+        print(f"  {label:<17} {'required' if cfg.get(key) else 'optional'}{suffix}"
+              f"  ({key})")
+    print(f"  {'em dashes':<17} {'banned' if cfg.get('style.ban_em_dash') else 'allowed'}"
           f"  (style.ban_em_dash)")
-    print(f"  {'AI credits':<11} "
+    print(f"  {'AI credits':<17} "
           f"{'banned' if cfg.get('style.ban_ai_attribution') else 'allowed'}"
           f"  (style.ban_ai_attribution)")
     if common.is_git_repo(root):
-        print(f"  {'PR base':<11} {common.git_default_branch(root)}  (git.default_branch)")
-    print("\nToggle: config.py <autopilot|auto-merge|bootstrap|gate> <on|off>, "
+        print(f"  {'PR base':<17} {common.git_default_branch(root)}  (git.default_branch)")
+    present = [label for label, p in common.config_layers(root) if p.exists()]
+    # Said explicitly because its absence reads as a failed setup otherwise: a
+    # repository with no config file is configured, from the defaults above.
+    print(f"  {'config file':<17} "
+          + (", ".join(present) if present
+             else "none (optional; praxis runs from defaults)"))
+    toggles = "|".join(s for s in SWITCHES
+                       if s != "project-artifacts" or mode == common.CONTRIBUTOR)
+    print(f"\nToggle: config.py <{toggles}> <on|off>, "
           "or config.py mode <owner|contributor|auto>.\n"
-          "Version a permanent choice in .praxis.toml instead of a toggle file "
-          "(in contributor mode, in .claude/.praxis/praxis.toml, which is local).")
+          f"Version a permanent choice in {common.config_target(root)} instead of "
+          "a toggle file.")
     return 0
 
 

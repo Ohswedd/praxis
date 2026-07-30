@@ -1712,6 +1712,17 @@ def config_layers(root: Path) -> list:
              root / ".claude" / ".praxis" / LOCAL_CONFIG)]
 
 
+def config_target(root: Path) -> str:
+    """The config file praxis would write in this repository.
+
+    Optional in both modes, which is the part that needed saying out loud: praxis
+    runs entirely from its defaults, so a repo with no config file is configured,
+    not unfinished. In contributor mode the committed layer is not ours to write
+    at all, and the answer is the git-excluded one.
+    """
+    return config_layers(root)[1 if is_contributor(root) else 0][0]
+
+
 def read_config_sources(root: Path) -> tuple:
     """(config, {key: the layer that last set it}).
 
