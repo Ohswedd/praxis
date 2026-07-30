@@ -224,24 +224,74 @@ def has_green_report(root, sig) -> bool:
     # was framed as such, so the two UI auditors are part of its evidence.
     if missing_ui_verticals(root, rep):
         return False
+    return not report_gaps(root, rep)
+
+
+def report_gaps(root, rep) -> list:
+    """Why this report is not evidence, re-derived here rather than trusted.
+
+    `report.py` computes the same verdict when it writes the file, and this asks
+    again from the recorded evidence. Not redundancy: the report is a JSON file in
+    a directory anyone can write, and a gate that accepted `"status": "pass"` on
+    its own would be a gate whose whole guarantee is one hand-edited line away.
+    """
+    cfg = common.read_config(root)
+    # `or {}` because a hand-written report with a null evidence block would
+    # otherwise raise here, and an exception in this hook fails open.
+    ev = rep.get("evidence") or {}
+    gaps = []
+
     # Evidence requirement: if the repo has a test command, the report must record
     # a passing run that report.py actually executed, so a "green" report is
     # backed by a real result, not trust. Reports written before evidence was
     # verified (pre-1.5 schema) carry no `test_verified` flag and are rejected
     # rather than grandfathered: an unverifiable claim is not evidence.
     # Teams can relax this with `require_tests = false` in .praxis.toml.
-    if common.read_config(root).get("gate.require_tests", True) and common.detect_test_command(root):
-        # `or {}` because a hand-written report with a null evidence block would
-        # otherwise raise here, and an exception in this hook fails open.
-        ev = rep.get("evidence") or {}
+    if cfg.get("gate.require_tests", True) and common.detect_test_command(root):
         if ev.get("test_exit") not in (0,) or not ev.get("test_verified"):
-            return False
+            gaps.append("the tests did not pass, or were never run by report.py")
         # A substituted command (`--tests true`) can exit 0 without running the
         # suite. Overriding is legitimate, so it is surfaced to the model rather
         # than silently accepted, but it does not buy a green gate on its own.
-        if ev.get("test_substituted"):
-            return False
-    return True
+        elif ev.get("test_substituted"):
+            gaps.append(f"the report ran `{ev.get('test_command')}` instead of the "
+                        f"project's `{ev.get('detected_test_command')}`")
+
+    # The deterministic scanners. Before they were recorded here, a green report
+    # was the way *past* them: the gate runs them only when no report exists.
+    scans = ev.get("scans")
+    if not isinstance(scans, dict) or not ev.get("scans_verified"):
+        gaps.append("the deterministic scanners were not run and recorded "
+                    "(re-record with report.py, which runs them itself)")
+    else:
+        for key, label, check in (
+                ("placeholders", "unfinished-work marker(s)", "unfinished work"),
+                ("style", "house-style violation(s)", "house style"),
+                ("knowledge", "living-knowledge gap(s)", "living knowledge")):
+            entry = scans.get(key) if isinstance(scans.get(key), dict) else {}
+            count = entry.get("count", 0)
+            if not entry.get("ran"):
+                gaps.append(f"the {check} scan could not run")
+            elif count and key == "knowledge":
+                if cfg.get("gate.require_knowledge", True) and not ev.get("knowledge_ack"):
+                    gaps.append(f"{count} {label}, neither fixed nor acknowledged")
+            elif count:
+                gaps.append(f"{count} {label} in this change")
+
+    runtime = ev.get("runtime") if isinstance(ev.get("runtime"), dict) else {}
+    if runtime.get("required") and runtime.get("exit") not in (0,):
+        gaps.append("the project's end-to-end harness did not pass on a change "
+                    "to what a user sees")
+
+    # A verdict nobody had to substantiate is a verdict nobody had to reach.
+    if cfg.get("gate.require_evidence", True):
+        verticals = ev.get("verticals") if isinstance(ev.get("verticals"), dict) else {}
+        recorded = (ev.get("vertical_evidence")
+                    if isinstance(ev.get("vertical_evidence"), dict) else {})
+        unbacked = sorted(k for k in verticals if k not in recorded)
+        if unbacked:
+            gaps.append("no recorded evidence for: " + ", ".join(unbacked))
+    return gaps
 
 
 def handle_per_change(root, session_id):
@@ -282,7 +332,8 @@ def handle_per_change(root, session_id):
     common.block(_escalating_message(
         root, sig, min(total, MAX_NUDGES),
         common.run_scanner("scan_placeholders.py", root, timeout=20),
-        common.run_scanner("scan_style.py", root, timeout=20)))
+        common.run_scanner("scan_style.py", root, timeout=20),
+        common.run_scanner("knowledge_check.py", root, timeout=20)))
 
 
 def _unchanged_since_session_start(root, sig) -> bool:
@@ -297,17 +348,24 @@ def _unchanged_since_session_start(root, sig) -> bool:
 
 
 def _cited(findings: list, limit: int = 10) -> list:
-    """Findings rendered as `- [marker] file:line  text` lines, capped."""
+    """Findings rendered as `- [marker] file:line  text` lines, capped.
+
+    Reads both scanner shapes: the line scanners report a `marker` and the text
+    they matched, the knowledge check reports a `kind` and what is missing.
+    """
     lines = []
     for f in findings[:limit]:
         loc = f"{f.get('file','?')}:{f.get('line','?')}"
-        lines.append(f"  - [{f.get('marker')}] {loc}  {f.get('text','')[:100]}")
+        label = f.get("marker") or f.get("kind") or "finding"
+        body = (f.get("text") or f.get("detail") or "")[:100]
+        lines.append(f"  - [{label}] {loc}  {body}")
     if len(findings) > limit:
         lines.append(f"  - ... and {len(findings) - limit} more")
     return lines
 
 
-def _escalating_message(root, sig, attempt: int, unfinished: list, style: list) -> str:
+def _escalating_message(root, sig, attempt: int, unfinished: list, style: list,
+                        knowledge: list) -> str:
     """The block reason, sharpening with each refusal.
 
     Escalation matters: a single generic reminder is easy to acknowledge and
@@ -344,6 +402,21 @@ def _escalating_message(root, sig, attempt: int, unfinished: list, style: list) 
             "co-author or generated-by credit outright. `praxis:ack` on the line "
             "exempts a case that is genuinely correct, such as a fixture that must "
             "contain the character."
+        )
+
+    if knowledge:
+        parts.append(
+            f"[praxis] BLOCKED: this change leaves {len(knowledge)} "
+            "living-knowledge gap(s). Documentation is part of done, not a "
+            "follow-up:"
+        )
+        parts += _cited(knowledge)
+        parts.append(
+            "Update the docs this change made untrue, record the "
+            "`[Unreleased]` entry (`changelog.py add --type <type> \"...\"`), and "
+            "restore anything a document lost. If one of these genuinely does not "
+            "apply, record the reason with `report.py record --knowledge-ack "
+            "\"<why>\"` so it stays in the report instead of disappearing."
         )
 
     ui_missing = missing_ui_verticals(root, common.read_state(root, REPORT))
@@ -444,16 +517,11 @@ def _report_status(root, sig=None) -> str:
     if ui_missing:
         return (f"The report is otherwise green but this change touches user-facing "
                 f"surface and carries no verdict for: {', '.join(ui_missing)}.\n")
-    if ev.get("test_substituted"):
-        return (f"The report ran `{ev.get('test_command')}` instead of the project's "
-                f"`{ev.get('detected_test_command')}`. Run the real suite; if the "
-                "override is correct (a monorepo package), say so to the user.\n")
-    if ev.get("test_exit") not in (0,):
-        return (f"The report is marked pass but its test evidence is "
-                f"exit={ev.get('test_exit')}: tests must actually pass.\n")
-    if not ev.get("test_verified"):
-        return ("The report carries no verified test run. Re-record it with "
-                "`report.py record` (it executes the test command itself).\n")
+    gaps = report_gaps(root, rep)
+    if gaps:
+        return ("The report is marked pass, but its own evidence says otherwise: "
+                + "; ".join(gaps) + ". Re-record it with `report.py record`, which "
+                "runs the tests and the scanners itself.\n")
     return "The recorded report is stale (older than 24h).\n"
 
 

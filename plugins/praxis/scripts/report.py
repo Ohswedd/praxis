@@ -73,9 +73,11 @@ TEST_TIMEOUT = 900
 #: because "this change genuinely needed no doc" is a real answer while "this
 #: placeholder is fine" is not.
 SCANNERS = (
-    ("placeholders", "scan_placeholders.py", "unfinished work"),
-    ("style", "scan_style.py", "house-style violations"),
-    ("knowledge", "knowledge_check.py", "living-knowledge gaps"),
+    ("placeholders", "scan_placeholders.py", "unfinished-work marker(s)",
+     "unfinished work"),
+    ("style", "scan_style.py", "house-style violation(s)", "house style"),
+    ("knowledge", "knowledge_check.py", "living-knowledge gap(s)",
+     "living knowledge"),
 )
 
 SCAN_TIMEOUT = 90
@@ -509,13 +511,13 @@ def _runtime_evidence(root, args, cfg) -> dict:
 def _scan_evidence(root):
     """Run every deterministic scanner and return (results, all_of_them_ran)."""
     scans, ran_all = {}, True
-    for key, script, label in SCANNERS:
+    for key, script, label, check in SCANNERS:
         ran, findings = run_scan(root, script)
         ran_all = ran_all and ran
         scans[key] = {"ran": ran, "count": len(findings),
                       "findings": findings[:MAX_RECORDED_FINDINGS]}
         if not ran:
-            print(f"praxis: {label} could not be checked, so this report cannot "
+            print(f"praxis: the {check} scan could not run, so this report cannot "
                   "be green. Fix the scanner or the environment and re-record.")
         elif findings:
             print(f"praxis: {len(findings)} {label} in this change:")
@@ -526,7 +528,7 @@ def _scan_evidence(root):
 def _blocking_scans(cfg, scans, ack: str):
     """Scanner results that keep the report from being green."""
     blocking = []
-    for key, _script, label in SCANNERS:
+    for key, _script, label, _check in SCANNERS:
         count = scans.get(key, {}).get("count", 0)
         if not count:
             continue
