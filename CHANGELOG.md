@@ -6,6 +6,8 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-07-31
+
 ### Added
 - knowledge_check.py: a change-scoped living-knowledge check (did the changelog record this change, did any document move with the behaviour, did the change remove documentation), run by report.py and named in the Stop gate's refusal
 - report.py vertical: each audit verdict is recorded with a summary and citations that praxis verifies resolve, and report.py record refuses a verdict the ledger does not carry (gate.require_evidence)
@@ -21,6 +23,8 @@ All notable changes to praxis are documented here. The format follows
 - contributor mode created and committed a CHANGELOG.md, a /docs skeleton, a CLAUDE.md or a .praxis.toml in projects that never had one. The guard now refuses at the file tool, the shell and the index; updating a file the project already has is unchanged
 - a setting configured only through the git-excluded .claude/.praxis/praxis.toml was reported as coming from 'default', and doctor.py reported the owner-mode config path in contributor mode, so a fully configured clone read as an unfinished setup
 - the Stop gate composed a refusal from three scanners at 20s each against a 30s hook timeout; an overrunning Stop hook is killed and a killed hook does not block, so the gate could silently stop gating. The scanners are now capped at 8s each and the hook is allowed 60s
+- report.py read a scanner that exited without printing as a clean result, so a crashed or missing scanner was recorded as 'ran, found nothing' and a report could go green over a real finding. The payload is now parsed strictly and a scanner that printed nothing is recorded as not run
+- the Stop gate diagnosed every failing report as 'no vertical verdicts were recorded', including one that failed on a scanner finding, a living-knowledge gap or a runtime check with all verdicts green, sending the reader back to work that could not clear it
 
 ## [3.1.1] - 2026-07-29
 

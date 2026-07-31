@@ -2481,6 +2481,82 @@ class TestScannersAreMeasuredByTheReport(GitRepoCase):
         self.record("--knowledge-ack", "a pure rename with no behaviour change at all")
         self.assertEqual(self.report()["status"], "fail")
 
+    def test_a_scanner_that_prints_nothing_is_not_recorded_as_clean(self):
+        """The exact failure this file exists to catch, so it must not fail open.
+
+        A scanner that dies before printing (a missing file, an import error, its
+        own fail-open exit) produces empty stdout. Read leniently that is an
+        empty result set, and a report goes green over a real finding.
+        """
+        sys.path.insert(0, str(SCRIPTS))
+        import report as report_mod
+        for script in ("no_such_scanner.py", "scan_placeholders.py"):
+            ran, findings = report_mod.run_scan(self.root, script)
+            if script.startswith("no_such"):
+                self.assertFalse(ran, "a missing scanner must not read as clean")
+                self.assertEqual(findings, [])
+            else:
+                self.assertTrue(ran)
+
+    def test_a_silent_exit_zero_is_recorded_as_did_not_run(self):
+        """The realistic shape: every scanner's fail-open handler exits 0 mutely.
+
+        `run_scan` resolves a scanner beside itself, so the probe has to live
+        there too. It is removed again in `finally`, including on failure.
+        """
+        sys.path.insert(0, str(SCRIPTS))
+        import report as report_mod
+        probe = SCRIPTS / "_silent_probe_scanner.py"
+        probe.write_text("import sys\nsys.exit(0)\n", encoding="utf-8")
+        try:
+            ran, findings = report_mod.run_scan(self.root, probe.name)
+            self.assertFalse(ran, "a silent exit 0 must not read as 'ran, clean'")
+            self.assertEqual(findings, [])
+            # And a well-formed payload from the same place still reads as ran.
+            probe.write_text('import json\nprint(json.dumps({"count": 0, '
+                             '"findings": []}))\n', encoding="utf-8")
+            self.assertEqual(report_mod.run_scan(self.root, probe.name), (True, []))
+        finally:
+            probe.unlink()
+
+    def _green_shaped_report(self, **evidence):
+        rep = {"signature": common.change_signature(self.root), "status": "pass",
+               "ts": time.time(),
+               "evidence": {"test_command": "", "test_exit": None,
+                            "test_verified": True, "scans_verified": True,
+                            "scans": {"placeholders": {"ran": True, "count": 0},
+                                      "style": {"ran": True, "count": 0},
+                                      "knowledge": {"ran": True, "count": 0}},
+                            "verticals": {"regression": "pass"},
+                            "vertical_evidence": {"regression": {"verdict": "pass"}}}}
+        rep["evidence"].update(evidence)
+        common.write_state(self.root, "quality_report.json", rep)
+        return run_script("quality_gate.py", self.payload(), self.root)
+
+    def test_a_scanner_that_did_not_run_keeps_the_report_from_being_green(self):
+        """The whole point: not-run must be as disqualifying as a finding."""
+        r = self._green_shaped_report(scans_verified=False)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("scanners were not run", r.stderr)
+
+    def test_one_scanner_that_did_not_run_is_named(self):
+        """Even with the summary flag set, a single dead scanner is disqualifying."""
+        r = self._green_shaped_report(
+            scans={"placeholders": {"ran": False, "count": 0},
+                   "style": {"ran": True, "count": 0},
+                   "knowledge": {"ran": True, "count": 0}})
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("unfinished work scan could not run", r.stderr)
+
+    def test_a_report_failed_by_a_scan_is_diagnosed_as_such(self):
+        """Not 'the auditors have to run': they did, and re-running cannot help."""
+        (self.root / "a.py").write_text("def f():\n    pass  # TODO: implement\n")  # praxis:ack
+        self.record()
+        r = run_script("quality_gate.py", self.payload(), self.root)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("unfinished-work marker", r.stderr)
+        self.assertNotIn("No vertical verdicts were recorded", r.stderr)
+
     def test_the_gate_rejects_a_report_with_no_scan_evidence(self):
         common.write_state(self.root, "quality_report.json", {
             "signature": common.change_signature(self.root),

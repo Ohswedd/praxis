@@ -343,17 +343,36 @@ def run_scan(root, script: str):
     scanner must not wedge a session; a *report* that failed open would state
     that a check passed when it never executed, which is the one thing this
     file exists not to do.
+
+    Which is why the parse is strict, and why it must stay that way. Reading the
+    output as `json.loads(out.stdout or "{}")` takes a scanner that died before
+    printing anything (a missing file, an import error, its own fail-open
+    `sys.exit(0)`) for a well-formed empty result, so the precise failure this
+    function exists to catch would be recorded as "ran, found nothing" and a
+    report would go green over a real finding. Every scanner prints its payload
+    on every path it takes, including when it is switched off, so no output at
+    all means it did not run.
     """
     path = os.path.join(os.path.dirname(os.path.abspath(__file__)), script)
+    out = None
     try:
         out = subprocess.run(
             [sys.executable, path, "--json"], capture_output=True, text=True,
             timeout=SCAN_TIMEOUT, cwd=str(root),
             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"})
-        findings = json.loads(out.stdout or "{}").get("findings", [])
-        return True, (findings if isinstance(findings, list) else [])
+        findings = json.loads(out.stdout)["findings"]
+        if not isinstance(findings, list):
+            raise TypeError(f"'findings' is {type(findings).__name__}, not a list")
+        return True, findings
     except Exception as exc:
-        print(f"praxis: {script} did not run ({exc.__class__.__name__}: {exc}).")
+        # The scanner's own last line of stderr is usually the whole diagnosis
+        # (a traceback's final frame, a missing module), and without it the
+        # reader is told only that something failed.
+        tail = ""
+        if out is not None and (out.stderr or "").strip():
+            tail = " | " + out.stderr.strip().splitlines()[-1][:200]
+        print(f"praxis: {script} did not run "
+              f"({exc.__class__.__name__}: {exc}){tail}")
         return False, []
 
 

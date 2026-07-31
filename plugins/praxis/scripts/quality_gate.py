@@ -286,8 +286,14 @@ def report_gaps(root, rep) -> list:
 
     runtime = ev.get("runtime") if isinstance(ev.get("runtime"), dict) else {}
     if runtime.get("required") and runtime.get("exit") not in (0,):
-        gaps.append("the project's end-to-end harness did not pass on a change "
-                    "to what a user sees")
+        # Name the escape with the finding: this is the one gap a user can hit
+        # with no failing test and no bad code, on a harness that is simply not
+        # runnable here, and a refusal with no way out is a trap.
+        gaps.append("the project's end-to-end harness "
+                    f"(`{runtime.get('command') or runtime.get('detected')}`) did "
+                    "not pass on a change to what a user sees. Fix it, pass a "
+                    "different `--runtime \"<cmd>\"`, or set `require_runtime = "
+                    "false` under [gate] and say why in your report")
 
     # A verdict nobody had to substantiate is a verdict nobody had to reach.
     if cfg.get("gate.require_evidence", True):
@@ -509,17 +515,28 @@ def _report_status(root, sig=None) -> str:
     ev = rep.get("evidence") or {}
     ui_missing = missing_ui_verticals(root, rep)
     if rep.get("status") != "pass":
-        failed = [k for k, v in (ev.get("verticals") or {}).items() if v != "pass"]
+        recorded = ev.get("verticals") or {}
+        failed = [k for k, v in recorded.items() if v != "pass"]
+        parts = []
         if failed:
-            detail = f" Failing vertical(s): {', '.join(failed)}."
-        elif ui_missing:
-            # Without this branch the message reads "no verdicts were recorded"
-            # for a report that recorded seven and is missing only the UI two.
-            detail = (f" It carries no verdict for {', '.join(ui_missing)}, which "
-                      "this change needs because it touches user-facing surface.")
-        else:
-            detail = " No vertical verdicts were recorded: the auditors have to run."
-        return f"The recorded report status is '{rep.get('status')}'.{detail}\n"
+            parts.append(f"Failing vertical(s): {', '.join(failed)}.")
+        elif not recorded:
+            parts.append("No vertical verdicts were recorded: the auditors have to run.")
+        if ui_missing:
+            # Without this the message reads "no verdicts were recorded" for a
+            # report that recorded seven and is missing only the UI two.
+            parts.append(f"It carries no verdict for {', '.join(ui_missing)}, which "
+                         "this change needs because it touches user-facing surface.")
+        # A report can now be 'fail' with every verdict green: a scanner finding,
+        # a living-knowledge gap, a failed runtime check, a verdict with no
+        # recorded evidence. Diagnosing all of those as "the auditors have to
+        # run" sends the model back to work that is already done and that cannot
+        # clear the actual blocker.
+        gaps = report_gaps(root, rep)
+        if gaps:
+            parts.append("; ".join(gaps) + ".")
+        return (f"The recorded report status is '{rep.get('status')}'. "
+                + " ".join(parts) + "\n")
     if ui_missing:
         return (f"The report is otherwise green but this change touches user-facing "
                 f"surface and carries no verdict for: {', '.join(ui_missing)}.\n")

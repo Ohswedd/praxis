@@ -76,7 +76,13 @@ Nothing was removed or renamed. Three behaviours are stricter, and each has an
 off switch: `gate.require_knowledge`, `gate.require_evidence`,
 `gate.require_runtime`. A report recorded by 3.1 carries no scan evidence and is
 rejected rather than grandfathered, on the same reasoning as 1.5's test evidence:
-an unverifiable claim is not evidence. Re-recording it is one command.
+an unverifiable claim is not evidence.
+
+Budget for the re-record honestly: at 3.2 defaults it is one
+`report.py vertical` per verdict (eight for a code change, ten when the change
+touches UI) followed by `report.py record`, because a verdict now has to carry
+the evidence behind it. With `require_evidence = false` it stays the single
+`report.py record` it was in 3.1.
 
 ## Added in 3.1 (non-breaking)
 | What | Why it matters |
