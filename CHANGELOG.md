@@ -6,6 +6,8 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-07-31
+
 ### Changed
 - the contributor-mode changelog check verifies freshness, not just existence. changelog.py records every entry it writes into .claude/.praxis/changelog_log.json, and knowledge_check requires one written since the change began, so a record from an earlier session no longer answers for today's work. Debt entry 2 is repaid; owner mode and repos with their own changelog are unchanged, since git already answers those exactly
 
