@@ -20,6 +20,7 @@ All notable changes to praxis are documented here. The format follows
 - recording a quality report was the way past the deterministic scanners: the Stop gate skips them whenever a green report exists, so unfinished work or an em dash could ship inside a change that reported itself clean. report.py now runs all three itself and cannot record green over an unresolved finding
 - contributor mode created and committed a CHANGELOG.md, a /docs skeleton, a CLAUDE.md or a .praxis.toml in projects that never had one. The guard now refuses at the file tool, the shell and the index; updating a file the project already has is unchanged
 - a setting configured only through the git-excluded .claude/.praxis/praxis.toml was reported as coming from 'default', and doctor.py reported the owner-mode config path in contributor mode, so a fully configured clone read as an unfinished setup
+- the Stop gate composed a refusal from three scanners at 20s each against a 30s hook timeout; an overrunning Stop hook is killed and a killed hook does not block, so the gate could silently stop gating. The scanners are now capped at 8s each and the hook is allowed 60s
 
 ## [3.1.1] - 2026-07-29
 
