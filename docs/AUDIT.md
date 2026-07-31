@@ -221,12 +221,30 @@ supposed to enforce it.
 - **The living-knowledge check is a floor, not a judgement.** It asks whether the
   documentation moved, not whether what was written is any good. The
   doc-reference auditor and human review remain responsible for that.
-- **The contributor changelog check is weaker off-repo.** When the record lives in
-  git-excluded local knowledge, no diff can see it, so the check verifies that an
-  `[Unreleased]` entry exists rather than that it describes today's work. Stated
-  in the script rather than dressed up.
 - **Runtime verification needs a harness.** In a project without one, praxis
   reports the gap and asks for a stated manual check, rather than inventing a
   command or adding a dependency the maintainers never agreed to.
 
 Suite grew 264 to 310 cases.
+
+### The one weakness this release shipped, and repaid
+
+v3.2.0 shipped with the contributor-mode changelog check verifying *existence*
+rather than *freshness*: where the record lives in git-excluded local knowledge,
+no diff can see it, so any non-empty `[Unreleased]` section passed, including one
+written three sessions earlier. It was recorded as debt entry 2 with its interest
+and its principal rather than left as a silent limitation, which is the whole
+argument for keeping a register.
+
+The principal has since been paid exactly as it was written. `changelog.py`
+records every entry it writes into `.claude/.praxis/changelog_log.json`, and the
+check asks whether a write happened since the change began
+(`common.change_started_at`: the base commit's time on a branch, HEAD's off one).
+The two failure modes are now told apart, because they need different fixes:
+nothing written at all, versus a record that belongs to earlier work.
+
+What is left is bounded and stated: a commit date has one-second resolution while
+a write is stamped to the microsecond, so an entry written moments before the
+commit it describes counts as part of it. That is the right way to be wrong. And
+a rebase moves the base forward and can age out an entry written before it;
+writing it again is what the branch's history now says happened.

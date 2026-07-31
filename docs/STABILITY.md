@@ -33,9 +33,10 @@ Versioning (breaking changes → a new MAJOR).
   `report.py record --knowledge-ack "<reason>"`, which records why a
   living-knowledge finding does not apply rather than dropping it.
 - **State files** under `.claude/.praxis/` (git-ignored):
-  `task.json`, `quality_report.json`, `audit_ledger.json`, `gate_notified.json`,
-  `repo_scan.json`, `autopilot`, `auto-merge`, `workspace`, `no-bootstrap`,
-  `allow-project-artifacts`, `praxis.toml`, and the `knowledge/` tree.
+  `task.json`, `quality_report.json`, `audit_ledger.json`, `changelog_log.json`,
+  `gate_notified.json`, `repo_scan.json`, `autopilot`, `auto-merge`, `workspace`,
+  `no-bootstrap`, `allow-project-artifacts`, `praxis.toml`, and the
+  `knowledge/` tree.
 - **Local artifacts** praxis writes in `contributor` mode, and never commits:
   `CLAUDE.local.md`, `.claude/settings.local.json`, and everything under
   `.claude/.praxis/`. praxis keeps them out of git with a marked block in

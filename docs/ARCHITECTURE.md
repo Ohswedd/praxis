@@ -135,8 +135,13 @@ nobody notices missing is the part that went missing. `knowledge_check.py` asks
 three change-scoped questions:
 
 - **Did the changelog move with the behaviour?** Resolved through the same
-  mode-aware path `changelog.py` writes, so a contributor's local record counts
-  and a project's own `CHANGELOG.md` is required to be part of the change.
+  mode-aware path `changelog.py` writes. A project's own `CHANGELOG.md` has to be
+  part of the change, which git answers exactly. A record kept under
+  `.claude/.praxis/knowledge/` appears in no diff, so `changelog.py` dates every
+  entry it writes and the check requires one written since the change began
+  (`change_started_at`: the base commit's time on a branch, HEAD's off one).
+  Asking only whether an entry existed was satisfied by one from three sessions
+  ago, which is the shape of a check that can be passed without doing the thing.
 - **Did any document move with it?** Not which one and not how much: the common
   failure is that none did.
 - **Did this change take documentation away?** A section deleted from a shrinking

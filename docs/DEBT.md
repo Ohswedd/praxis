@@ -26,7 +26,7 @@ Add with `debt.py add`, close with `debt.py paid <n>`.
 ## 2. The contributor-mode changelog check verifies existence, not freshness
 
 - Recorded: 2026-07-31
-- Status: open
+- Status: repaid 2026-07-31
 - Where: plugins/praxis/scripts/knowledge_check.py: check_changelog
 
 **Interest.** In contributor mode with no project CHANGELOG.md, the record lives in git-excluded local knowledge, which no diff can see. The check therefore passes on any non-empty [Unreleased] section, including one written three sessions ago, so a contributor can satisfy it without recording today's work. Owner mode and joined-changelog contributor repos are unaffected: there the check is exact.
@@ -34,3 +34,6 @@ Add with `debt.py add`, close with `debt.py paid <n>`.
 **Principal.** Have changelog.py stamp each write into praxis state (path, entry, timestamp, change signature) and have knowledge_check.py require an entry recorded at or after the current review base. Roughly a day, and it needs a state-schema addition that docs/STABILITY.md would have to cover.
 
 **Why it was taken on.** The exact check needs a new state file and a migration, and the weak check already closes the common case (a contributor who wrote no entry at all). Shipping the honest weaker version now, documented in the script and in docs/AUDIT.md, beats delaying the whole living-knowledge gate for the rarer one.
+
+**Repaid by.** The principal was paid as written. changelog.py now records every entry it writes into .claude/.praxis/changelog_log.json (path, type, message, timestamp, branch, head), and knowledge_check asks whether a write happened since common.change_started_at, which is the base commit's time on a branch and HEAD's off one. The two failure modes are told apart because they need different fixes: nothing written at all, versus a record that belongs to earlier work. The residue is bounded and documented: one-second commit-date resolution makes an entry written moments before its commit count as part of it, which is the correct direction, and a rebase can age out an earlier entry, where rewriting it is the honest fix.
+

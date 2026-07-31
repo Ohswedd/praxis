@@ -132,6 +132,17 @@ def add(root, ctype: str, message: str) -> None:
     # updated the repo's would report the wrong thing to the user.
     print(f"praxis: {common.rel_path(root, p)} [Unreleased] › {ctype}: {message}")
 
+    # When the record lives outside git (a project with no changelog of its own),
+    # this is the only evidence that it was written for *this* change rather than
+    # for some earlier one. The entry is on disk either way, so a failure here is
+    # reported rather than raised: it costs the living-knowledge check its
+    # evidence, and a user who is not told that cannot act on the refusal.
+    if not common.record_changelog_write(root, p, ctype, message):
+        print("praxis: WARNING, the entry was written but could not be recorded "
+              f"in .claude/.praxis/{common.CHANGELOG_LOG}. The living-knowledge "
+              "check reads that record, so it will report this change as having "
+              "no changelog entry until the state directory is writable.")
+
 
 def release(root, version: str) -> None:
     text = ensure(root)

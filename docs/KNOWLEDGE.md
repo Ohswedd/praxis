@@ -104,6 +104,14 @@ ordinary editing stays quiet.
   documentation. It is mode-aware (a project we only contribute to and has no
   `/docs` is never asked for one) and change-scoped, so a repo's pre-existing
   doc debt is never charged to whoever touched one file today.
+- **The changelog answer is evidence in both modes.** Where the project has its
+  own `CHANGELOG.md`, git sees whether this change touched it. Where praxis keeps
+  the record under `.claude/.praxis/knowledge/`, no diff can, so `changelog.py`
+  records each entry it writes and the check asks whether one was written since
+  this change began rather than whether any entry exists. An entry from an
+  earlier session no longer answers for today's work, and the refusal says which
+  of the two problems you have: nothing written, or a record that belongs to
+  earlier work.
 - **`report.py record` runs that check itself** and cannot write a green report
   over an unresolved finding. Before this, the living-knowledge contract existed
   only in prose, and prose is exactly what gets skipped at the end of a long
