@@ -582,13 +582,19 @@ def changed_line_counts(root: Path) -> Dict[str, tuple]:
                 continue
             have = counts.get(path, (0, 0))
             counts[path] = (have[0] + int(added), have[1] + int(removed))
+    # Bounded like `added_line_pairs`: a repo that has not ignored its build
+    # output lists thousands of untracked files, and this runs inside a hook.
+    budget = MAX_UNTRACKED_BYTES
     for rel in untracked_files(root):
+        if budget <= 0:
+            break
         if not is_scannable(root, rel):
             continue
         try:
             body = (root / rel).read_text(encoding="utf-8", errors="ignore")
         except Exception:
             continue
+        budget -= len(body)
         counts[rel] = (len(body.splitlines()), 0)
     return counts
 

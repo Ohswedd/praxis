@@ -58,6 +58,12 @@ MAX_NUDGES = 3
 # keeps re-keying the per-state counter) can never loop indefinitely.
 SESSION_NUDGE_CAP = 12
 
+# Per-scanner ceiling when composing a refusal. Three scanners run there, and a
+# Stop hook that overruns its timeout is killed, which does not block: the budget
+# has to hold for all of them together or the gate silently stops being a gate.
+# `hooks.json` allows 60s for this hook; 3 x 8 leaves the rest for git.
+SCAN_TIMEOUT = 8
+
 
 def gate_disabled(root) -> bool:
     """The one question this hook asks before anything else.
@@ -331,9 +337,9 @@ def handle_per_change(root, session_id):
     # counter would restart at 1 every turn and the refusal would never sharpen.
     common.block(_escalating_message(
         root, sig, min(total, MAX_NUDGES),
-        common.run_scanner("scan_placeholders.py", root, timeout=20),
-        common.run_scanner("scan_style.py", root, timeout=20),
-        common.run_scanner("knowledge_check.py", root, timeout=20)))
+        common.run_scanner("scan_placeholders.py", root, timeout=SCAN_TIMEOUT),
+        common.run_scanner("scan_style.py", root, timeout=SCAN_TIMEOUT),
+        common.run_scanner("knowledge_check.py", root, timeout=SCAN_TIMEOUT)))
 
 
 def _unchanged_since_session_start(root, sig) -> bool:

@@ -212,13 +212,39 @@ def verify_citation(root, raw: str):
     first, last = int(start), int(end or start)
     if first < 1 or last < first:
         return False, f"`{raw}` is not a line range"
-    try:
-        total = len(target.read_text(encoding="utf-8", errors="ignore").splitlines())
-    except Exception as exc:
-        return False, f"`{rel}` could not be read ({exc.__class__.__name__})"
+    total = _count_lines(target)
+    if total is None:
+        return False, f"`{rel}` could not be read"
     if last > total:
         return False, f"`{rel}` has {total} line(s), so line {last} does not exist"
     return True, f"{rel}:{span}"
+
+
+def _count_lines(target) -> "int | None":
+    """Lines in a file, counted in chunks. None if it could not be read.
+
+    Streamed rather than `read_text().splitlines()`: a citation is a string the
+    caller chose, so it can name the repo's largest artifact, and a verifier that
+    pulls a few hundred megabytes into memory to check a line number is a worse
+    problem than the one it is checking.
+    """
+    total = 0
+    try:
+        with open(target, "rb") as fh:
+            while True:
+                chunk = fh.read(1 << 20)
+                if not chunk:
+                    break
+                total += chunk.count(b"\n")
+            # A final line with no trailing newline is still a line.
+            fh.seek(0, os.SEEK_END)
+            if fh.tell():
+                fh.seek(-1, os.SEEK_END)
+                if fh.read(1) != b"\n":
+                    total += 1
+    except Exception:
+        return None
+    return total
 
 
 def read_ledger(root) -> dict:

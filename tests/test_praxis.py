@@ -2389,6 +2389,16 @@ class TestVerticalEvidence(GitRepoCase):
                           "--evidence", "a.py:1")
         self.assertEqual(r.returncode, 1)
 
+    def test_the_line_count_agrees_with_splitlines_at_every_boundary(self):
+        """The streamed counter replaced read_text().splitlines(); it must match."""
+        sys.path.insert(0, str(SCRIPTS))
+        import report as report_mod
+        for body in (b"", b"a", b"\n", b"a\nb", b"a\nb\n", b"a\n\n\nb\n"):
+            f = self.root / "probe.txt"
+            f.write_bytes(body)
+            self.assertEqual(report_mod._count_lines(f),
+                             len(body.decode().splitlines()), body)
+
     def test_a_resolving_citation_is_recorded(self):
         r = self.vertical("regression", "--verdict", "pass",
                           "--summary", "Read every caller of a.py and found nothing broken.",
