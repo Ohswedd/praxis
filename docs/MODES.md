@@ -84,7 +84,7 @@ and may say either.
 Switching also adds or removes praxis's block in `$GIT_COMMON_DIR/info/exclude`,
 so the files match the verdict immediately.
 
-### Three layers keep it out of their history
+### Four layers keep it out of their history
 
 1. **Excluded.** The marked block in `$GIT_COMMON_DIR/info/exclude` (the file
    gitignore(5) reserves for per-clone patterns that are never shared) makes
@@ -105,9 +105,42 @@ so the files match the verdict immediately.
    pattern-matching and asks git. A `commit`, `push` or `stash` is refused while a
    praxis artifact is in the index, however it got there. This is the layer that
    actually holds; the two above it are what make the failure legible early.
+4. **Not created in the first place.** The three layers above contain praxis's
+   *own* files, and the thing that actually reached pull requests was not one of
+   them. A `CHANGELOG.md` written into a project that never had one is the
+   project's file: fully visible to `git status`, correctly staged by `git add
+   -A`, and completely outside every mechanism above. So the guard refuses to
+   create it. The list is the set praxis scaffolds for a repo it owns
+   (`CHANGELOG.md`, `CLAUDE.md`, `.praxis.toml`, `.mcp.json`,
+   `.claude/settings.json`, `docs/README.md`, `docs/ARCHITECTURE.md`,
+   `docs/DEBT.md`, and the contents of `docs/adr/`, `docs/design/` and
+   `.claude/{commands,skills,agents}/`), and the rule is narrow on purpose:
+
+   - only **creation**. Updating the project's own `CHANGELOG.md` is right, and a
+     pull request that skipped it is a worse pull request.
+   - only when the project **does not already have it**. A new ADR beside the
+     ADRs a project already keeps is joining its convention, not introducing one.
+   - only in `contributor` mode, and never for an ordinary file: `docs/api.md`
+     in a project with a `/docs` is just documentation.
+   - refused at the file tool, at the shell (`printf ... > CHANGELOG.md`), and at
+     the index, for the same reason as layer 3.
+
+   "Add a changelog to this project" is a legitimate request, so it has a switch
+   rather than a workaround: `/praxis:config project-artifacts on`, or
+   `PRAXIS_PROJECT_ARTIFACTS=on`.
 
 The session audit, the prompt router and every skill also state the mode and the
 artifact map, so the correct path is normally used first rather than caught last.
+
+### The config file is optional, in both modes
+
+praxis runs entirely from its defaults, so a repository with no `.praxis.toml` is
+configured rather than half-set-up, and a bootstrap that did not write one has
+not failed. The file exists to **version a deviation** from the defaults. In
+`contributor` mode the committed layer is not ours to write at all; the local
+`.claude/.praxis/praxis.toml` is written only when there is a per-clone choice to
+record. `config.py status` and `doctor.py` name the layers that exist and the one
+praxis would write here, so this never has to be inferred from a file's absence.
 
 ### Caveats worth knowing
 
@@ -243,12 +276,16 @@ the project's own style and stops.
 | Does the workflow engage? | always-on directive (SessionStart) + output style + per-prompt router (UserPromptSubmit); enforced by the change/task gate | Yes: the router names the skills each request needs, and the gate is keyed on real file changes |
 | Is the repo set up before work starts? | `repo_state` at SessionStart and on every actionable prompt | Yes (the instruction); the setup itself is Claude running the skill |
 | Does praxis leave a trace in a repo that is not yours? | `$GIT_COMMON_DIR/info/exclude`, the staging guard, and an index check before `commit`/`push`/`stash` | Yes: whatever staged it, the command that would publish it is refused |
+| Does praxis add a file the project never asked for? | the guard refuses to create or commit a `CHANGELOG.md`, `/docs` skeleton, `CLAUDE.md` or `.praxis.toml` the repo does not have | Yes: at the file tool, the shell, and the index |
 | Keep working until done | Stop gate + `task.json` (turn cap, `waiting`, `done`) | Yes |
 | No secrets / destructive ops | PreToolUse guard (holds even in auto mode) | Yes |
 | No placeholders / stubs / deferral | `scan_placeholders.py` over the branch's commits, the working tree and every untracked file (literal markers + deferral prose in comments) | Yes |
 | No em dash, no AI attribution | `scan_style.py` at the Stop gate; `guard_paths.py` at the commit/PR command | Yes |
 | UI changes get the UI audits | resolved from the changed file list, not from the request's wording | Yes |
 | Docs match the live configuration | `drift.py` at SessionStart, in the doctor, and in `/praxis:docs` | Yes (detection) |
+| Docs and changelog move with the behaviour | `knowledge_check.py`, run by `report.py record` and by the Stop gate | Yes: change-scoped, and it also catches documentation the change removed |
+| Are the audit's claims real? | `report.py` runs the tests, the e2e harness and the scanners itself; each vertical verdict needs a citation that resolves | Partly: a fabricated `file:line` is refused, but praxis cannot prove a subagent ran |
+| Does the product actually work? | the project's own end-to-end harness, run by `report.py` on user-facing changes | Yes where a harness exists; otherwise praxis reports the gap |
 | Actually run the audit | Stop gate escalates 3× with increasingly specific instructions before releasing | Yes |
 | Tests really passed | `report.py` executes the test command itself; unverified evidence is rejected | Yes |
 | Depth of reasoning | your `/effort` setting | You choose |

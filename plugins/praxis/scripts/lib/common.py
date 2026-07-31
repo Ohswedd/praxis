@@ -333,7 +333,7 @@ def committed_files(root: Path) -> List[str]:
     out = _run(["git", "diff", "--name-only", "--no-color", f"{base}...HEAD"],
                cwd=root, timeout=20)
     return [f.strip() for f in out.splitlines()
-            if f.strip() and not _is_praxis_state(f.strip())]
+            if f.strip() and not is_praxis_state(f.strip())]
 
 
 def git_status_porcelain(root: Path) -> List[str]:
@@ -367,11 +367,11 @@ def untracked_files(root: Path, limit: int = 2000) -> List[str]:
     tends to land.
     """
     out = _run(["git", "ls-files", "--others", "--exclude-standard"], cwd=root)
-    files = [f for f in out.splitlines() if f.strip() and not _is_praxis_state(f)]
+    files = [f for f in out.splitlines() if f.strip() and not is_praxis_state(f)]
     return files[:limit]
 
 
-def _is_praxis_state(path: str) -> bool:
+def is_praxis_state(path: str) -> bool:
     """True for praxis's own files, which are never part of the user's change.
 
     Covers every local artifact, not just the state directory. The exclusion in
@@ -410,7 +410,7 @@ _LOCK_FILES = {
 MAX_SCAN_BYTES = 400_000
 
 
-def _is_diff_scannable(rel: str) -> bool:
+def is_diff_scannable(rel: str) -> bool:
     """`is_scannable` by name alone, for a path known only from a diff header.
 
     The size test cannot apply: a deleted or since-modified path may not exist on
@@ -479,7 +479,7 @@ def added_line_pairs(root: Path) -> List[tuple]:
     for extra in _diff_sources(root):
         diff = _run(["git", "diff", "--unified=0", "--no-color"] + extra, cwd=root, timeout=20)
         for fname, lineno, text in _parse_diff_added(diff, root):
-            if fname and not _is_praxis_state(fname):
+            if fname and not is_praxis_state(fname):
                 add(fname, lineno, text)
 
     budget = MAX_UNTRACKED_BYTES
@@ -509,17 +509,21 @@ def _parse_diff_added(diff: str, root: Optional[Path] = None) -> List[tuple]:
     results: List[tuple] = []
     cur_file = None
     new_ln = 0
+    in_hunk = False
     for line in diff.splitlines():
-        if line.startswith("+++ b/"):
-            cur_file = line[6:].strip()
-            if root is not None and cur_file and not _is_diff_scannable(cur_file):
-                cur_file = None
-        elif line.startswith("+++ "):
-            cur_file = None          # /dev/null: a deletion has no added lines
+        # As in `removed_lines`: a `+++` header exists only before the first hunk
+        # of a file, and inside one it is an added line beginning with `++`.
+        if line.startswith("diff --git"):
+            cur_file, in_hunk = None, False
         elif line.startswith("@@"):
+            in_hunk = True
             m = re.search(r"\+(\d+)", line)
             new_ln = int(m.group(1)) if m else 0
-        elif line.startswith("+") and not line.startswith("+++"):
+        elif not in_hunk and line.startswith("+++ "):
+            cur_file = line[6:].strip() if line.startswith("+++ b/") else None
+            if root is not None and cur_file and not is_diff_scannable(cur_file):
+                cur_file = None
+        elif in_hunk and line.startswith("+"):
             results.append((cur_file, new_ln, line[1:]))
             new_ln += 1
     return results
@@ -540,15 +544,20 @@ def removed_lines(root: Path) -> Dict[str, List[str]]:
     for extra in _diff_sources(root, net=True):
         diff = _run(["git", "diff", "--unified=0", "--no-color"] + extra,
                     cwd=root, timeout=20)
-        cur = None
+        cur, in_hunk = None, False
         for line in diff.splitlines():
-            if line.startswith("--- a/"):
-                cur = line[6:].strip()
-                if not _is_diff_scannable(cur) or _is_praxis_state(cur):
+            # Headers only count before the first hunk of a file. Inside one,
+            # `---` is a deleted line whose content begins with `--`, which a
+            # markdown rule and a YAML document separator both do.
+            if line.startswith("diff --git"):
+                cur, in_hunk = None, False
+            elif line.startswith("@@"):
+                in_hunk = True
+            elif not in_hunk and line.startswith("--- "):
+                cur = line[6:].strip() if line.startswith("--- a/") else None
+                if cur and (not is_diff_scannable(cur) or is_praxis_state(cur)):
                     cur = None
-            elif line.startswith("--- "):
-                cur = None           # /dev/null: an addition has no removed lines
-            elif line.startswith("-") and not line.startswith("---") and cur:
+            elif in_hunk and cur and line.startswith("-"):
                 out.setdefault(cur, []).append(line[1:])
     return out
 
@@ -569,7 +578,7 @@ def changed_line_counts(root: Path) -> Dict[str, tuple]:
                 continue
             added, removed, path = parts[0], parts[1], parts[2].strip()
             # git writes "-" for a binary file, where a line count is meaningless.
-            if not added.isdigit() or not removed.isdigit() or _is_praxis_state(path):
+            if not added.isdigit() or not removed.isdigit() or is_praxis_state(path):
                 continue
             have = counts.get(path, (0, 0))
             counts[path] = (have[0] + int(added), have[1] + int(removed))
@@ -608,7 +617,7 @@ def changed_files(root: Path) -> List[str]:
         out = _run(["git", "diff", "--name-only", "--no-color"] + extra, cwd=root, timeout=20)
         files.update(f.strip() for f in out.splitlines() if f.strip())
     files.update(untracked_files(root))
-    result = sorted(f for f in files if f and not _is_praxis_state(f))
+    result = sorted(f for f in files if f and not is_praxis_state(f))
     _CHANGED_FILES_CACHE[key] = result
     return result
 
@@ -903,7 +912,7 @@ def staged_local_artifacts(root: Path) -> List[str]:
     """
     out = _run(["git", "diff", "--cached", "--name-only"], cwd=root, timeout=15)
     return sorted({f.strip() for f in out.splitlines()
-                   if f.strip() and _is_praxis_state(f.strip())})
+                   if f.strip() and is_praxis_state(f.strip())})
 
 
 def tracked_local_artifacts(root: Path) -> List[str]:
@@ -1840,7 +1849,7 @@ def change_signature(root: Path) -> str:
         # Praxis's own state dir must never affect the code-change signature,
         # even when the repo hasn't git-ignored it yet.
         path_part = ln[3:].strip().strip('"')
-        if _is_praxis_state(path_part):
+        if is_praxis_state(path_part):
             continue
         parts.append(ln)
         # include mtime/size so edits to the same path re-key the signature

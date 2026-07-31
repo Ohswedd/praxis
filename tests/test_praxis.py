@@ -49,6 +49,34 @@ def run_script(name, payload, project_dir, extra_env=None):
     )
 
 
+def script_env(project_dir):
+    return {**os.environ, "CLAUDE_PROJECT_DIR": str(project_dir),
+            "CLAUDE_PLUGIN_ROOT": str(PLUGIN)}
+
+
+def record_vertical(root, name, evidence, verdict="pass", summary=None):
+    """Put one auditor verdict in the evidence ledger, the way an audit would."""
+    return sh([sys.executable, str(SCRIPTS / "report.py"), "vertical", name,
+               "--verdict", verdict,
+               "--summary", summary or f"Examined the {name} concern across every "
+                                       "file in this change and found nothing open.",
+               "--evidence", evidence], env=script_env(root))
+
+
+def satisfy_knowledge(root):
+    """Give a change the living knowledge it owes, so other checks can be tested.
+
+    A fixture exercising the test evidence should fail for a test reason, not
+    because the fixture repo has no changelog. Written rather than acknowledged:
+    an acknowledgement in a fixture would make the fixture prove less.
+    """
+    (root / "CHANGELOG.md").write_text(
+        "# Changelog\n\n## [Unreleased]\n\n### Changed\n- the thing under test\n")
+    docs = root / "docs"
+    docs.mkdir(exist_ok=True)
+    (docs / "README.md").write_text("# Docs\n\nWhat lives where.\n")
+
+
 class GitRepoCase(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
@@ -340,13 +368,17 @@ class TestEvidenceReport(GitRepoCase):
         sh(["git", "add", "-A"], cwd=self.tmp)
         sh(["git", "commit", "-qm", "mk"], cwd=self.tmp)
         (self.root / "a.py").write_text("x = 1\ny = 2\n")  # dirty
+        # Everything the report now measures beyond the test run, satisfied for
+        # real, so each case below fails for the reason it is actually testing.
+        satisfy_knowledge(self.root)
+        for name in ("regression", "completeness"):
+            record_vertical(self.root, name, "a.py:1")
 
     def set_test_target(self, recipe):
         (self.root / "Makefile").write_text(f"test:\n\t{recipe}\n")
 
     def env(self):
-        return {**os.environ, "CLAUDE_PROJECT_DIR": str(self.root),
-                "CLAUDE_PLUGIN_ROOT": str(PLUGIN)}
+        return script_env(self.root)
 
     def record(self, *extra):
         return sh([sys.executable, str(SCRIPTS / "report.py"), "record",
@@ -787,14 +819,19 @@ class TestChangeCollection(GitRepoCase):
 class TestUIVerticals(GitRepoCase):
     """A change to user-facing surface is design work, resolved from the files."""
 
+    def setUp(self):
+        super().setUp()
+        satisfy_knowledge(self.root)
+
     def env(self):
-        return {**os.environ, "CLAUDE_PROJECT_DIR": str(self.root),
-                "CLAUDE_PLUGIN_ROOT": str(PLUGIN)}
+        return script_env(self.root)
 
     def touch_ui(self):
         (self.root / "page.tsx").write_text("export const Page = () => <main>hi</main>;\n")
 
     def record(self, verticals):
+        for name in verticals.split(","):
+            record_vertical(self.root, name.split("=")[0], "a.py:1")
         return sh([sys.executable, str(SCRIPTS / "report.py"), "record",
                    "--verticals", verticals], env=self.env())
 
@@ -1253,9 +1290,9 @@ class TestLocalOnlyArtifacts(ContributorRepoCase):
     def test_a_local_artifact_is_never_part_of_the_users_change(self):
         """So a failed exclusion cannot make the gate audit praxis's own brief."""
         for rel in common.LOCAL_ARTIFACTS:
-            self.assertTrue(common._is_praxis_state(rel), rel)
-        self.assertFalse(common._is_praxis_state("src/app.py"))
-        self.assertFalse(common._is_praxis_state("CLAUDE.md"))
+            self.assertTrue(common.is_praxis_state(rel), rel)
+        self.assertFalse(common.is_praxis_state("src/app.py"))
+        self.assertFalse(common.is_praxis_state("CLAUDE.md"))
 
     def test_writing_the_block_is_idempotent_and_reversible(self):
         exclude = common.git_dir(self.root) / "info" / "exclude"
@@ -2164,6 +2201,441 @@ class TestLedgerMigration(GitRepoCase):
         r = sh([sys.executable, str(SCRIPTS / "repo_scan.py"), "mark", shard_id,
                 "debt"], env=env)
         self.assertEqual(r.returncode, 0, r.stdout)
+
+
+class TestKnowledgeCheck(GitRepoCase):
+    """Documentation is part of done, and now it is measured rather than urged."""
+
+    def check(self):
+        r = sh([sys.executable, str(SCRIPTS / "knowledge_check.py"), "--json"],
+               env=script_env(self.root))
+        return json.loads(r.stdout)["findings"]
+
+    def kinds(self):
+        return {f["kind"] for f in self.check()}
+
+    def commit_docs(self):
+        """Give the repo a changelog and a docs tree, in history rather than dirty."""
+        satisfy_knowledge(self.root)
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "docs"], cwd=self.tmp)
+
+    def test_behaviour_change_owes_a_changelog_and_a_doc(self):
+        self.commit_docs()
+        (self.root / "a.py").write_text("x = 2\n")
+        self.assertEqual(self.kinds(), {"changelog", "docs"})
+
+    def test_touching_them_settles_the_debt(self):
+        self.commit_docs()
+        (self.root / "a.py").write_text("x = 2\n")
+        (self.root / "CHANGELOG.md").write_text(
+            "# Changelog\n\n## [Unreleased]\n\n### Fixed\n- the bug\n")
+        (self.root / "docs" / "README.md").write_text("# Docs\n\nWhat lives where, now.\n")
+        self.assertEqual(self.check(), [])
+
+    def test_a_test_only_change_owes_nothing(self):
+        self.commit_docs()
+        (self.root / "tests").mkdir()
+        (self.root / "tests" / "test_a.py").write_text("def test_x():\n    assert True\n")
+        self.assertEqual(self.check(), [])
+
+    def test_a_docs_only_change_owes_nothing(self):
+        self.commit_docs()
+        (self.root / "docs" / "guide.md").write_text("# Guide\n\nHow to.\n")
+        self.assertEqual(self.check(), [])
+
+    def test_housekeeping_is_not_behaviour(self):
+        self.commit_docs()
+        (self.root / ".gitignore").write_text("build/\n")
+        self.assertEqual(self.check(), [])
+
+    def test_a_removed_section_in_a_shrinking_doc_is_a_regression(self):
+        self.commit_docs()
+        guide = self.root / "docs" / "guide.md"
+        guide.write_text("# Guide\n\n## Alpha\na\n\n## Beta\nb\n\n## Gamma\ng\n")
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "guide"], cwd=self.tmp)
+        guide.write_text("# Guide\n\n## Alpha\na\n\n## Gamma\ng\n")
+        findings = self.check()
+        self.assertEqual({f["kind"] for f in findings}, {"doc-regression"})
+        self.assertIn("Beta", findings[0]["detail"])
+
+    def test_a_section_that_merely_moved_is_not_a_regression(self):
+        self.commit_docs()
+        guide = self.root / "docs" / "guide.md"
+        guide.write_text("# Guide\n\n## Alpha\na\n\n## Beta\nb\n")
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "guide"], cwd=self.tmp)
+        guide.write_text("# Guide\n\n## Alpha\na\n")
+        (self.root / "docs" / "beta.md").write_text("# Beta doc\n\n## Beta\nb\n")
+        self.assertNotIn("doc-regression", self.kinds())
+
+    def test_a_deleted_document_is_a_regression(self):
+        self.commit_docs()
+        guide = self.root / "docs" / "guide.md"
+        guide.write_text("# Guide\n\n## Alpha\na\n\n## Beta\nb\n")
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "guide"], cwd=self.tmp)
+        guide.unlink()
+        findings = [f for f in self.check() if f["kind"] == "doc-regression"]
+        self.assertTrue(findings)
+        self.assertIn("deleted", findings[0]["detail"])
+
+    def test_a_deleted_line_starting_with_dashes_is_not_read_as_a_diff_header(self):
+        """`---` is a markdown rule and a YAML separator, not only a diff header.
+
+        The naive parser skips any removed line beginning with `---`, which in a
+        prose file is ordinary content. It also mattered the other way: an added
+        line starting with `++` was invisible to the placeholder scanner.
+        """
+        self.commit_docs()
+        guide = self.root / "docs" / "guide.md"
+        guide.write_text("# Guide\n\n---\n\n## Alpha\na\n\n## Beta\nb\n")
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "guide"], cwd=self.tmp)
+        guide.write_text("# Guide\n\n## Alpha\na\n")
+        removed = common.removed_lines(self.root)["docs/guide.md"]
+        self.assertIn("---", removed)
+        self.assertIn("## Beta", removed)
+
+    def test_an_added_line_beginning_with_plus_signs_is_still_scanned(self):
+        self.commit_docs()
+        (self.root / "b.js").write_text("let n = 0;\n++n;  // TODO: bounds\n")  # praxis:ack
+        found = [t for f, _, t in common.added_line_pairs(self.root) if f == "b.js"]
+        self.assertIn("++n;  // TODO: bounds", found)  # praxis:ack
+
+    def test_growing_a_document_while_renaming_a_heading_is_not_a_regression(self):
+        self.commit_docs()
+        guide = self.root / "docs" / "guide.md"
+        guide.write_text("# Guide\n\n## Alpha\na\n")
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "guide"], cwd=self.tmp)
+        guide.write_text("# Guide\n\n## Alpha, expanded\n" + "detail\n" * 20)
+        self.assertNotIn("doc-regression", self.kinds())
+
+
+class TestKnowledgeCheckContributor(ContributorRepoCase):
+    """Join what exists: a project with no /docs is not asked to grow one."""
+
+    def check(self):
+        r = sh([sys.executable, str(SCRIPTS / "knowledge_check.py"), "--json"],
+               env={**script_env(self.root), "PRAXIS_MODE": "contributor"})
+        return json.loads(r.stdout)["findings"]
+
+    def test_no_docs_tree_means_no_docs_finding(self):
+        (self.root / "app.py").write_text("x = 99\n")
+        self.assertNotIn("docs", {f["kind"] for f in self.check()})
+
+    def test_the_changelog_asked_for_is_the_local_one(self):
+        (self.root / "app.py").write_text("x = 99\n")
+        findings = [f for f in self.check() if f["kind"] == "changelog"]
+        self.assertTrue(findings)
+        self.assertIn(".claude/.praxis", findings[0]["file"])
+        self.assertFalse((self.root / "CHANGELOG.md").exists(),
+                         "the check must not create the file it asks about")
+
+    def test_a_project_that_has_docs_is_still_asked(self):
+        (self.root / "docs").mkdir()
+        (self.root / "docs" / "api.md").write_text("# API\n")
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "docs"], cwd=self.tmp)
+        (self.root / "app.py").write_text("x = 99\n")
+        self.assertIn("docs", {f["kind"] for f in self.check()})
+
+
+class TestVerticalEvidence(GitRepoCase):
+    """A verdict nobody had to substantiate is a verdict nobody had to reach."""
+
+    def vertical(self, *args):
+        return sh([sys.executable, str(SCRIPTS / "report.py"), "vertical", *args],
+                  env=script_env(self.root))
+
+    def test_a_citation_to_a_file_that_does_not_exist_is_refused(self):
+        r = self.vertical("regression", "--verdict", "pass",
+                          "--summary", "Read every caller and found nothing broken.",
+                          "--evidence", "src/imaginary.py:12")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("does not exist", r.stdout)
+
+    def test_a_line_past_the_end_of_the_file_is_refused(self):
+        r = self.vertical("regression", "--verdict", "pass",
+                          "--summary", "Read every caller and found nothing broken.",
+                          "--evidence", "a.py:900")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("does not exist", r.stdout)
+
+    def test_a_path_outside_the_repository_is_refused(self):
+        r = self.vertical("regression", "--verdict", "pass",
+                          "--summary", "Read every caller and found nothing broken.",
+                          "--evidence", "/etc/hosts")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("outside this repository", r.stdout)
+
+    def test_a_verdict_with_no_citation_is_refused(self):
+        r = self.vertical("regression", "--verdict", "pass",
+                          "--summary", "Read every caller and found nothing broken.")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("at least one citation", r.stdout)
+
+    def test_a_summary_that_says_nothing_is_refused(self):
+        r = self.vertical("regression", "--verdict", "pass", "--summary", "fine",
+                          "--evidence", "a.py:1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("at least", r.stdout)
+
+    def test_an_unknown_verdict_is_refused(self):
+        r = self.vertical("regression", "--verdict", "probably",
+                          "--summary", "Read every caller and found nothing broken.",
+                          "--evidence", "a.py:1")
+        self.assertEqual(r.returncode, 1)
+
+    def test_a_resolving_citation_is_recorded(self):
+        r = self.vertical("regression", "--verdict", "pass",
+                          "--summary", "Read every caller of a.py and found nothing broken.",
+                          "--evidence", "a.py:1,a.py")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        entry = common.read_state(self.root, "audit_ledger.json")["verticals"]["regression"]
+        self.assertEqual(entry["verdict"], "pass")
+        self.assertEqual(entry["evidence"], ["a.py:1", "a.py"])
+
+    def test_record_refuses_a_verdict_the_ledger_does_not_carry(self):
+        satisfy_knowledge(self.root)
+        record_vertical(self.root, "regression", "a.py:1")
+        r = sh([sys.executable, str(SCRIPTS / "report.py"), "record",
+                "--verticals", "regression=pass,adversarial=pass"],
+               env=script_env(self.root))
+        self.assertIn("no recorded evidence for: adversarial", r.stdout)
+        self.assertEqual(common.read_state(self.root, "quality_report.json")["status"],
+                         "fail")
+
+    def test_record_catches_a_claim_that_contradicts_its_evidence(self):
+        satisfy_knowledge(self.root)
+        record_vertical(self.root, "regression", "a.py:1", verdict="fail")
+        r = sh([sys.executable, str(SCRIPTS / "report.py"), "record",
+                "--verticals", "regression=pass"], env=script_env(self.root))
+        self.assertIn("contradicts its recorded evidence", r.stdout)
+        self.assertEqual(common.read_state(self.root, "quality_report.json")["status"],
+                         "fail")
+
+    def test_a_repo_can_opt_out(self):
+        satisfy_knowledge(self.root)
+        (self.root / ".praxis.toml").write_text("[gate]\nrequire_evidence = false\n")
+        sh([sys.executable, str(SCRIPTS / "report.py"), "record",
+            "--verticals", "regression=pass"], env=script_env(self.root))
+        self.assertEqual(common.read_state(self.root, "quality_report.json")["status"],
+                         "pass")
+
+
+class TestScannersAreMeasuredByTheReport(GitRepoCase):
+    """Recording a report used to be the way *past* the deterministic scans."""
+
+    def setUp(self):
+        super().setUp()
+        satisfy_knowledge(self.root)
+        record_vertical(self.root, "regression", "a.py:1")
+
+    def record(self, *extra):
+        return sh([sys.executable, str(SCRIPTS / "report.py"), "record",
+                   "--verticals", "regression=pass", *extra],
+                  env=script_env(self.root))
+
+    def report(self):
+        return common.read_state(self.root, "quality_report.json")
+
+    def test_an_unfinished_marker_in_the_change_fails_the_report(self):
+        (self.root / "a.py").write_text("def f():\n    pass  # TODO: implement\n")  # praxis:ack
+        r = self.record()
+        self.assertIn("unfinished-work marker", r.stdout)
+        self.assertEqual(self.report()["status"], "fail")
+        self.assertEqual(self.report()["evidence"]["scans"]["placeholders"]["count"], 1)
+
+    def test_a_house_style_violation_in_the_change_fails_the_report(self):
+        # praxis:ack on the next line: the fixture has to contain the violation.
+        (self.root / "a.py").write_text("# a comment — with an em dash\nx = 1\n")  # praxis:ack
+        self.record()
+        self.assertEqual(self.report()["status"], "fail")
+        self.assertGreaterEqual(self.report()["evidence"]["scans"]["style"]["count"], 1)
+
+    def test_a_knowledge_gap_fails_the_report_and_an_ack_records_the_reason(self):
+        (self.root / "a.py").write_text("x = 2\n")     # behaviour moved
+        (self.root / "CHANGELOG.md").unlink()          # the record did not
+        self.record()
+        self.assertEqual(self.report()["status"], "fail")
+        reason = "a pure rename with no behaviour, contract or interface change"
+        self.record("--knowledge-ack", reason)
+        self.assertEqual(self.report()["status"], "pass")
+        self.assertEqual(self.report()["evidence"]["knowledge_ack"], reason)
+
+    def test_an_ack_does_not_rescue_an_unfinished_marker(self):
+        (self.root / "a.py").write_text("def f():\n    pass  # TODO: implement\n")  # praxis:ack
+        self.record("--knowledge-ack", "a pure rename with no behaviour change at all")
+        self.assertEqual(self.report()["status"], "fail")
+
+    def test_the_gate_rejects_a_report_with_no_scan_evidence(self):
+        common.write_state(self.root, "quality_report.json", {
+            "signature": common.change_signature(self.root),
+            "status": "pass", "ts": time.time(),
+            "evidence": {"test_command": "", "test_exit": None, "test_verified": True,
+                         "verticals": {"regression": "pass"},
+                         "vertical_evidence": {"regression": {"verdict": "pass"}}},
+        })
+        r = run_script("quality_gate.py", self.payload(), self.root)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("deterministic scanners were not run", r.stderr)
+
+
+class TestRuntimeVerification(GitRepoCase):
+    """A unit suite proves a function; it does not prove the thing works."""
+
+    def test_detects_an_end_to_end_script(self):
+        (self.root / "package.json").write_text(
+            '{"scripts":{"test":"jest","test:e2e":"playwright test"}}\n')
+        self.assertEqual(common.detect_runtime_command(self.root), "npm run test:e2e")
+
+    def test_detects_a_playwright_config_without_a_script(self):
+        (self.root / "playwright.config.ts").write_text("export default {};\n")
+        self.assertEqual(common.detect_runtime_command(self.root), "npx playwright test")
+
+    def test_no_harness_reports_nothing_rather_than_inventing_one(self):
+        self.assertEqual(common.detect_runtime_command(self.root), "")
+
+    def test_a_ui_change_runs_the_harness_and_a_failure_blocks(self):
+        satisfy_knowledge(self.root)
+        (self.root / "package.json").write_text('{"scripts":{"e2e":"exit 1"}}\n')
+        (self.root / "page.tsx").write_text("export const P = () => <main>hi</main>;\n")
+        for name in ("regression", "accessibility", "design-consistency"):
+            record_vertical(self.root, name, "page.tsx:1")
+        sh([sys.executable, str(SCRIPTS / "report.py"), "record", "--runtime", "exit 1",
+            "--verticals", "regression=pass,accessibility=pass,design-consistency=pass"],
+           env=script_env(self.root))
+        rep = common.read_state(self.root, "quality_report.json")
+        self.assertTrue(rep["evidence"]["runtime"]["required"])
+        self.assertEqual(rep["evidence"]["runtime"]["exit"], 1)
+        self.assertEqual(rep["status"], "fail")
+        r = run_script("quality_gate.py", self.payload(), self.root)
+        self.assertEqual(r.returncode, 2)
+
+    def test_a_non_ui_change_owes_no_runtime_check(self):
+        satisfy_knowledge(self.root)
+        (self.root / "package.json").write_text('{"scripts":{"e2e":"exit 1"}}\n')
+        record_vertical(self.root, "regression", "a.py:1")
+        sh([sys.executable, str(SCRIPTS / "report.py"), "record",
+            "--verticals", "regression=pass"], env=script_env(self.root))
+        rep = common.read_state(self.root, "quality_report.json")
+        self.assertFalse(rep["evidence"]["runtime"]["required"])
+        self.assertEqual(rep["status"], "pass")
+
+
+class TestProjectArtifactGuard(ContributorRepoCase):
+    """Join what exists, create nothing new, enforced on every route into the file."""
+
+    def setUp(self):
+        super().setUp()
+        # The project's own docs, authored by the project. Committing them as us
+        # would put our address in `git log` and detection would (correctly) call
+        # the repo ours, which is not the case under test.
+        self._author(self.THEIRS, "maintainer")
+        self.commit_as_maintainer("docs/api.md", "# API\n")
+        self._author(self.OURS, "me")
+        common._DETECTED_MODE_CACHE.pop(str(self.root), None)
+
+    def commit_as_maintainer(self, rel, body):
+        target = self.root / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(body)
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", f"add {rel}"], cwd=self.tmp)
+
+    def guard(self, tool_input, tool="Bash", env=None):
+        return run_script("guard_paths.py",
+                          self.payload(tool_name=tool, tool_input=tool_input),
+                          self.root, extra_env=env)
+
+    def write(self, path, env=None):
+        return self.guard({"file_path": str(self.root / path)}, tool="Write", env=env)
+
+    def test_creating_a_changelog_the_project_never_had_is_refused(self):
+        r = self.write("CHANGELOG.md")
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("only contribute to", r.stderr)
+
+    def test_creating_a_brief_or_a_config_is_refused(self):
+        for path in ("CLAUDE.md", ".praxis.toml", "docs/ARCHITECTURE.md",
+                     "docs/adr/0001-x.md"):
+            self.assertEqual(self.write(path).returncode, 2, path)
+
+    def test_editing_what_the_project_already_has_is_allowed(self):
+        self.assertEqual(self.write("docs/api.md").returncode, 0)
+
+    def test_an_ordinary_new_file_is_allowed(self):
+        for path in ("docs/troubleshooting.md", "app2.py", "src/x.ts"):
+            self.assertEqual(self.write(path).returncode, 0, path)
+
+    def test_the_shell_route_is_refused_too(self):
+        r = self.guard({"command": "printf '# Changelog\\n' > CHANGELOG.md"})
+        self.assertEqual(r.returncode, 2)
+
+    def test_merely_naming_the_file_is_not_writing_it(self):
+        for cmd in ("git commit -m 'note: this project has no CHANGELOG.md'",
+                    "grep -r CHANGELOG.md .", "echo 'see CHANGELOG.md' > notes.txt"):
+            self.assertEqual(self.guard({"command": cmd}).returncode, 0, cmd)
+
+    def test_committing_one_that_slipped_through_is_refused(self):
+        (self.root / "CHANGELOG.md").write_text("# Changelog\n")
+        sh(["git", "add", "CHANGELOG.md"], cwd=self.tmp)
+        r = self.guard({"command": "git commit -m 'fix: the bug'"})
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("git restore --staged CHANGELOG.md", r.stderr)
+
+    def test_a_new_file_under_a_directory_the_project_has_is_allowed(self):
+        self._author(self.THEIRS, "maintainer")
+        self.commit_as_maintainer("docs/adr/0001-theirs.md", "# Theirs\n")
+        self._author(self.OURS, "me")
+        common._DETECTED_MODE_CACHE.pop(str(self.root), None)
+        self.assertEqual(self.write("docs/adr/0002-ours.md").returncode, 0)
+
+    def test_reading_a_file_that_is_not_there_is_not_a_violation(self):
+        """The rule is about creating a convention, not about a failed Read."""
+        r = self.guard({"file_path": str(self.root / "CHANGELOG.md")}, tool="Read")
+        self.assertEqual(r.returncode, 0)
+
+    def test_a_segment_that_only_names_the_file_is_not_writing_it(self):
+        """`git log -- CHANGELOG.md | tee out.txt` reads there and writes here."""
+        r = self.guard({"command": "git log --oneline -- CHANGELOG.md | tee out.txt"})
+        self.assertEqual(r.returncode, 0)
+
+    def test_the_switch_lifts_it_deliberately(self):
+        r = self.write("CHANGELOG.md", env={"PRAXIS_PROJECT_ARTIFACTS": "on"})
+        self.assertEqual(r.returncode, 0)
+
+    def test_owner_mode_is_untouched(self):
+        r = self.write("CHANGELOG.md", env={"PRAXIS_MODE": "owner"})
+        self.assertEqual(r.returncode, 0)
+
+
+class TestConfigLayerReporting(GitRepoCase):
+    """A setting's source is the layer that set it, not the file that exists."""
+
+    def test_the_local_layer_is_named_as_the_source(self):
+        state = common.state_dir(self.root)
+        (state / "praxis.toml").write_text("[gate]\nenabled = false\n")
+        value, source = common.resolve_switch(self.root, "gate")
+        self.assertFalse(value)
+        self.assertEqual(source, ".claude/.praxis/praxis.toml")
+
+    def test_the_local_layer_outranks_the_committed_one_in_the_report(self):
+        (self.root / ".praxis.toml").write_text("[gate]\nenabled = true\n")
+        state = common.state_dir(self.root)
+        (state / "praxis.toml").write_text("[gate]\nenabled = false\n")
+        value, source = common.resolve_switch(self.root, "gate")
+        self.assertFalse(value)
+        self.assertEqual(source, ".claude/.praxis/praxis.toml")
+
+    def test_an_unset_switch_still_reports_default(self):
+        self.assertEqual(common.resolve_switch(self.root, "gate")[1], "default")
+
+    def test_config_target_follows_the_mode(self):
+        self.assertEqual(common.config_target(self.root), ".praxis.toml")
 
 
 if __name__ == "__main__":

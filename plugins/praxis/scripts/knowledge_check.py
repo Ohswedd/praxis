@@ -94,7 +94,7 @@ def is_behaviour_file(rel: str) -> bool:
         return False
     if TEST_PATH_RE.search(rel):
         return False
-    return common._is_diff_scannable(rel)
+    return common.is_diff_scannable(rel)
 
 
 def doc_surfaces(root: Path, rel: str) -> bool:
@@ -137,7 +137,7 @@ def check_changelog(root: Path, behaviour: list) -> list:
 
     # Under the repo: the file is tracked, so "was it part of this change" is a
     # question git can answer exactly.
-    if rel and not common._is_praxis_state(rel):
+    if rel and not common.is_praxis_state(rel):
         if rel in common.changed_files(root):
             return []
         return [{

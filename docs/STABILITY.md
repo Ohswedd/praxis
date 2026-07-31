@@ -1,4 +1,4 @@
-# Stability & Public Surface (v3.1)
+# Stability & Public Surface (v3.2)
 
 From v1.0, the following surface is **stable** and changes to it follow Semantic
 Versioning (breaking changes → a new MAJOR).
@@ -8,34 +8,46 @@ Versioning (breaking changes → a new MAJOR).
   `/praxis:bootstrap`, `/praxis:doctor`, `/praxis:config`, `/praxis:discover`.
   Several take a mode as an argument: `task spec:`, `audit repo`,
   `ship release`, `config mode|autopilot|auto-merge|bootstrap|gate`.
-- **Config file:** `.praxis.toml`, keys `workspace.mode`, `bootstrap.auto`,
-  `gate.enabled`, `gate.require_tests`, `gate.require_ui_verticals`,
+- **Config file:** `.praxis.toml`, keys `workspace.mode`,
+  `workspace.allow_project_artifacts`, `bootstrap.auto`, `gate.enabled`,
+  `gate.require_tests`, `gate.require_ui_verticals`, `gate.require_knowledge`,
+  `gate.require_evidence`, `gate.require_runtime`,
   `autopilot.default`, `audit.depth`, `git.auto_merge`, `git.default_branch`,
   `style.ban_em_dash`, `style.ban_ai_attribution`. A second copy at
   `.claude/.praxis/praxis.toml` is read afterwards and overrides it; it is
-  git-excluded and is the only one praxis writes in `contributor` mode.
+  git-excluded and is the only one praxis writes in `contributor` mode. **The
+  file itself is optional in both modes**: praxis runs from the defaults above,
+  and its absence is not a failed setup.
 - **Environment variables:** `PRAXIS_MODE` (`owner` / `contributor`),
   `PRAXIS_GATE` (`off` disables the Stop gate), `PRAXIS_AUTOPILOT` (`on` enables
   auto-pilot), `PRAXIS_AUTO_MERGE` (`on` enables autonomous PR review-and-merge),
-  `PRAXIS_BOOTSTRAP` (`off` disables auto-bootstrap).
+  `PRAXIS_BOOTSTRAP` (`off` disables auto-bootstrap),
+  `PRAXIS_PROJECT_ARTIFACTS` (`on` lets contributor mode create a file the
+  project never had).
 - **Escapes:** `.claude/.praxis/skip-gate` (per-repo gate opt-out);
-  `.claude/.praxis/no-bootstrap` (per-repo auto-bootstrap opt-out); the
+  `.claude/.praxis/no-bootstrap` (per-repo auto-bootstrap opt-out);
+  `.claude/.praxis/allow-project-artifacts` (per-repo opt-in to creating a
+  project file in `contributor` mode); the
   `praxis:ack` inline annotation, which exempts one line from the placeholder
-  scanner, the house-style scanner, and the drift checker alike.
+  scanner, the house-style scanner, and the drift checker alike;
+  `report.py record --knowledge-ack "<reason>"`, which records why a
+  living-knowledge finding does not apply rather than dropping it.
 - **State files** under `.claude/.praxis/` (git-ignored):
-  `task.json`, `quality_report.json`, `gate_notified.json`, `repo_scan.json`,
-  `autopilot`, `auto-merge`, `workspace`, `no-bootstrap`, `praxis.toml`, and the
-  `knowledge/` tree.
+  `task.json`, `quality_report.json`, `audit_ledger.json`, `gate_notified.json`,
+  `repo_scan.json`, `autopilot`, `auto-merge`, `workspace`, `no-bootstrap`,
+  `allow-project-artifacts`, `praxis.toml`, and the `knowledge/` tree.
 - **Local artifacts** praxis writes in `contributor` mode, and never commits:
   `CLAUDE.local.md`, `.claude/settings.local.json`, and everything under
   `.claude/.praxis/`. praxis keeps them out of git with a marked block in
   `$GIT_COMMON_DIR/info/exclude`, and the PreToolUse guard refuses to stage them in
   either mode.
 - **Helper CLIs** (stable flags): `task_state.py` (including `--subtasks`,
-  `plan`, `subtask start|done`, `delivery`), `report.py`, `changelog.py`,
-  `adr.py`, `debt.py`, `scope.py`, `workspaces.py`, `config.py`, `doctor.py`,
-  `drift.py`, `scan_placeholders.py`, `scan_style.py`, `selfcheck.py` (including
-  `--require-repo`), `repo_scan.py`.
+  `plan`, `subtask start|done`, `delivery`), `report.py` (including `record`,
+  `vertical`, `show`, and the `--runtime` / `--knowledge-ack` flags),
+  `changelog.py`, `adr.py`, `debt.py`, `scope.py`, `workspaces.py`, `config.py`,
+  `doctor.py`, `drift.py`, `scan_placeholders.py`, `scan_style.py`,
+  `knowledge_check.py`, `selfcheck.py` (including `--require-repo`),
+  `repo_scan.py`.
 
 - **Install identifier:** marketplace `ohswedd-praxis`, plugin `praxis`, i.e.
   `/plugin install praxis@ohswedd-praxis`. Owner-scoped deliberately: a
@@ -48,6 +60,23 @@ Versioning (breaking changes → a new MAJOR).
   with the integration branch, plus the working tree and untracked files. On the
   integration branch itself there is no range, and the scope is the working tree
   alone.
+
+## Added in 3.2 (non-breaking surface, stricter gate)
+
+| What | Why it matters |
+| --- | --- |
+| `report.py` runs the deterministic scanners itself | recording a report was the way *past* them: the gate skips them once a green report exists, so a placeholder or a dropped document could ship inside a change that reported itself clean |
+| `report.py vertical` + the evidence ledger + `gate.require_evidence` | a vertical verdict was a string in a comma-separated list; now each one needs a summary and a citation that resolves, and a fabricated `file:line` is refused where it is still cheap to check |
+| `knowledge_check.py` + `gate.require_knowledge` | "documentation is part of done" was prose in four places and measured in none, and no scanner could see documentation a change *removed* |
+| Runtime verification + `gate.require_runtime` + the `runtime-verification` skill | a green unit suite does not say the page renders or the command exits zero |
+| The contributor-mode project-artifact guard + `workspace.allow_project_artifacts` | "join what exists, create nothing new" held for the helpers and not for a direct write, so a `CHANGELOG.md` the maintainers never asked for reached pull requests |
+| `audit-evidence`, preloaded into every auditor | the rule an auditor works under, in one place, like `review-scope` |
+
+Nothing was removed or renamed. Three behaviours are stricter, and each has an
+off switch: `gate.require_knowledge`, `gate.require_evidence`,
+`gate.require_runtime`. A report recorded by 3.1 carries no scan evidence and is
+rejected rather than grandfathered, on the same reasoning as 1.5's test evidence:
+an unverifiable claim is not evidence. Re-recording it is one command.
 
 ## Added in 3.1 (non-breaking)
 | What | Why it matters |

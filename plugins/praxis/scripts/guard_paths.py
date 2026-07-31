@@ -229,11 +229,12 @@ def check_project_artifact(hook_input, path: str) -> None:
     )
 
 
-#: A command that writes a file, as opposed to reading or naming one.
-_WRITE_CMD_RE = re.compile(
-    r">>?\s*\S|\b(tee|cp|mv|touch|mkdir|install|rsync|ln)\b"
-    r"|\b(curl|wget)\b[^|&;#]*\s-[oO]\b"
-    r"|\b(sed|perl|awk)\b[^|&;#]*-i", re.IGNORECASE)
+#: Commands whose arguments are files they write.
+_WRITE_COMMANDS = {"tee", "cp", "mv", "touch", "mkdir", "install", "rsync", "ln",
+                   "dd", "sed", "perl", "awk", "curl", "wget"}
+
+#: A redirection, which makes every path in its segment a candidate target.
+_REDIRECT_RE = re.compile(r">>?\s*\S")
 
 _PROJECT_ARTIFACT_RE = re.compile(
     "|".join(re.escape(p.rstrip("/")) for p in
@@ -244,25 +245,37 @@ def check_project_artifact_shell(hook_input, command: str) -> None:
     """The same rule as `check_project_artifact`, for the shell route into it.
 
     A rule that holds for Write and not for `printf ... > CHANGELOG.md` is not a
-    rule. Quoted text is stripped first, so a command that merely *mentions* one
-    of these files is not mistaken for one that writes it.
+    rule.
+
+    Judged per pipeline segment, and only where that segment actually writes:
+    either its first word is a writer or it carries a redirection. `git log --
+    CHANGELOG.md | tee out.txt` names the file in a segment that only reads it
+    and writes in a segment that does not name it, and blocking that would be a
+    refusal the user cannot act on. Quoted text is stripped first for the same
+    reason: a command that merely *mentions* the file is not writing it.
     """
     bare = _QUOTED_RE.sub(" ", command)
-    if not _PROJECT_ARTIFACT_RE.search(bare) or not _WRITE_CMD_RE.search(bare):
+    if not _PROJECT_ARTIFACT_RE.search(bare):
         return
     root = common.project_dir(hook_input)
-    for token in re.split(r"[\s;|&<>()]+", bare):
-        token = token.strip("'\"")
-        if not token or not _PROJECT_ARTIFACT_RE.search(token):
+    for segment in re.split(r"[;|&]+|&&|\|\|", bare):
+        words = segment.split()
+        if not words:
             continue
-        reason = common.project_artifact_reason(root, token)
-        if reason:
-            common.block(
-                "[praxis] Blocked: this command would create "
-                f"`{token}` in a repository we only contribute to.\n"
-                f"Command: {command.strip()[:400]}\n"
-                f"{reason}.\n" + _WHY_NOT_INTRODUCED
-            )
+        if words[0] not in _WRITE_COMMANDS and not _REDIRECT_RE.search(segment):
+            continue
+        for token in re.split(r"[\s<>()]+", segment):
+            token = token.strip("'\"")
+            if not token or not _PROJECT_ARTIFACT_RE.search(token):
+                continue
+            reason = common.project_artifact_reason(root, token)
+            if reason:
+                common.block(
+                    "[praxis] Blocked: this command would create "
+                    f"`{token}` in a repository we only contribute to.\n"
+                    f"Command: {command.strip()[:400]}\n"
+                    f"{reason}.\n" + _WHY_NOT_INTRODUCED
+                )
 
 
 def check_staged_project_artifacts(hook_input, command: str) -> None:
@@ -519,7 +532,7 @@ def check_gitignore_shell(hook_input, command: str) -> None:
     )
 
 
-def check_file_tool(hook_input, tool_input: dict) -> None:
+def check_file_tool(hook_input, tool: str, tool_input: dict) -> None:
     path = (
         tool_input.get("file_path")
         or tool_input.get("path")
@@ -532,8 +545,12 @@ def check_file_tool(hook_input, tool_input: dict) -> None:
             "Reading or editing secrets risks leaking them into context or git. "
             "Work against a redacted template (e.g. .env.example) instead."
         )
-    check_gitignore(hook_input, path, tool_input)
-    check_project_artifact(hook_input, path)
+    if tool != "Read":
+        # Writers only. A Read of a path that happens not to exist is an ordinary
+        # mistake with an ordinary error, and answering it with a lecture about
+        # project conventions would be a refusal aimed at the wrong act.
+        check_gitignore(hook_input, path, tool_input)
+        check_project_artifact(hook_input, path)
     common.allow()
 
 
@@ -545,7 +562,7 @@ def main() -> None:
     if tool == "Bash":
         check_bash(data, tool_input.get("command", ""))
     elif tool in ("Read", "Edit", "Write", "MultiEdit"):
-        check_file_tool(data, tool_input)
+        check_file_tool(data, tool, tool_input)
     common.allow()
 
 

@@ -6,6 +6,21 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+- knowledge_check.py: a change-scoped living-knowledge check (did the changelog record this change, did any document move with the behaviour, did the change remove documentation), run by report.py and named in the Stop gate's refusal
+- report.py vertical: each audit verdict is recorded with a summary and citations that praxis verifies resolve, and report.py record refuses a verdict the ledger does not carry (gate.require_evidence)
+- runtime verification: praxis detects the end-to-end harness a project already has, runs it on user-facing changes (gate.require_runtime), and ships a runtime-verification skill for the projects that have none
+- audit-evidence skill, preloaded into every auditor: assert only what you read, cite file:line, and state what you could not check
+- config keys gate.require_knowledge, gate.require_evidence, gate.require_runtime and workspace.allow_project_artifacts, the PRAXIS_PROJECT_ARTIFACTS environment variable, and the project-artifacts switch
+
+### Changed
+- the Stop gate re-derives its verdict from the report's recorded evidence instead of reading its status field, and leads a refusal with living-knowledge gaps alongside unfinished markers and style violations
+
+### Fixed
+- recording a quality report was the way past the deterministic scanners: the Stop gate skips them whenever a green report exists, so unfinished work or an em dash could ship inside a change that reported itself clean. report.py now runs all three itself and cannot record green over an unresolved finding
+- contributor mode created and committed a CHANGELOG.md, a /docs skeleton, a CLAUDE.md or a .praxis.toml in projects that never had one. The guard now refuses at the file tool, the shell and the index; updating a file the project already has is unchanged
+- a setting configured only through the git-excluded .claude/.praxis/praxis.toml was reported as coming from 'default', and doctor.py reported the owner-mode config path in contributor mode, so a fully configured clone read as an unfinished setup
+
 ## [3.1.1] - 2026-07-29
 
 ### Added
