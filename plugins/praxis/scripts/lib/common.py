@@ -16,6 +16,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -247,6 +248,40 @@ def review_scope_base(root: Path) -> tuple:
         except Exception as exc:
             _MERGE_BASE_CACHE[key] = ("", f"{exc.__class__.__name__} while resolving")
     return _MERGE_BASE_CACHE[key]
+
+
+def change_started_at(root: Path) -> float:
+    """Unix time the change under review began, or 0.0 when it cannot be told.
+
+    Everything this branch did happened after its base commit landed, so the
+    base's commit time is the earliest a record of this work could honestly have
+    been written. Off a branch there is no range and the change is the working
+    tree, which postdates HEAD.
+
+    0.0 means "no opinion" and every record counts. Reached in a repo with no
+    commits, or when git cannot answer, and both must stay permissive: refusing
+    a record because praxis could not date the work would block the first commit
+    of a new project.
+
+    A rebase moves the base forward and can therefore age out a record written
+    before it. That is the correct direction to be wrong in: the remedy is to
+    write the entry again, which is what the branch's history now says happened.
+
+    A base dated *after* now is not. This check only runs where the record is
+    local, which is a repository we do not own, so the base commit was made on
+    somebody else's machine and the two clocks are guaranteed to be different
+    ones. Any positive skew would refuse every entry the session writes, with a
+    message whose remedy cannot clear it, and the entry would be appended again
+    on every pass. A change cannot have begun after the present, so a commit that
+    claims otherwise dates nothing.
+    """
+    out = _run(["git", "log", "-1", "--format=%ct", review_base(root) or "HEAD"],
+               cwd=root, timeout=10).strip()
+    try:
+        started = float(out)
+    except ValueError:
+        return 0.0
+    return 0.0 if started > time.time() else started
 
 
 def review_base(root: Path) -> Optional[str]:
@@ -1515,6 +1550,101 @@ def write_state_strict(root: Path, name: str, data: Dict[str, Any]) -> None:
         except Exception:
             pass
         raise
+
+
+# --------------------------------------------------------------------------- #
+# The changelog write log
+# --------------------------------------------------------------------------- #
+#: Every `[Unreleased]` entry praxis writes, with when and where it went.
+#:
+#: It exists for the one case git cannot answer. When the project has no
+#: `CHANGELOG.md` of its own, praxis keeps the record under
+#: `.claude/.praxis/knowledge/`, which is git-excluded and therefore appears in
+#: no diff: "was the changelog updated for this change" had no evidence behind
+#: it, and the check could only ask whether *some* entry existed, which an entry
+#: written three sessions ago satisfies.
+CHANGELOG_LOG = "changelog_log.json"
+
+#: Writes retained. Long enough to cover any single branch's history, bounded so
+#: a file praxis appends to on every changelog entry cannot grow without limit.
+MAX_CHANGELOG_WRITES = 100
+
+
+def record_changelog_write(root: Path, path: Path, ctype: str, message: str) -> bool:
+    """Record that an entry was written. False if the record could not be kept.
+
+    The caller reports the failure rather than swallowing it: the entry itself
+    was written either way, but a lost record makes the living-knowledge check
+    ask for an entry that is already there, and a user who is not told why
+    cannot act on that.
+    """
+    state = read_state(root, CHANGELOG_LOG)
+    writes = state.get("writes")
+    writes = writes if isinstance(writes, list) else []
+    writes.append({
+        "path": rel_path(root, path),
+        "type": ctype,
+        "message": message,
+        "ts": time.time(),
+        "branch": current_branch(root),
+        "head": git_head(root),
+    })
+    state["writes"] = writes[-MAX_CHANGELOG_WRITES:]
+    try:
+        write_state_strict(root, CHANGELOG_LOG, state)
+        return True
+    except Exception:
+        return False
+
+
+def changelog_writes_since(root: Path, since: float, path: Path) -> List[Dict[str, Any]]:
+    """Recorded writes to `path` made at or after `since`, newest first.
+
+    Two filters, because time alone is not identity. A date says the write is
+    recent enough; the commit it was made at says it belongs to *this* line of
+    work. Without the second, two branches cut from the same base share one
+    entry, and the second pull request passes the gate on the first one's record.
+
+    `since` comes from a commit date, which git stores to the second, while a
+    write is stamped to the microsecond. So a write made moments *before* a
+    commit in that same second counts as part of it. That is the right way round:
+    an entry written just before the commit it describes belongs to that commit,
+    and the failure this guards against is an entry from another session, not one
+    from another instant.
+    """
+    target = rel_path(root, path)
+    writes = read_state(root, CHANGELOG_LOG).get("writes")
+    if not isinstance(writes, list):
+        return []
+    fresh = []
+    for w in writes:
+        if not isinstance(w, dict) or w.get("path") != target:
+            continue
+        ts = w.get("ts")
+        if not isinstance(ts, (int, float)) or ts < since:
+            continue
+        # A write made at a commit this branch does not contain belongs to
+        # another line of work. An empty head (recorded in a repo with no
+        # commits, or by a praxis that predates the field) cannot answer, and
+        # falls back to the date alone rather than refusing.
+        head = w.get("head")
+        if head and not commit_is_ancestor(root, str(head)):
+            continue
+        fresh.append(w)
+    return sorted(fresh, key=lambda w: w["ts"], reverse=True)
+
+
+def commit_is_ancestor(root: Path, sha: str) -> bool:
+    """True when HEAD's history contains `sha`.
+
+    False for a commit that no longer exists, which is what a rebase leaves
+    behind, and for one on a branch this is not. Both are the same answer to the
+    same question: that work is not in this line.
+    """
+    if not sha:
+        return False
+    return _run_ok(["git", "merge-base", "--is-ancestor", sha, "HEAD"],
+                   cwd=root, timeout=10)
 
 
 def run_scanner(script: str, root: Path, timeout: int = 25) -> List[Dict[str, Any]]:

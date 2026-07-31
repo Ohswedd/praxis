@@ -2343,6 +2343,289 @@ class TestKnowledgeCheckContributor(ContributorRepoCase):
         self.assertIn("docs", {f["kind"] for f in self.check()})
 
 
+class TestChangelogFreshness(ContributorRepoCase):
+    """Debt 2 repaid: the local record must be for THIS change, not any change.
+
+    Where the project has its own CHANGELOG.md, git answers exactly and none of
+    this applies. Where praxis keeps the record under `.claude/.praxis/`, no diff
+    can see it, so `changelog.py` records each write and the check asks whether
+    one happened since the change began.
+    """
+
+    def env(self):
+        return {**script_env(self.root), "PRAXIS_MODE": "contributor"}
+
+    def changelog(self, *args):
+        return sh([sys.executable, str(SCRIPTS / "changelog.py"), *args],
+                  env=self.env())
+
+    def check(self):
+        r = sh([sys.executable, str(SCRIPTS / "knowledge_check.py"), "--json"],
+               env=self.env())
+        return json.loads(r.stdout)["findings"]
+
+    def changelog_findings(self):
+        return [f for f in self.check() if f["kind"] == "changelog"]
+
+    def touch_behaviour(self):
+        (self.root / "app.py").write_text("x = 99\n")
+
+    def local_changelog(self):
+        """The local record's path, spelled out rather than resolved.
+
+        `knowledge_root()` asks the *current process* which mode is in force, and
+        these cases force `contributor` only in the subprocess environment. A
+        case that commits as us also puts our address in `git log`, at which
+        point in-process detection legitimately answers `owner` and the helper
+        would point at the wrong file.
+        """
+        return common.state_dir(self.root) / common.KNOWLEDGE_DIR / "CHANGELOG.md"
+
+    def test_an_entry_written_for_this_change_satisfies_the_check(self):
+        self.touch_behaviour()
+        self.assertTrue(self.changelog_findings(), "no entry yet, so it must ask")
+        self.changelog("add", "--type", "fixed", "the fix in this change")
+        self.assertEqual(self.changelog_findings(), [])
+
+    def age_the_record(self, seconds):
+        """Backdate every recorded write, which is what an earlier session is.
+
+        The record is aged rather than the commit future-dated. A base commit
+        dated after now is a clock anomaly that `change_started_at` deliberately
+        treats as undatable, so faking staleness that way would test the clamp
+        instead of the freshness rule.
+        """
+        state = common.read_state(self.root, common.CHANGELOG_LOG)
+        for w in state["writes"]:
+            w["ts"] -= seconds
+        common.write_state(self.root, common.CHANGELOG_LOG, state)
+
+    def test_an_entry_from_earlier_work_does_not(self):
+        """The exact hole debt 2 recorded: a stale entry used to pass."""
+        self.changelog("add", "--type", "fixed", "an entry from earlier work")
+        self.age_the_record(7 * 24 * 3600)      # written a week ago
+        self.touch_behaviour()
+
+        found = self.changelog_findings()
+        self.assertTrue(found, "an entry belonging to earlier work must not pass")
+        self.assertIn("belongs to earlier work", found[0]["detail"])
+        self.assertFalse(unreleased_empty(self.local_changelog()),
+                         "the file does still carry an entry: that is the point")
+
+    def test_a_base_dated_after_now_does_not_make_the_gate_impossible(self):
+        """A cross-machine clock skew must not refuse an entry written this second.
+
+        This path only runs in a repository we do not own, so the base commit was
+        made on somebody else's machine. Before the clamp, any positive skew
+        refused every entry the session wrote, told the user it belonged to
+        earlier work, and appended the bullet again on every attempt.
+        """
+        ahead = time.strftime("%Y-%m-%dT%H:%M:%S", time.localtime(time.time() + 86400))
+        (self.root / "theirs.py").write_text("q = 1\n")
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "future-dated"], cwd=self.tmp,
+           env={**os.environ, "GIT_AUTHOR_DATE": ahead, "GIT_COMMITTER_DATE": ahead})
+
+        self.assertEqual(common.change_started_at(self.root), 0.0,
+                         "a commit dated after now dates nothing")
+        self.touch_behaviour()
+        self.changelog("add", "--type", "fixed", "written under a skewed clock")
+        self.assertEqual(self.changelog_findings(), [],
+                         "an entry written now must satisfy a check it can reach")
+
+    def test_a_recorded_entry_that_was_then_deleted_does_not_pass(self):
+        """The log says it was written; the file has to still say so too."""
+        self.touch_behaviour()
+        self.changelog("add", "--type", "fixed", "written, then lost")
+        self.assertEqual(self.changelog_findings(), [])
+        self.local_changelog().unlink()
+        found = self.changelog_findings()
+        self.assertTrue(found, "a deleted record must not pass on the log alone")
+        self.assertIn("no [Unreleased] entry", found[0]["detail"])
+
+    def test_the_two_failure_modes_are_told_apart(self):
+        """They need different fixes, so one message for both is a wrong answer."""
+        self.touch_behaviour()
+        nothing_written = self.changelog_findings()[0]["detail"]
+        self.assertIn("no [Unreleased] entry", nothing_written)
+        self.assertNotIn("belongs to earlier work", nothing_written)
+
+        self.changelog("add", "--type", "fixed", "an entry from an earlier session")
+        self.age_the_record(7 * 24 * 3600)
+        stale = self.changelog_findings()[0]["detail"]
+        self.assertIn("belongs to earlier work", stale)
+        self.assertNotIn("has no [Unreleased] entry", stale)
+        self.assertNotEqual(nothing_written, stale)
+
+    def test_the_write_is_recorded_with_what_it_wrote(self):
+        self.changelog("add", "--type", "added", "a new capability")
+        writes = common.read_state(self.root, common.CHANGELOG_LOG)["writes"]
+        self.assertEqual(len(writes), 1)
+        self.assertEqual(writes[0]["type"], "Added")
+        self.assertEqual(writes[0]["message"], "a new capability")
+        self.assertIn(".praxis", writes[0]["path"])
+        self.assertGreater(writes[0]["ts"], 0)
+
+    def test_release_is_not_a_new_entry_and_records_nothing(self):
+        self.changelog("add", "--type", "fixed", "a fix")
+        before = len(common.read_state(self.root, common.CHANGELOG_LOG)["writes"])
+        self.changelog("release", "1.0.0")
+        after = len(common.read_state(self.root, common.CHANGELOG_LOG)["writes"])
+        self.assertEqual(before, after, "cutting a release writes no new entry")
+
+    def test_the_log_is_bounded(self):
+        state = {"writes": [{"path": "p", "type": "Added", "message": str(i),
+                             "ts": float(i)} for i in range(common.MAX_CHANGELOG_WRITES + 40)]}
+        common.write_state(self.root, common.CHANGELOG_LOG, state)
+        common.record_changelog_write(self.root, self.local_changelog(), "Added", "newest")
+        writes = common.read_state(self.root, common.CHANGELOG_LOG)["writes"]
+        self.assertEqual(len(writes), common.MAX_CHANGELOG_WRITES)
+        self.assertEqual(writes[-1]["message"], "newest", "the newest must survive")
+
+    def test_an_unwritable_state_dir_still_writes_the_entry_and_says_so(self):
+        """The entry is the primary job; the record is only evidence about it.
+
+        Exercised against the project's own changelog: when the record lives
+        *inside* the state directory, an unwritable state directory takes the
+        changelog with it and the failure is the ordinary one.
+        """
+        self._author(self.THEIRS, "maintainer")
+        (self.root / "CHANGELOG.md").write_text("# Changelog\n\n## [Unreleased]\n")
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "their changelog"], cwd=self.tmp)
+        self._author(self.OURS, "me")
+        common._DETECTED_MODE_CACHE.pop(str(self.root), None)
+
+        state = common.state_dir(self.root)
+        mode = state.stat().st_mode
+        os.chmod(state, 0o500)
+        try:
+            r = self.changelog("add", "--type", "fixed", "written under duress")
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertIn("WARNING", r.stdout)
+            # This changelog is in the repository, so the check reads the diff
+            # and nothing is blocked. Predicting a refusal here would be a lie.
+            self.assertIn("nothing is blocked", r.stdout)
+            self.assertIn("written under duress",
+                          (self.root / "CHANGELOG.md").read_text(encoding="utf-8"))
+        finally:
+            os.chmod(state, mode)
+
+    def test_a_lost_record_for_a_local_changelog_says_what_it_will_cost(self):
+        """The other half of that warning, where the consequence is real."""
+        # Writable state directory, unwritable log: the entry lands, the record
+        # cannot. A directory in the log's place is the simplest way to get there.
+        (common.state_dir(self.root) / common.CHANGELOG_LOG).mkdir()
+        r = self.changelog("add", "--type", "fixed", "entry without a record")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("WARNING", r.stdout)
+        self.assertIn("living-knowledge check", r.stdout)
+        self.assertIn("entry without a record",
+                      self.local_changelog().read_text(encoding="utf-8"))
+        # And the check does exactly what the warning said it would.
+        self.touch_behaviour()
+        found = self.changelog_findings()
+        self.assertTrue(found)
+        self.assertIn("belongs to earlier work", found[0]["detail"])
+        self.assertIn("not writable", found[0]["detail"],
+                      "the refusal must name the cause the warning predicted")
+
+    def test_a_sibling_branch_does_not_inherit_an_entry(self):
+        """Time alone is not identity: two branches share a base, not the work.
+
+        Without the ancestry test, the second pull request passes the gate on the
+        first one's changelog entry, having recorded nothing of its own.
+        """
+        sh(["git", "checkout", "-q", "-b", "featA"], cwd=self.tmp)
+        (self.root / "app.py").write_text("a = 1\n")
+        sh(["git", "commit", "-qam", "work on A"], cwd=self.tmp)
+        self.changelog("add", "--type", "fixed", "the entry for branch A")
+        self.assertEqual(self.changelog_findings(), [], "A recorded its own work")
+
+        sh(["git", "checkout", "-q", "main"], cwd=self.tmp)
+        sh(["git", "checkout", "-q", "-b", "featB"], cwd=self.tmp)
+        self.touch_behaviour()
+        found = self.changelog_findings()
+        self.assertTrue(found, "B must not pass on A's entry")
+        self.assertIn("belongs to earlier work", found[0]["detail"])
+
+    def test_an_entry_anchored_at_the_shared_base_is_the_known_residue(self):
+        """Pinned so it stays a known limit rather than becoming a surprise.
+
+        An entry written before the branch's first commit is anchored at the base
+        both branches share, so no date-and-ancestry test can tell them apart.
+        Closing it needs the work's own identity, which is recorded as debt.
+        """
+        sh(["git", "checkout", "-q", "-b", "featA"], cwd=self.tmp)
+        (self.root / "app.py").write_text("a = 1\n")
+        self.changelog("add", "--type", "fixed", "written before any commit on A")
+        sh(["git", "commit", "-qam", "work on A"], cwd=self.tmp)
+
+        sh(["git", "checkout", "-q", "main"], cwd=self.tmp)
+        sh(["git", "checkout", "-q", "-b", "featB"], cwd=self.tmp)
+        self.touch_behaviour()
+        self.assertEqual(self.changelog_findings(), [],
+                         "documented residue: an entry anchored at the shared "
+                         "base is visible to every branch cut from it")
+
+    def test_a_project_with_its_own_changelog_is_unaffected(self):
+        """That path is answered exactly by git; the write log must not gate it."""
+        self._author(self.THEIRS, "maintainer")
+        (self.root / "CHANGELOG.md").write_text(
+            "# Changelog\n\n## [Unreleased]\n\n### Fixed\n- theirs\n")
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "their changelog"], cwd=self.tmp)
+        self._author(self.OURS, "me")
+        common._DETECTED_MODE_CACHE.pop(str(self.root), None)
+
+        self.touch_behaviour()
+        self.assertTrue(self.changelog_findings(), "untouched changelog must ask")
+        self.changelog("add", "--type", "fixed", "our fix, in their file")
+        self.assertEqual(self.changelog_findings(), [],
+                         "touching the project's own changelog is the whole proof")
+
+
+def unreleased_empty(path):
+    sys.path.insert(0, str(SCRIPTS))
+    import knowledge_check
+    return knowledge_check.unreleased_is_empty(path.read_text(encoding="utf-8"))
+
+
+class TestChangeStartedAt(GitRepoCase):
+    """When the change under review began, which dates every local record."""
+
+    def test_on_a_branch_it_is_the_base_commit_time(self):
+        sh(["git", "checkout", "-q", "-b", "feature"], cwd=self.tmp)
+        base_ct = float(sh(["git", "log", "-1", "--format=%ct", "main"],
+                           cwd=self.tmp).stdout.strip())
+        (self.root / "b.py").write_text("z = 1\n")
+        sh(["git", "add", "-A"], cwd=self.tmp)
+        sh(["git", "commit", "-qm", "work"], cwd=self.tmp)
+        self.assertEqual(common.change_started_at(self.root), base_ct,
+                         "branch work is dated from where the branch left main")
+
+    def test_off_a_branch_it_is_head(self):
+        head_ct = float(sh(["git", "log", "-1", "--format=%ct", "HEAD"],
+                           cwd=self.tmp).stdout.strip())
+        self.assertEqual(common.change_started_at(self.root), head_ct)
+
+    def test_a_repo_with_no_commits_has_no_opinion(self):
+        empty = Path(tempfile.mkdtemp())
+        try:
+            sh(["git", "init", "-q", "-b", "main"], cwd=str(empty))
+            self.assertEqual(common.change_started_at(empty), 0.0,
+                             "an undatable change must accept any record")
+        finally:
+            shutil.rmtree(empty, ignore_errors=True)
+
+    def test_a_non_repo_has_no_opinion(self):
+        plain = Path(tempfile.mkdtemp())
+        try:
+            self.assertEqual(common.change_started_at(plain), 0.0)
+        finally:
+            shutil.rmtree(plain, ignore_errors=True)
+
+
 class TestVerticalEvidence(GitRepoCase):
     """A verdict nobody had to substantiate is a verdict nobody had to reach."""
 

@@ -6,6 +6,16 @@ All notable changes to praxis are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.2.1] - 2026-07-31
+
+### Changed
+- the contributor-mode changelog check verifies freshness, not just existence. changelog.py records every entry it writes into .claude/.praxis/changelog_log.json, and knowledge_check requires one written since the change began, so a record from an earlier session no longer answers for today's work. Debt entry 2 is repaid; owner mode and repos with their own changelog are unchanged, since git already answers those exactly
+
+### Fixed
+- a base commit dated ahead of the local clock made the contributor-mode changelog check permanently unsatisfiable, and the remedy it printed appended a duplicate bullet on every attempt. Since that check only runs in a repository we do not own, the base is stamped on another machine and the clocks are guaranteed to differ, so a commit dated after now is now treated as dating nothing
+- two branches cut from the same base shared one changelog entry, so a second pull request passed the living-knowledge gate on the first one's record. A write is now matched on the commit it was made at as well as its time
+- a local changelog entry that was recorded and then deleted passed on the log alone; the record itself must still be there
+
 ## [3.2.0] - 2026-07-31
 
 ### Added

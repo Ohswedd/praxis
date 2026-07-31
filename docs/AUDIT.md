@@ -221,12 +221,46 @@ supposed to enforce it.
 - **The living-knowledge check is a floor, not a judgement.** It asks whether the
   documentation moved, not whether what was written is any good. The
   doc-reference auditor and human review remain responsible for that.
-- **The contributor changelog check is weaker off-repo.** When the record lives in
-  git-excluded local knowledge, no diff can see it, so the check verifies that an
-  `[Unreleased]` entry exists rather than that it describes today's work. Stated
-  in the script rather than dressed up.
 - **Runtime verification needs a harness.** In a project without one, praxis
   reports the gap and asks for a stated manual check, rather than inventing a
   command or adding a dependency the maintainers never agreed to.
 
-Suite grew 264 to 310 cases.
+Suite grew 264 to 310 cases, and to 337 with the repayment below.
+
+### The one weakness this release shipped, and repaid
+
+v3.2.0 shipped with the contributor-mode changelog check verifying *existence*
+rather than *freshness*: where the record lives in git-excluded local knowledge,
+no diff can see it, so any non-empty `[Unreleased]` section passed, including one
+written three sessions earlier. It was recorded as debt entry 2 with its interest
+and its principal rather than left as a silent limitation, which is the whole
+argument for keeping a register.
+
+The principal has since been paid in substance. `changelog.py` records every
+entry it writes into `.claude/.praxis/changelog_log.json`, and the check asks
+whether a write happened since the change began (`common.change_started_at`: the
+base commit's time on a branch, HEAD's off one) *and* at a commit this branch
+contains. The two failure modes are told apart, because they need different
+fixes: nothing written at all, versus a record that belongs to earlier work.
+
+An adversarial audit of that repayment, run before it shipped, found two defects
+in it and disproved one of its own reviewers. The first: a base commit dated
+after the local clock made the gate permanently unsatisfiable, and since this
+path only runs in a repository we do not own, the base is stamped on somebody
+else's machine and the two clocks are guaranteed to be different ones. The
+prescribed remedy could not clear it and appended a duplicate bullet on every
+attempt. A commit dated after now now dates nothing. The second: two branches cut
+from one base shared a single entry, so a second pull request passed on the first
+one's record. Two reviewers argued that filtering would cost more than the hole,
+having tested filtering by *branch name*; testing commit *ancestry* instead
+showed it separates the cases cleanly, including the flow they were right to
+protect (an entry written before the branch existed).
+
+What is left is bounded, stated, and recorded as debt entry 3: an entry written
+before the branch's first commit is anchored at the base its siblings share, and
+no date-and-ancestry test can tell those apart. Closing it needs the work's own
+identity, which `task_state.py` already holds. Two smaller residues: one-second
+commit-date resolution makes an entry written moments before its commit count as
+part of it, which is the right way to be wrong; and a rebase ages out an entry
+written before it, where writing it again is what the branch's history now says
+happened.

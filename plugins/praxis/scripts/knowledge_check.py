@@ -27,6 +27,12 @@ Mode-aware throughout. In `contributor` mode the rule is join what exists,
 create nothing new, so a project without a `/docs` is never asked for one, and
 the changelog looked at is whichever `changelog.py` would actually write.
 
+Where that changelog is the project's own file, git answers question 1 exactly.
+Where it is the git-excluded local record, no diff can see it, so `changelog.py`
+records each entry it writes and the question becomes whether one was written
+since this change began (`common.change_started_at`) rather than whether any
+entry exists at all.
+
 Usage:
     python3 knowledge_check.py            # human-readable report
     python3 knowledge_check.py --json     # machine-readable
@@ -150,25 +156,40 @@ def check_changelog(root: Path, behaviour: list) -> list:
                        "\"<what changed>\"."),
         }]
 
-    # Local knowledge (contributor mode, project without a changelog). The file
-    # is git-excluded, so no diff can see it and the strongest available evidence
-    # is that praxis wrote an entry into it at all. Stated rather than dressed up:
-    # this proves the record exists, not that it describes today's work.
+    # Local knowledge: contributor mode, in a project with no changelog of its
+    # own. The file is git-excluded, so no diff can see it, and asking only
+    # whether it has an entry is satisfied by one written three sessions ago.
+    # `changelog.py` therefore records each write, and the question becomes
+    # whether an entry was written since this change began.
+    since = common.change_started_at(root)
+    # Both halves are needed. The log says an entry was written for this change;
+    # the file says it is still there. Trusting the log alone would pass a record
+    # that was written and then deleted, which the weaker check used to catch.
+    if common.changelog_writes_since(root, since, target) and target.exists():
+        return []
+
+    local = common.rel_path(root, target)
     try:
         text = target.read_text(encoding="utf-8") if target.exists() else ""
     except Exception:
         text = ""
+    # Two different problems, and conflating them sends the reader to the wrong
+    # fix: nothing written at all, versus a record that exists but belongs to
+    # earlier work.
     if text and not unreleased_is_empty(text):
-        return []
-    return [{
-        "kind": "changelog",
-        "file": common.rel_path(root, target),
-        "line": 0,
-        "detail": ("this repository has no CHANGELOG.md of its own, so praxis "
-                   "keeps the record locally, and that record has no "
-                   "[Unreleased] entry. Add one: changelog.py add --type "
-                   "<type> \"<what changed>\"."),
-    }]
+        detail = (f"{local} has an [Unreleased] entry, but praxis has no record "
+                  "of one being written since this change began, so it belongs "
+                  "to earlier work. Record this change too: changelog.py add "
+                  "--type <type> \"<what changed>\". (Two things age a record out: "
+                  "a rebase that moves the base commit forward, and a write "
+                  "praxis could not save because the state directory was not "
+                  "writable. Writing the entry again is the fix for both.)")
+    else:
+        detail = ("this repository has no CHANGELOG.md of its own, so praxis "
+                  f"keeps the record in {local}, and that record has no "
+                  "[Unreleased] entry. Add one: changelog.py add --type "
+                  "<type> \"<what changed>\".")
+    return [{"kind": "changelog", "file": local, "line": 0, "detail": detail}]
 
 
 def check_docs_touched(root: Path, behaviour: list, changed: list) -> list:
