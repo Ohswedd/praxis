@@ -162,7 +162,10 @@ def check_changelog(root: Path, behaviour: list) -> list:
     # `changelog.py` therefore records each write, and the question becomes
     # whether an entry was written since this change began.
     since = common.change_started_at(root)
-    if common.changelog_writes_since(root, since, target):
+    # Both halves are needed. The log says an entry was written for this change;
+    # the file says it is still there. Trusting the log alone would pass a record
+    # that was written and then deleted, which the weaker check used to catch.
+    if common.changelog_writes_since(root, since, target) and target.exists():
         return []
 
     local = common.rel_path(root, target)
@@ -177,9 +180,10 @@ def check_changelog(root: Path, behaviour: list) -> list:
         detail = (f"{local} has an [Unreleased] entry, but praxis has no record "
                   "of one being written since this change began, so it belongs "
                   "to earlier work. Record this change too: changelog.py add "
-                  "--type <type> \"<what changed>\". (A rebase moves the base "
-                  "commit forward and can age out an entry written before it; "
-                  "writing it again is the honest fix.)")
+                  "--type <type> \"<what changed>\". (Two things age a record out: "
+                  "a rebase that moves the base commit forward, and a write "
+                  "praxis could not save because the state directory was not "
+                  "writable. Writing the entry again is the fix for both.)")
     else:
         detail = ("this repository has no CHANGELOG.md of its own, so praxis "
                   f"keeps the record in {local}, and that record has no "

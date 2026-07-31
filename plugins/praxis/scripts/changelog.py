@@ -138,10 +138,20 @@ def add(root, ctype: str, message: str) -> None:
     # reported rather than raised: it costs the living-knowledge check its
     # evidence, and a user who is not told that cannot act on the refusal.
     if not common.record_changelog_write(root, p, ctype, message):
+        # Conditional, because the consequence is: the check reads this record
+        # only when the changelog lives outside git. Where the project has its
+        # own CHANGELOG.md, the diff answers and a lost record costs nothing, and
+        # predicting a refusal that will not happen is its own small lie.
+        consequence = (
+            "The living-knowledge check reads that record because this "
+            "changelog is outside git, so it will report this change as having "
+            "no entry until the state directory is writable."
+            if common.is_praxis_state(common.rel_path(root, p) or "") else
+            "This changelog is part of the repository, so the check reads the "
+            "diff rather than the record and nothing is blocked; the record is "
+            "simply not kept.")
         print("praxis: WARNING, the entry was written but could not be recorded "
-              f"in .claude/.praxis/{common.CHANGELOG_LOG}. The living-knowledge "
-              "check reads that record, so it will report this change as having "
-              "no changelog entry until the state directory is writable.")
+              f"in .claude/.praxis/{common.CHANGELOG_LOG}. {consequence}")
 
 
 def release(root, version: str) -> None:
