@@ -101,10 +101,20 @@ ever want to dial a specific auditor down, change its `model`/`effort` frontmatt
 - `/praxis:config` with no argument shows every switch and, importantly, the
   source that decided it: clearing a toggle that an environment variable still
   forces prints a warning instead of quietly reporting success.
-- Per-repo opt-outs live in `.praxis.toml`: `workspace.mode`, `bootstrap.auto`,
-  `gate.require_tests`, `gate.require_ui_verticals`, `style.ban_em_dash`,
-  `style.ban_ai_attribution`. In `contributor` mode put them in
-  `.claude/.praxis/praxis.toml`, which layers on top and stays out of git.
+- Let praxis create a file the project never had, in a repo you only contribute
+  to: `/praxis:config project-artifacts on`, or `PRAXIS_PROJECT_ARTIFACTS=on`
+  for a session. Only needed when the maintainers actually asked for a
+  `CHANGELOG.md`, a `CLAUDE.md` or a `/docs` tree.
+- Record why a living-knowledge finding does not apply, rather than working
+  around it: `report.py record --knowledge-ack "<reason>"`. The reason is kept in
+  the report and shown by the gate.
+- Per-repo opt-outs live in `.praxis.toml`: `workspace.mode`,
+  `workspace.allow_project_artifacts`, `bootstrap.auto`, `gate.require_tests`,
+  `gate.require_ui_verticals`, `gate.require_knowledge`, `gate.require_evidence`,
+  `gate.require_runtime`, `style.ban_em_dash`, `style.ban_ai_attribution`. In
+  `contributor` mode put them in `.claude/.praxis/praxis.toml`, which layers on
+  top and stays out of git. The file is optional in both modes: praxis runs from
+  its defaults, so not having one is not a missing setup.
 
 The guardrail hooks (secret + destructive-command blocks) are intentionally not
 disableable via those switches: remove or edit `hooks/hooks.json` if you must.

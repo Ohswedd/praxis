@@ -79,12 +79,37 @@ Two habits and one check address it:
   links still resolve. It runs at SessionStart, in `/praxis:doctor`, and as the
   first and last step of `/praxis:docs`.
 
+## The second failure mode: documentation that is taken away
+
+Drift is a document standing still. The other regression is a document losing
+content, and it is harder to see, because every scanner praxis has reads the
+lines a change *adds*. A deleted paragraph appears in none of them. So a
+still-valid instruction can stop existing inside a change that reports itself
+clean, and nobody notices until somebody goes looking for the thing it said.
+
+`knowledge_check.py` reads the removed lines instead, and reports a heading that
+this change deleted from a document that shrank, or a document deleted outright.
+A section that merely moved (a rename, a split into its own file, a paragraph
+relocated) is read back out of the change's own prose and is not a finding, so
+ordinary editing stays quiet.
+
 ## How it's enforced
 
 - The **`docs-living` skill** runs the drift check → read → update/create →
   changelog → ADR workflow for every change.
 - The **task-orchestrator** makes "update living knowledge" a mandatory phase
   (5b) before the report.
+- **`knowledge_check.py`** measures it, per change: did the changelog record
+  this, did any document move with the behaviour, did this change remove
+  documentation. It is mode-aware (a project we only contribute to and has no
+  `/docs` is never asked for one) and change-scoped, so a repo's pre-existing
+  doc debt is never charged to whoever touched one file today.
+- **`report.py record` runs that check itself** and cannot write a green report
+  over an unresolved finding. Before this, the living-knowledge contract existed
+  only in prose, and prose is exactly what gets skipped at the end of a long
+  task. The one escape is `--knowledge-ack "<reason>"`, which keeps the reason in
+  the report rather than dropping the question; `gate.require_knowledge = false`
+  turns the requirement off for a repo that wants it off.
 - The **completeness-auditor** fails a change whose docs/changelog weren't
   updated: missing documentation is an incomplete change.
 - **`session_audit`** and **`doctor`** report when `/docs` or `CHANGELOG.md` is
@@ -101,3 +126,6 @@ Two habits and one check address it:
   a decision.
 - `scripts/drift.py [--json]`: report documents that contradict the live
   configuration, and references that no longer resolve.
+- `scripts/knowledge_check.py [--json]`: report what the current change still
+  owes its documentation, and any documentation it removed.
+- `scripts/debt.py add|list|paid`: the technical-debt register.

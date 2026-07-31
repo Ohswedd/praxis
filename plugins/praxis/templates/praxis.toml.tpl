@@ -17,6 +17,12 @@
 #   "auto"        infer it: a repo with a remote and real history that contains no
 #                 commit from your git address is somebody else's project.
 mode = "auto"
+# Contributor mode only. Off, praxis refuses to CREATE a file it scaffolds for a
+# repo it owns (CHANGELOG.md, CLAUDE.md, .praxis.toml, the /docs skeleton) in a
+# repo that does not have one, at the file tool, the shell and the index alike.
+# Editing one the project already has is always allowed. Turn this on only when
+# the maintainers asked for the file.
+allow_project_artifacts = false
 
 [bootstrap]
 # Set an unmanaged repo up on its own, in the first turn that does real work,
@@ -32,6 +38,18 @@ require_tests = true
 # Require the accessibility and design-consistency verdicts when the change touches
 # user-facing surface (markup, styles, components, docs/design/).
 require_ui_verticals = true
+# Require the docs and the changelog to move with the behaviour, and refuse a
+# change that removed documentation without saying why. report.py runs the check
+# itself; --knowledge-ack "<reason>" records an exception rather than hiding it.
+require_knowledge = true
+# Require every vertical verdict to have been recorded with a summary and at
+# least one citation that resolves (report.py vertical ...). Turn this off if
+# your workflow records its audit evidence somewhere else.
+require_evidence = true
+# On a change to user-facing surface, run the project's own end-to-end harness
+# (an e2e script in package.json, a Playwright or Cypress config) and require it
+# to pass. Does nothing in a project that has no such harness.
+require_runtime = true
 
 [autopilot]
 # Start sessions in auto-pilot (no questions; decide by best-practice, log decisions).

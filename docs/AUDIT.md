@@ -185,3 +185,48 @@ that is supposed to enforce it.
   mode would reintroduce the problem it exists to solve.
 
 Suite grew 98 to 131 cases.
+
+---
+
+## v3.2: the pipeline audited against its own reported failures
+
+Six defects reported from real sessions, all of the same family: praxis stated a
+rule, complied with it in the abstract, and had no way to tell when it had not
+been followed. The fix in each case is the same move the project has made before,
+applied to a claim it was still trusting.
+
+| # | Reported failure | Root cause | Resolution |
+| - | ---------------- | ---------- | ---------- |
+| 1 | Docs and adjacent files regress or go unupdated on a "finished" task | "documentation is part of done" existed only in prose, and no scanner could see documentation a change *removed*, because every one of them reads added lines | `knowledge_check.py`: changelog moved, a document moved, nothing deleted; run by `report.py` and named in the gate's refusal |
+| 2 | `.praxis.toml` sometimes absent after contributor-mode scaffolding: bug or normal? | normal, and unknowable: `doctor.py` hardcoded the owner-mode path, so a clone configured entirely through its git-excluded local layer reported "defaults" | both surfaces name the layers that exist, the layer praxis would write here, and that the file is optional; `resolve_switch` reports the layer that actually set a value |
+| 3 | A `CHANGELOG.md` created and committed in a repo that never had one | the rule held for the helpers (`changelog.py` routes itself correctly) and nothing routed a direct write. The three containment layers all protect praxis's *own* files, and this file is the project's | the guard refuses to create or commit a project artifact the repo lacks, at the file tool, the shell and the index |
+| 4 | Claims in tests and audits that a second look shows were never verified | the report measured the test run and trusted everything else: the scanners (which the gate skips once a report exists), and every vertical verdict | `report.py` runs all three scanners itself and records what they found; each verdict needs a summary and a citation that resolves; the gate re-derives the verdict from the evidence rather than reading `status` |
+| 5 | No way to actually exercise what was built | praxis had no notion of running the product, only of running its tests | `detect_runtime_command` + `report.py --runtime` + the `runtime-verification` skill |
+| 6 | Too much debt left behind; three or four rounds needed to clear it | a green report bypassed the placeholder and style scans entirely, so unfinished work shipped inside a change that reported itself clean | closed by #4: the scanners run at record time and a report cannot be green over an unresolved finding |
+
+Findings 4 and 6 are the same defect seen from two ends, and it is the most
+instructive one in this list. The gate's fast path was `has_green_report ->
+allow`, so every deterministic scan it performed applied *only* while no report
+existed. Recording a report was therefore not the consequence of passing the
+scanners, it was the way around them. The lesson is the one from finding 9 above,
+restated: verify the property directly, never through the mechanism that is
+supposed to enforce it.
+
+### What is still guided, stated honestly
+
+- **The ledger proves substantiation, not execution.** A verdict now needs a
+  summary and a citation that resolves against the repository, which refuses the
+  invented `file:line`. It cannot prove a subagent ran, and praxis does not claim
+  it does.
+- **The living-knowledge check is a floor, not a judgement.** It asks whether the
+  documentation moved, not whether what was written is any good. The
+  doc-reference auditor and human review remain responsible for that.
+- **The contributor changelog check is weaker off-repo.** When the record lives in
+  git-excluded local knowledge, no diff can see it, so the check verifies that an
+  `[Unreleased]` entry exists rather than that it describes today's work. Stated
+  in the script rather than dressed up.
+- **Runtime verification needs a harness.** In a project without one, praxis
+  reports the gap and asks for a stated manual check, rather than inventing a
+  command or adding a dependency the maintainers never agreed to.
+
+Suite grew 264 to 310 cases.

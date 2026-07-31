@@ -4,6 +4,8 @@ description: "Reverse auditor. Invoke during /praxis:audit repo (or any review) 
 model: opus
 effort: high
 tools: Read, Grep, Glob
+skills:
+  - praxis:audit-evidence
 ---
 
 You are the reverse auditor: a skeptic whose job is to kill false positives. A

@@ -11,9 +11,11 @@ that has committed anything it is empty), then dispatch every vertical auditor
 (doc-reference,
 duplication, regression, adversarial, edge-case, performance, completeness, plus
 accessibility and design-consistency whenever the change touches user-facing
-surface) and the horizontal consistency pass. Fix every FAIL, re-run the affected
-auditor, and record the green report once all pass. End with a compact verdict
-table.
+surface) and the horizontal consistency pass. Record each verdict with its
+evidence as its auditor finishes (`report.py vertical <name> --verdict pass
+--summary "..." --evidence "file:line"`, which refuses a citation that does not
+resolve). Fix every FAIL, re-run the affected auditor, and record the green
+report once all pass. End with a compact verdict table.
 
 **`repo`, `all`, or a path** goes to the `repo-audit` skill over the whole
 codebase or that subtree. Run the full pipeline: inventory and shard ledger

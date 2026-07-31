@@ -23,10 +23,18 @@ Four layers, only one of which can refuse:
   the only deterministic gates.
 
 `scripts/lib/common.py` holds every shared helper: the review scope (the branch's
-base, its commits, and what is still uncommitted), workspace mode and artifact
-paths, repo state, the change signature, config resolution, UI-surface detection,
-secret and house-style patterns. Put shared logic there rather than in a second
-script. `docs/ARCHITECTURE.md` is the long form.
+base, its commits, what is still uncommitted, and what it removed), workspace
+mode and artifact paths, repo state, the change signature, config resolution,
+UI-surface and runtime-harness detection, secret and house-style patterns. Put
+shared logic there rather than in a second script. `docs/ARCHITECTURE.md` is the
+long form.
+
+One rule the whole design turns on: **praxis measures a claim rather than
+accepting it.** `report.py` runs the tests, the three scanners and the end-to-end
+harness itself, and refuses an audit citation that does not resolve; the Stop
+gate re-derives its verdict from that recorded evidence rather than reading the
+report's `status`. Before adding a check that trusts its caller, look at
+ADR-0010, ADR-0026 and ADR-0027, which are the same lesson three times.
 
 ## Conventions
 - **Python 3.8+, standard library only.** No pip installs, no network calls at

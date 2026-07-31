@@ -11,7 +11,10 @@ writing, and never drop still-valid content.
    `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/drift.py"`. It reports docs that
    contradict the live configuration (the classic case: a doc still says a human
    merges every PR long after this repo turned auto-merge on) and references that
-   no longer resolve. Every finding is in scope for this command.
+   no longer resolve. Every finding is in scope for this command. Run
+   `python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge_check.py"` alongside it for
+   the current change: what the changelog and the docs still owe it, and any
+   documentation it removed.
 2. **`/docs`, `CHANGELOG.md`, ADRs** with the `docs-living` skill: update or create
    the right documents, add a `[Unreleased]` changelog entry, record an ADR for any
    significant or autonomously-taken decision, and keep `docs/README.md` indexed.

@@ -92,6 +92,77 @@ to ask.
   "Out of scope / follow-ups", never hidden in a comment. That section is for
   what the user excluded, not for work that was started and abandoned.
 
+The deterministic level had a hole worth naming, because it inverted the whole
+design: the gate runs the scanners only when there is no green report, so
+*recording a report was the way past them*. A change carrying a `TODO` could pass <!-- praxis:ack: naming the marker is the point of the sentence -->
+by claiming it had been audited. `report.py record` now runs every scanner
+itself, records what each one found, and cannot write a green report over an
+unresolved finding, and the gate re-derives that verdict from the recorded
+evidence rather than reading `status`.
+
+## Evidence, not claims
+
+The report is the pivot of the whole pipeline: the gate opens on it, and the user
+believes it. So nothing in it is accepted from its caller. Four things it once
+took on trust are now measured by `report.py` at record time:
+
+| Claim | How it is measured |
+| --- | --- |
+| the tests pass | the suite is executed here, and its real exit code recorded (ADR-0010) |
+| the scanners are clean | all three are executed here; a scanner that could not run is recorded as not run, never as clean |
+| the product works | the project's own end-to-end harness is executed when the change touches user-facing surface |
+| the auditors passed | each verdict must exist in the evidence ledger, recorded with a summary and citations that **resolve** |
+
+The last one is the anti-fabrication layer. `report.py vertical <name> --verdict
+... --summary ... --evidence "file:line,..."` refuses any citation that does not
+resolve: a file that is not there, a line past the end of one. An auditor that
+read the code can name what it read for free; an audit that was assumed cannot,
+and a fabricated reference is caught at the only moment it is still cheap to
+check. The rule the auditors work under lives once, in the `audit-evidence`
+skill, preloaded into every one of them through the same `skills:` frontmatter
+mechanism that carries `review-scope`.
+
+What praxis cannot measure, it does not pretend to: the ledger proves a verdict
+was substantiated, not that a subagent ran. That boundary is stated rather than
+blurred, and `gate.require_evidence` turns the requirement off for a workflow
+that records its evidence elsewhere.
+
+## Living knowledge, measured
+
+"Documentation is part of done" was stated in the output style, the orchestrator
+and the docs-living skill, and measured nowhere, so the one part of a change
+nobody notices missing is the part that went missing. `knowledge_check.py` asks
+three change-scoped questions:
+
+- **Did the changelog move with the behaviour?** Resolved through the same
+  mode-aware path `changelog.py` writes, so a contributor's local record counts
+  and a project's own `CHANGELOG.md` is required to be part of the change.
+- **Did any document move with it?** Not which one and not how much: the common
+  failure is that none did.
+- **Did this change take documentation away?** A section deleted from a shrinking
+  document, or a document deleted outright. This is the regression no other
+  praxis scan can see, because every one of them reads *added* lines and a
+  deleted paragraph appears in none. A section that merely moved is read back out
+  of the change's own prose and is not a finding.
+
+Scoped to the change, so a repo's pre-existing doc debt is never charged to
+whoever touched one file today. `report.py` runs it, and the only way past a
+finding is `--knowledge-ack "<reason>"`, which records the reason in the report
+rather than dropping it.
+
+## Runtime verification
+
+A green unit suite says a function returns what its test expects. It does not say
+the page renders, the route answers, or the command exits zero, and that gap is
+where a change passes every check and is still broken for the person using it.
+`common.detect_runtime_command` finds the harness a project already has (an
+end-to-end script in `package.json`, a Playwright or Cypress config), and
+`report.py` runs it when the change touches user-facing files, recording the real
+exit code exactly as it does for the tests. A project with no harness gets a
+stated gap rather than an invented command, and the `runtime-verification` skill
+covers the rest: what "running it" means per project shape, driving a real
+browser, and what may and may not be added to a repository that is not ours.
+
 ## House style, enforced rather than requested
 
 Two rules had been stated in the doctrine for several versions and were still
@@ -250,8 +321,27 @@ insufficient for the house style:
    never the project's), refuses to write a praxis path into a `.gitignore` that
    is not ours, and verifies rather than assumes on a stage-everything command,
    repairing a missing exclusion and blocking only if the repair fails.
-3. The session audit, the prompt router and the skills state the mode and the
+3. The same guard refuses to **create** a file praxis writes for a repository it
+   owns, in one it does not: `CHANGELOG.md`, `CLAUDE.md`, `.praxis.toml`,
+   `.mcp.json`, `.claude/settings.json`, the `/docs` skeleton, and the contents
+   of `docs/adr/`, `docs/design/` and `.claude/{commands,skills,agents}/`. Only
+   creation, and only where the project does not already have it: editing the
+   project's own changelog stays right, and a new ADR beside the ADRs it already
+   keeps is joining rather than introducing. Refused on all three routes (the
+   file tool, the shell, and the index), because a rule that holds for `Write`
+   and not for `printf > CHANGELOG.md` is not a rule, and because whatever wrote
+   the file, it becomes the project's only by being committed. `/praxis:config
+   project-artifacts on` lifts it deliberately for the case where the
+   maintainers did ask.
+4. The session audit, the prompt router and the skills state the mode and the
    artifact map, so the correct path is used first rather than caught last.
+
+Layer 3 exists because layers 1 and 2 answered a different question. praxis's
+*own* files were contained from the start, and a `CHANGELOG.md` is not one of
+them: it is the project's file, written into a project that never had one, fully
+visible to `git status`, and it reached pull requests whose subject was a bug
+fix. `knowledge_path` had always routed it correctly; nothing routed a direct
+write.
 
 ## Review scope: the branch, not the working tree
 
@@ -301,19 +391,29 @@ edit code ──▶ PostToolUse: auto-format + secret tripwire
    │
    ▼
 turn ends ──▶ Stop hook (quality_gate.py):
-              dirty tree AND no green report for this exact change signature?
+              anything to review AND no green report for this exact signature?
                  ├─ yes → exit 2 → Claude keeps working → runs quality-rubric
                  │                    │
                  │                    ▼
                  │            dispatch vertical auditors → fix FAILs → re-run
+                 │            each verdict recorded with citations that resolve
                  │                    │
                  │                    ▼
-                 │            all green → write quality_report.json (signed)
+                 │            report.py record: runs the tests, the e2e harness
+                 │            and the three scanners itself, checks the ledger,
+                 │            writes quality_report.json (signed, evidence-backed)
                  │                    │
                  │                    ▼
-                 │            next Stop → report matches signature → allow
+                 │            next Stop → signature matches AND the recorded
+                 │            evidence still holds up → allow
                  └─ no  → allow
 ```
+
+The gate **re-derives** the verdict from the report's recorded evidence
+(`report_gaps`) instead of reading its `status` field. `report.py` computes the
+same answer when it writes the file, and asking again is not redundancy: the
+report is JSON in a directory anyone can write, and a gate that trusted
+`"status": "pass"` would have its entire guarantee one hand-edited line away.
 
 The **change signature** (`common.change_signature`) hashes HEAD + the dirty file
 set + sizes/mtimes, so a green report is valid only for the exact state it was
@@ -341,12 +441,13 @@ delivery, so the gate names each one with its file:line and requires it to be
 either implemented or removed and reported as out of scope. `scan_placeholders.py`
 supplies that signal; a line carrying `praxis:ack` is exempt.
 
-House-style violations lead the message alongside them, on the same reasoning:
-an em dash or an AI credit that reached the diff is a rule the doctrine stated
-and the writing ignored, and naming the file:line is what turns it into a fix.
-The gate also names any UI vertical the change owes but the report does not
-carry, with the changed files that made it a UI change, so the requirement never
-looks arbitrary.
+House-style violations and living-knowledge gaps lead the message alongside them,
+on the same reasoning: an em dash or an AI credit that reached the diff is a rule
+the doctrine stated and the writing ignored, and a behaviour change whose
+documentation did not move is the same class of half-delivery. Naming the
+file:line is what turns each into a fix. The gate also names any UI vertical the
+change owes but the report does not carry, with the changed files that made it a
+UI change, so the requirement never looks arbitrary.
 
 Loop safety, in layers:
 
@@ -500,11 +601,15 @@ plugins/praxis/
     prompt_router.py                 UserPromptSubmit: per-prompt skill routing
     guard_paths.py                   PreToolUse: secrets, destructive commands,
                                      AI attribution in the project's record,
-                                     staging a praxis local artifact
+                                     staging a praxis local artifact, and
+                                     introducing a project artifact into a repo
+                                     praxis does not own
     post_edit.py                     PostToolUse: format + secret tripwire
     quality_gate.py                  Stop: task loop and per-change gate
     scan_placeholders.py             unfinished work in the whole change
     scan_style.py                    em dashes and AI credits in the whole change
+    knowledge_check.py               docs and changelog that did not move with
+                                     the behaviour, and documentation removed
     drift.py                         docs versus live config, and stale references
     scope.py                         what is under review: base, commits, files
     report.py  config.py  doctor.py  selfcheck.py  repo_scan.py

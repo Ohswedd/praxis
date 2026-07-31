@@ -91,26 +91,55 @@ from the changed file list, and a report without both verdicts is rejected.
   values), scale discipline, component reuse, state completeness, responsive
   coverage, story fidelity per `docs/design/`.
 
-Each auditor returns `PASS`, `PASS WITH NOTES`, or `FAIL` plus specifics. If an
-auditor is not available as a subagent in the current surface, perform its pass
-inline using the same checklist (see each agent file for the checklist).
+Each auditor returns `PASS`, `PASS WITH NOTES`, or `FAIL` plus specifics.
+
+**Record each verdict as its auditor finishes, with the evidence behind it.**
+This is not bookkeeping: a verdict nobody had to substantiate is a verdict nobody
+had to reach, and a `file:line` that does not resolve is the signature of an
+audit that did not happen.
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/report.py" vertical regression \
+  --verdict pass \
+  --summary "Every caller of parse_range() re-checked; the two in cli.py pass \
+pre-validated input, and the new bound is inclusive as before." \
+  --evidence "src/parse.py:88-114,src/cli.py:230"
+```
+
+`report.py vertical` **refuses a citation that does not resolve**: a file that
+does not exist, a line past the end of one. That refusal is deliberate and it is
+the point. An auditor that read the code can name what it read for free; an audit
+that was assumed cannot, and inventing a reference is caught at the only moment
+it is still cheap to check. `report.py record` then refuses to claim a verdict
+the ledger does not carry (`gate.require_evidence`).
+
+If an auditor is not available as a subagent in the current surface, perform its
+pass inline using the same checklist (see each agent file), and record it the
+same way: doing the work inline is fine, asserting it is not.
 
 ## Step 2b: The deterministic checks (run them, do not reason about them)
 
-Three scanners answer questions no amount of reading a diff answers reliably.
-Run all three and treat every finding as a `FAIL`:
+Four scanners answer questions no amount of reading a diff answers reliably.
+Run them and treat every finding as a `FAIL`:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/scan_placeholders.py"   # unfinished work
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/scan_style.py"          # em dashes, AI credits
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge_check.py"     # docs that did not move
 python3 "${CLAUDE_PLUGIN_ROOT}/scripts/drift.py"               # docs vs live config
 ```
 
 `scan_style.py` covers the house rules that prose alone has repeatedly failed to
 hold: no em dash anywhere in authored text, and no AI co-author or "generated
-with" credit. `drift.py` catches the documentation that this change just made
-untrue. All three also run inside the Stop gate, so skipping them here only moves
-the work later.
+with" credit. `knowledge_check.py` asks whether the changelog and the docs moved
+with the behaviour, and whether this change *removed* documentation, which is the
+one regression a diff of added lines cannot see. `drift.py` catches documentation
+that this change just made untrue.
+
+`report.py record` runs the first three itself and records what they found, so
+these are not a checklist you can tick: a report is not green while any of them
+has an unresolved finding. Running them here is how you find out before the
+report does.
 
 ## Step 3: Horizontal pass
 With the vertical verdicts in hand, do one cross-cutting review yourself:
@@ -139,6 +168,19 @@ optional* layer for driving a whole multi-step task to a user-defined finish lin
 across many turns (see the task-orchestrator skill). Use it for large tasks, not
 for closing out a single change here.
 
+## Step 4b: Run the thing, not only its tests
+
+A change to anything a person or another system interacts with is verified
+against the running product before it is called done. A passing unit suite says a
+function returns what its test expects; it does not say the page renders, the
+route answers, or the command exits zero. Use the **runtime-verification** skill:
+it picks the right execution for this project, drives a browser when the surface
+is visual, and says what to do when the project has no harness.
+
+`report.py` runs the project's end-to-end harness itself when the change touches
+user-facing files and one exists (`gate.require_runtime`), so this is measured
+rather than reported, exactly like the test suite.
+
 ## Step 5: Record the green report (with evidence)
 Record it **last**, after the docs/CHANGELOG/ADR updates and any other write the
 change needs. The report is keyed to the change signature, so a file written
@@ -152,15 +194,24 @@ python3 "${CLAUDE_PLUGIN_ROOT}/scripts/report.py" record \
   --verticals "doc-reference=pass,duplication=pass,regression=pass,adversarial=pass,edge-case=pass,performance=pass,debt=pass,completeness=pass"
 ```
 
-`report.py` **runs the project's test command itself** and records the real exit
-code: it does not accept one you report. That is deliberate: a self-reported
+**Nothing in that command is taken on trust.** `report.py` runs the project's
+test command, the end-to-end harness where one is owed, and the three
+deterministic scanners, and records their real results; then it checks that every
+verdict in `--verticals` has a matching ledger entry from Step 2. A self-reported
 pass is a claim, and the gate's guarantee is only as strong as its weakest input.
-It auto-detects the command; pass `--tests "<cmd>"` to override it (e.g. the
-specific package in a monorepo) and `--timeout <seconds>` for a slow suite.
+
+- `--tests "<cmd>"` overrides the auto-detected suite (the specific package in a
+  monorepo), `--timeout <seconds>` for a slow one. An override is recorded as a
+  substitution and does not buy a green gate on its own.
+- `--runtime "<cmd>"` overrides the detected end-to-end command,
+  `--runtime-timeout <seconds>` for a slow one.
+- `--knowledge-ack "<reason>"` is the only escape from a living-knowledge
+  finding, and it records the reason in the report rather than dropping it. Use
+  it when the change genuinely needed no document, never to move on.
 
 Expect the record step to take as long as the suite does, and read its output: if
-it prints a non-zero exit, the report is written as `fail` and the gate will keep
-you working. Fix the failure: do not re-record around it.
+anything comes back non-zero or unresolved, the report is written as `fail` and
+the gate will keep you working. Fix the cause: do not re-record around it.
 
 When the change touches user-facing surface, extend the string with
 `,accessibility=pass,design-consistency=pass`. `report.py` resolves that from the

@@ -51,11 +51,11 @@ flowchart TD
     J --> K{"Plan approved?"}
     K -->|No| J
     K -->|Yes| L["Phase 4 · Implement to plan<br/>code-craft standards"]
-    L --> M["Phase 5 · Quality rubric<br/>8 verticals (+2 when the changed files are UI)<br/>+ horizontal pass + the three scanners"]
+    L --> M["Phase 5 · Quality rubric<br/>8 verticals (+2 when the changed files are UI), each recorded with citations<br/>+ horizontal pass + run the product + the four scanners"]
     M --> N{"All PASS?"}
     N -->|No| O["Fix findings, re-run auditor"]
     O --> M
-    N -->|Yes| P["Record green report; task_state.py done"]
+    N -->|Yes| P["report.py record: runs the tests, the e2e harness<br/>and the scanners itself; task_state.py done"]
     P --> Q["Phase 6 · Structured report"]
     Q --> R{"Stop gate:<br/>task done AND change reviewed?"}
     R -->|No| M
@@ -119,7 +119,7 @@ stateDiagram-v2
     Dirty --> Refused: Stop, and no green report for this signature
     Refused --> Refused: refused again, message escalates and names what is missing
     Refused --> Reviewing: run quality-rubric
-    Reviewing --> Green: every vertical passes, tests run, signed report written
+    Reviewing --> Green: every vertical passes with recorded evidence, tests and scanners run by report.py, signed report written
     Green --> Clean: commit
     Green --> Dirty: new edit, signature changes, gate re-arms
     Refused --> Disclosed: cap reached (3 per state, 12 per session)
@@ -129,9 +129,17 @@ stateDiagram-v2
     Clean --> [*]
 ```
 
-The **change signature** = `sha256(HEAD + dirty file list + sizes/mtimes)`. A
-green report is valid only for the exact signature it was produced against, so
-editing again automatically re-arms the gate.
+The **change signature** = `sha256(HEAD + review base + dirty file list +
+sizes/mtimes)`. A green report is valid only for the exact signature it was
+produced against, so editing again automatically re-arms the gate.
+
+`Green` is not a claim the report makes about itself. The gate re-derives it from
+the report's recorded evidence: the tests passed and were run by `report.py`, all
+three scanners ran and found nothing (or a living-knowledge finding carries a
+recorded reason), the end-to-end harness passed where the change owed one, and
+every vertical verdict has a ledger entry behind it. A report whose `status` says
+`pass` while its evidence says otherwise is refused, because the file is JSON in a
+directory anyone can write.
 
 ---
 
@@ -374,7 +382,7 @@ Your stated goals mapped to what implements them:
 | Professional comments | `code-craft` skill | Guided |
 | Redo all audits, no regression | `quality-rubric` + 8 vertical subagents (+ accessibility & design-consistency on UI changes) | Guided, gated by report |
 | Professional front-end for any niche | `frontend-pipeline` skill + design artifacts (`docs/design/`) + a11y/design-consistency verticals | Guided, gated by report |
-| No placeholders / nothing missing | `completeness-auditor` + `scan_placeholders.py` | **Deterministic scan + gate** |
+| No placeholders / nothing missing | `completeness-auditor` + `scan_placeholders.py`, run by `report.py record` as well as by the gate | **Deterministic scan + gate** (recording a report used to bypass the scan) |
 | Nothing silently out of scope | prompt-architect (declare) + completeness-auditor (verify) + report | Guided + checked |
 | Don't finish unreviewed work | `quality_gate.py` (Stop hook) | **Deterministic block** |
 | Secrets / destructive safety | `guard_paths.py` (PreToolUse) | **Deterministic block** |
@@ -384,6 +392,11 @@ Your stated goals mapped to what implements them:
 | No em dash in any output | output-style + router directive + `scan_style.py` + `selfcheck.py` | **Deterministic block** (gate), **CI-enforced** for praxis itself |
 | No AI attribution in the history | `git-delivery` skill + `guard_paths.py` publishing check | **Deterministic block** (the command is denied) |
 | Docs that stay true when config changes | `drift.py` + live config in the SessionStart audit + `/praxis:doctor` | **Deterministic detection**, guided fix |
+| Docs and changelog that move with the behaviour | `knowledge_check.py`, run by `report.py record` and by the Stop gate | **Deterministic block** (`--knowledge-ack` records an exception rather than hiding it) |
+| Documentation a change quietly removed | `common.removed_lines` + the heading check in `knowledge_check.py` | **Deterministic detection**: no other scan reads deleted lines |
+| An audit verdict with nothing behind it | `report.py vertical` + the evidence ledger + `audit-evidence` preloaded into every auditor | **Deterministic refusal** of a citation that does not resolve; it cannot prove a subagent ran |
+| Work declared done that was never run | `detect_runtime_command` + `report.py --runtime` + the `runtime-verification` skill | **Deterministic block** where the project has an e2e harness; a stated gap where it does not |
+| A file the project never asked for, in a repo that is not ours | `project_artifact_reason` + `staged_project_artifacts` in `guard_paths.py` | **Deterministic block** at the file tool, the shell and the index |
 | A small, coherent command surface | eight commands, modes as arguments (`task spec:`, `audit repo`, `ship release`, `config mode`), and none at all for the front-end pipeline | Checked by `selfcheck.py`: a dangling `/praxis:` reference fails CI |
 
 ---

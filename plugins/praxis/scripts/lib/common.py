@@ -333,7 +333,7 @@ def committed_files(root: Path) -> List[str]:
     out = _run(["git", "diff", "--name-only", "--no-color", f"{base}...HEAD"],
                cwd=root, timeout=20)
     return [f.strip() for f in out.splitlines()
-            if f.strip() and not _is_praxis_state(f.strip())]
+            if f.strip() and not is_praxis_state(f.strip())]
 
 
 def git_status_porcelain(root: Path) -> List[str]:
@@ -367,11 +367,11 @@ def untracked_files(root: Path, limit: int = 2000) -> List[str]:
     tends to land.
     """
     out = _run(["git", "ls-files", "--others", "--exclude-standard"], cwd=root)
-    files = [f for f in out.splitlines() if f.strip() and not _is_praxis_state(f)]
+    files = [f for f in out.splitlines() if f.strip() and not is_praxis_state(f)]
     return files[:limit]
 
 
-def _is_praxis_state(path: str) -> bool:
+def is_praxis_state(path: str) -> bool:
     """True for praxis's own files, which are never part of the user's change.
 
     Covers every local artifact, not just the state directory. The exclusion in
@@ -410,7 +410,7 @@ _LOCK_FILES = {
 MAX_SCAN_BYTES = 400_000
 
 
-def _is_diff_scannable(rel: str) -> bool:
+def is_diff_scannable(rel: str) -> bool:
     """`is_scannable` by name alone, for a path known only from a diff header.
 
     The size test cannot apply: a deleted or since-modified path may not exist on
@@ -437,15 +437,35 @@ def is_scannable(root: Path, rel: str) -> bool:
 MAX_UNTRACKED_BYTES = 4_000_000
 
 
+def _diff_sources(root: Path, net: bool = False) -> List[List[str]]:
+    """`git diff` argument sets that together cover the whole change.
+
+    On a branch, `git diff <base>` compares the base with the *working tree*, so
+    a single invocation is already the net effect of committed, staged and
+    unstaged work: a line committed and then corrected appears once, in its
+    corrected form.
+
+    Off a branch there is no range, and the two callers want different things.
+    A line-by-line scan wants the index and the working tree as separate diffs
+    and deduplicates their union, which also works in a repo whose first commit
+    does not exist yet. A *count* cannot deduplicate, so it asks for `HEAD`
+    instead: one diff, each line counted once.
+    """
+    base = review_base(root)
+    if base:
+        return [[base]]
+    if net:
+        return [["HEAD"]] if git_head(root) else [["--staged"]]
+    return [[], ["--staged"]]
+
+
 def added_line_pairs(root: Path) -> List[tuple]:
     """Every line the current change adds, as (file, lineno, text).
 
     A change is spread across three places and auditing only one under-reports:
     what this branch has committed since it left its base, what is still
     uncommitted, and the whole content of untracked files (which appear in no
-    diff at all). On a branch the first two come from a single `git diff <base>`
-    against the working tree, so a line that was committed and then corrected is
-    counted once, in its corrected form.
+    diff at all).
     """
     seen = set()
     pairs: List[tuple] = []
@@ -456,17 +476,10 @@ def added_line_pairs(root: Path) -> List[tuple]:
             seen.add(key)
             pairs.append(key)
 
-    base = review_base(root)
-    # `git diff <base>` compares the base to the *working tree*, so one diff
-    # covers committed, staged and unstaged work as a net result. The union of
-    # separate diffs would double-count: a line committed and then corrected
-    # would appear in both, and the superseded version would still be reported
-    # as a finding against a file that no longer contains it.
-    sources = [[base]] if base else [[], ["--staged"]]
-    for extra in sources:
+    for extra in _diff_sources(root):
         diff = _run(["git", "diff", "--unified=0", "--no-color"] + extra, cwd=root, timeout=20)
         for fname, lineno, text in _parse_diff_added(diff, root):
-            if fname and not _is_praxis_state(fname):
+            if fname and not is_praxis_state(fname):
                 add(fname, lineno, text)
 
     budget = MAX_UNTRACKED_BYTES
@@ -496,20 +509,94 @@ def _parse_diff_added(diff: str, root: Optional[Path] = None) -> List[tuple]:
     results: List[tuple] = []
     cur_file = None
     new_ln = 0
+    in_hunk = False
     for line in diff.splitlines():
-        if line.startswith("+++ b/"):
-            cur_file = line[6:].strip()
-            if root is not None and cur_file and not _is_diff_scannable(cur_file):
-                cur_file = None
-        elif line.startswith("+++ "):
-            cur_file = None          # /dev/null: a deletion has no added lines
+        # As in `removed_lines`: a `+++` header exists only before the first hunk
+        # of a file, and inside one it is an added line beginning with `++`.
+        if line.startswith("diff --git"):
+            cur_file, in_hunk = None, False
         elif line.startswith("@@"):
+            in_hunk = True
             m = re.search(r"\+(\d+)", line)
             new_ln = int(m.group(1)) if m else 0
-        elif line.startswith("+") and not line.startswith("+++"):
+        elif not in_hunk and line.startswith("+++ "):
+            cur_file = line[6:].strip() if line.startswith("+++ b/") else None
+            if root is not None and cur_file and not is_diff_scannable(cur_file):
+                cur_file = None
+        elif in_hunk and line.startswith("+"):
             results.append((cur_file, new_ln, line[1:]))
             new_ln += 1
     return results
+
+
+def removed_lines(root: Path) -> Dict[str, List[str]]:
+    """Lines the current change deletes, keyed by the path they were deleted from.
+
+    The mirror of `added_line_pairs`, and the only view that can see what a
+    change took *away*. Every other scanner in praxis reads added lines, which is
+    blind by construction to a deleted paragraph, and that blind spot is exactly
+    how a documented behaviour disappears inside an otherwise green change.
+
+    Keyed on the pre-image path (`--- a/...`) so a deletion is still attributed
+    when the file itself was removed and the post-image is `/dev/null`.
+    """
+    out: Dict[str, List[str]] = {}
+    for extra in _diff_sources(root, net=True):
+        diff = _run(["git", "diff", "--unified=0", "--no-color"] + extra,
+                    cwd=root, timeout=20)
+        cur, in_hunk = None, False
+        for line in diff.splitlines():
+            # Headers only count before the first hunk of a file. Inside one,
+            # `---` is a deleted line whose content begins with `--`, which a
+            # markdown rule and a YAML document separator both do.
+            if line.startswith("diff --git"):
+                cur, in_hunk = None, False
+            elif line.startswith("@@"):
+                in_hunk = True
+            elif not in_hunk and line.startswith("--- "):
+                cur = line[6:].strip() if line.startswith("--- a/") else None
+                if cur and (not is_diff_scannable(cur) or is_praxis_state(cur)):
+                    cur = None
+            elif in_hunk and cur and line.startswith("-"):
+                out.setdefault(cur, []).append(line[1:])
+    return out
+
+
+def changed_line_counts(root: Path) -> Dict[str, tuple]:
+    """(added, removed) line counts per file in the current change.
+
+    Untracked files count as wholly added. They appear in no diff, and a brand
+    new document is the one case a shrink test must never read as a deletion.
+    """
+    counts: Dict[str, tuple] = {}
+    for extra in _diff_sources(root, net=True):
+        out = _run(["git", "diff", "--numstat", "--no-color"] + extra,
+                   cwd=root, timeout=20)
+        for line in out.splitlines():
+            parts = line.split("\t")
+            if len(parts) < 3:
+                continue
+            added, removed, path = parts[0], parts[1], parts[2].strip()
+            # git writes "-" for a binary file, where a line count is meaningless.
+            if not added.isdigit() or not removed.isdigit() or is_praxis_state(path):
+                continue
+            have = counts.get(path, (0, 0))
+            counts[path] = (have[0] + int(added), have[1] + int(removed))
+    # Bounded like `added_line_pairs`: a repo that has not ignored its build
+    # output lists thousands of untracked files, and this runs inside a hook.
+    budget = MAX_UNTRACKED_BYTES
+    for rel in untracked_files(root):
+        if budget <= 0:
+            break
+        if not is_scannable(root, rel):
+            continue
+        try:
+            body = (root / rel).read_text(encoding="utf-8", errors="ignore")
+        except Exception:
+            continue
+        budget -= len(body)
+        counts[rel] = (len(body.splitlines()), 0)
+    return counts
 
 
 _CHANGED_FILES_CACHE: Dict[str, List[str]] = {}
@@ -532,14 +619,11 @@ def changed_files(root: Path) -> List[str]:
     if key in _CHANGED_FILES_CACHE:
         return _CHANGED_FILES_CACHE[key]
     files = set()
-    base = review_base(root)
-    # As in added_line_pairs: `git diff <base>` is the net effect against the
-    # working tree, so it already covers committed, staged and unstaged.
-    for extra in ([[base]] if base else [[], ["--staged"]]):
+    for extra in _diff_sources(root):
         out = _run(["git", "diff", "--name-only", "--no-color"] + extra, cwd=root, timeout=20)
         files.update(f.strip() for f in out.splitlines() if f.strip())
     files.update(untracked_files(root))
-    result = sorted(f for f in files if f and not _is_praxis_state(f))
+    result = sorted(f for f in files if f and not is_praxis_state(f))
     _CHANGED_FILES_CACHE[key] = result
     return result
 
@@ -834,7 +918,7 @@ def staged_local_artifacts(root: Path) -> List[str]:
     """
     out = _run(["git", "diff", "--cached", "--name-only"], cwd=root, timeout=15)
     return sorted({f.strip() for f in out.splitlines()
-                   if f.strip() and _is_praxis_state(f.strip())})
+                   if f.strip() and is_praxis_state(f.strip())})
 
 
 def tracked_local_artifacts(root: Path) -> List[str]:
@@ -877,6 +961,115 @@ def knowledge_path(root: Path, rel: str) -> Path:
     if is_contributor(root) and not (root / rel).exists():
         return knowledge_root(root) / rel
     return root / rel
+
+
+#: Files praxis scaffolds for a project it owns: the operating brief, its own
+#: config, a changelog, the `/docs` skeleton, the shared settings. In a
+#: repository we only contribute to, each one is a convention the maintainers
+#: never adopted, so praxis joins the file that already exists and creates none
+#: that does not. `knowledge_path` routes the writers praxis controls; this list
+#: exists because a file written straight to disk consults no helper at all, and
+#: that is how an unasked-for CHANGELOG.md reached a pull request.
+PROJECT_ARTIFACTS = (
+    "CHANGELOG.md",
+    "CLAUDE.md",
+    ".praxis.toml",
+    ".mcp.json",
+    ".claude/settings.json",
+    "docs/README.md",
+    "docs/ARCHITECTURE.md",
+    "docs/DEBT.md",
+)
+
+#: Directories whose contents praxis authors. Adding a file inside one is joining
+#: the project's convention when the directory is already there, and introducing
+#: the convention when it is not.
+PROJECT_ARTIFACT_DIRS = (
+    "docs/adr/",
+    "docs/design/",
+    ".claude/commands/",
+    ".claude/skills/",
+    ".claude/agents/",
+)
+
+
+def repo_relative(root: Path, path) -> Optional[str]:
+    """`path` as a repo-relative POSIX string, or None when it lies outside `root`.
+
+    Both sides are resolved: on macOS the repo is routinely reached through a
+    symlinked path (`/tmp` is `/private/tmp`), and comparing one resolved path
+    with one unresolved one reports every file as outside the repository.
+    """
+    try:
+        p = Path(path)
+        p = p if p.is_absolute() else (root / p)
+        return str(p.resolve().relative_to(root.resolve())).replace("\\", "/")
+    except Exception:
+        return None
+
+
+def project_artifact_reason(root: Path, path) -> str:
+    """Why praxis must not create `path` in this repository, or "" when it may.
+
+    Only ever non-empty in `contributor` mode, and only for a file that does not
+    exist yet: updating the project's own `CHANGELOG.md` is right (a pull request
+    that skipped it is a worse pull request), and creating one it never had is
+    proposing a convention on the maintainers' behalf.
+
+    The escape is deliberate and explicit. "Add a changelog to this project" is a
+    legitimate request, so `config.py project-artifacts on` (or
+    `PRAXIS_PROJECT_ARTIFACTS=on`) lifts the rule for the repo, rather than the
+    rule being unconditional and worked around by writing the file some other way.
+    """
+    if not is_contributor(root) or switch_on(root, "project-artifacts"):
+        return ""
+    rel = repo_relative(root, path)
+    if not rel or (root / rel).exists():
+        return ""
+    if rel in PROJECT_ARTIFACTS:
+        return (f"`{rel}` is a file praxis scaffolds for a project it owns, and "
+                "this repository does not have one")
+    for parent in PROJECT_ARTIFACT_DIRS:
+        if rel.startswith(parent) and not (root / parent).is_dir():
+            return (f"`{parent}` is a convention praxis introduces for a project "
+                    "it owns, and this repository has no such directory")
+    return ""
+
+
+def staged_project_artifacts(root: Path) -> List[str]:
+    """Project artifacts this commit would ADD to a repo that does not have them.
+
+    The last line of defence, and the one that actually holds. Refusing the write
+    stops the ordinary case; this stops every route around it, because whatever
+    created the file, it becomes the project's only by being committed.
+
+    Additions are asked of git (`--diff-filter=A`), so a file the repository
+    already tracks is never mistaken for one praxis introduced, and membership of
+    a directory is read from HEAD rather than the index: `git ls-files` counts
+    what was just staged, which would make the first new ADR prove that
+    `docs/adr/` was already the project's convention.
+    """
+    if not is_contributor(root) or switch_on(root, "project-artifacts"):
+        return []
+    out = _run(["git", "diff", "--cached", "--diff-filter=A", "--name-only"],
+               cwd=root, timeout=15)
+    found = []
+    for rel in {f.strip() for f in out.splitlines() if f.strip()}:
+        if rel in PROJECT_ARTIFACTS:
+            found.append(rel)
+            continue
+        for parent in PROJECT_ARTIFACT_DIRS:
+            if rel.startswith(parent) and not _tracked_in_head(root, parent):
+                found.append(rel)
+                break
+    return sorted(found)
+
+
+def _tracked_in_head(root: Path, prefix: str) -> bool:
+    """True if the last commit already contains a file under `prefix`."""
+    out = _run(["git", "ls-tree", "-r", "--name-only", "HEAD", "--", prefix],
+               cwd=root, timeout=15)
+    return bool(out.strip())
 
 
 # The block praxis manages inside the per-clone exclude file. Marked at both ends
@@ -1056,6 +1249,52 @@ def detect_test_command(root: Path) -> str:
                 return "make test"
         except Exception:
             pass
+    return ""
+
+
+#: `package.json` scripts that drive the built product rather than its units: a
+#: browser, an end-to-end suite, a running server. Ordered most specific first,
+#: so a repo with both `e2e` and `test:integration` runs the browser suite.
+RUNTIME_SCRIPT_NAMES = (
+    "test:e2e", "e2e", "test:e2e:ci", "e2e:ci", "test:playwright", "playwright",
+    "cypress:run", "test:browser", "test:ui", "test:integration",
+)
+
+#: Harness config files whose presence implies the canonical command, for a
+#: project that installed the harness without naming a script for it. Only
+#: harnesses with a single documented invocation are listed: praxis reports a
+#: missing runtime check, it does not invent a command that might do anything.
+RUNTIME_CONFIG_COMMANDS = (
+    ("playwright.config", "npx playwright test"),
+    ("cypress.config", "npx cypress run"),
+)
+
+RUNTIME_CONFIG_SUFFIXES = (".ts", ".js", ".mjs", ".cjs")
+
+
+def detect_runtime_command(root: Path) -> str:
+    """Best-effort command that exercises the built product (empty if none found).
+
+    A unit suite proves a function; it does not prove the page renders, the route
+    answers, or the flow completes, and that gap is where a change passes every
+    test and is still broken for the person using it. This finds the harness the
+    project already has so a user-facing change can be checked against the thing
+    a user would actually touch.
+    """
+    pkg = root / "package.json"
+    if pkg.exists():
+        try:
+            scripts = json.loads(pkg.read_text(encoding="utf-8")).get("scripts", {})
+        except Exception:
+            scripts = {}
+        if isinstance(scripts, dict):
+            for name in RUNTIME_SCRIPT_NAMES:
+                if name in scripts:
+                    return f"npm run {name}"
+    for stem, cmd in RUNTIME_CONFIG_COMMANDS:
+        for suffix in RUNTIME_CONFIG_SUFFIXES:
+            if (root / (stem + suffix)).exists():
+                return cmd
     return ""
 
 
@@ -1332,6 +1571,8 @@ SWITCHES = {
     "auto-merge": ("auto-merge", "PRAXIS_AUTO_MERGE", "git.auto_merge", False),
     "bootstrap": ("no-bootstrap", "PRAXIS_BOOTSTRAP", "bootstrap.auto", True),
     "gate": ("skip-gate", "PRAXIS_GATE", "gate.enabled", True),
+    "project-artifacts": ("allow-project-artifacts", "PRAXIS_PROJECT_ARTIFACTS",
+                          "workspace.allow_project_artifacts", False),
 }
 
 ON_WORDS = ("on", "1", "true", "yes", "enable", "enabled")
@@ -1355,9 +1596,13 @@ def resolve_switch(root: Path, switch: str):
         return False, f"env {env_var}={env}"
     if state_path(root, toggle).exists():
         return (False if inverted else True), f".claude/.praxis/{toggle}"
-    cfg = read_config(root)
-    return bool(cfg.get(key)), (".praxis.toml" if (root / ".praxis.toml").exists()
-                                else "default")
+    # Which config *layer* set it, asked of the reader that applied them. Naming
+    # `.praxis.toml` because that file exists said the wrong thing twice over: it
+    # credited a committed file for a value the git-excluded local layer had
+    # overridden, and it reported "default" for a repo configured entirely
+    # through the local layer, which is the only one contributor mode writes.
+    cfg, sources = read_config_sources(root)
+    return bool(cfg.get(key)), sources.get(key, "default")
 
 
 def switch_on(root: Path, switch: str) -> bool:
@@ -1396,10 +1641,15 @@ _CONFIG_DEFAULTS = {
     "gate.enabled": True,             # master switch for the Stop gate
     "gate.require_tests": True,       # require passing test evidence in the green report
     "gate.require_ui_verticals": True,  # UI diffs need the a11y + design verdicts
+    "gate.require_knowledge": True,   # docs/changelog must move with the behaviour
+    "gate.require_evidence": True,    # each vertical verdict must cite what it read
+    "gate.require_runtime": True,     # UI changes run the repo's own e2e harness
     "autopilot.default": False,       # start sessions in auto-pilot
     "audit.depth": "high",            # informational hint for the auditors
     "bootstrap.auto": True,           # set the repo up on its own, before any work
     "workspace.mode": AUTO,           # "auto" | "owner" | "contributor"
+    # Lift the contributor-mode refusal to create a file the project never had.
+    "workspace.allow_project_artifacts": False,
     "git.auto_merge": False,          # auto-review and merge PRs; off = PR only, human merges
     "git.default_branch": "",         # PR base branch ("" = auto-detect)
     "style.ban_em_dash": True,        # refuse em dashes in authored text
@@ -1475,6 +1725,17 @@ def config_layers(root: Path) -> list:
             # directories in a repository praxis may not even be set up in.
             (f".claude/.praxis/{LOCAL_CONFIG}",
              root / ".claude" / ".praxis" / LOCAL_CONFIG)]
+
+
+def config_target(root: Path) -> str:
+    """The config file praxis would write in this repository.
+
+    Optional in both modes, which is the part that needed saying out loud: praxis
+    runs entirely from its defaults, so a repo with no config file is configured,
+    not unfinished. In contributor mode the committed layer is not ours to write
+    at all, and the answer is the git-excluded one.
+    """
+    return config_layers(root)[1 if is_contributor(root) else 0][0]
 
 
 def read_config_sources(root: Path) -> tuple:
@@ -1594,7 +1855,7 @@ def change_signature(root: Path) -> str:
         # Praxis's own state dir must never affect the code-change signature,
         # even when the repo hasn't git-ignored it yet.
         path_part = ln[3:].strip().strip('"')
-        if _is_praxis_state(path_part):
+        if is_praxis_state(path_part):
             continue
         parts.append(ln)
         # include mtime/size so edits to the same path re-key the signature

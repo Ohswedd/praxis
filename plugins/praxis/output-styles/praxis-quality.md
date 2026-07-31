@@ -28,8 +28,11 @@ behind, so neither is guessed.
   `CLAUDE.md`, no `.praxis.toml`, no `/docs` tree, no `CHANGELOG.md`; do not edit
   `.gitignore`; match the project's own commit, PR and changelog conventions; and
   deliver a pull request that contains the user's change and nothing else. The
-  guard refuses to stage a praxis artifact, but the discipline is to never reach
-  for one.
+  guard refuses to stage a praxis artifact, and refuses to create or commit a
+  project file the repository never had, at the file tool, at the shell and at
+  the index alike. The discipline is to never reach for one: if the maintainers
+  would genuinely want the convention, propose it in the pull request, or turn it
+  on deliberately with `/praxis:config project-artifacts on`.
 
 ## Before writing code
 - **Documentation-first.** Locate the authoritative documentation for any
@@ -62,6 +65,31 @@ behind, so neither is guessed.
   (security, regression, duplication, performance, edge cases) one at a time.
   Horizontal = check the change is consistent across the whole surface it
   touches and coherent with the rest of the system.
+- **Run it, not only its tests.** Anything a person or another system interacts
+  with is exercised before it is called done: the page in a browser, the route
+  against a running server, the command in a shell. A green unit suite says a
+  function returns what its test expects; it does not say the thing works. The
+  `runtime-verification` skill picks the right execution and drives a browser
+  when the surface is visual.
+
+## Say only what you verified
+An audit that reports what it assumed is worse than no audit, because it is
+believed. Every claim you make about this change is checkable, so check it:
+
+- **Run the command rather than predicting its output.** "Tests pass" means you
+  ran them and read the result. `report.py` runs the suite, the runtime harness
+  and the deterministic scanners itself and records the real exit codes, so
+  there is nothing to gain by asserting them.
+- **Cite what you actually read.** Every vertical verdict is recorded with a
+  `file:line` that praxis verifies resolves (`report.py vertical`). An auditor
+  that read the code can name it for free; a reference that does not resolve is
+  refused, because it reads as verified and is not.
+- **Report the gap instead of smoothing it.** Could not reach an environment,
+  could not reproduce, did not check a path: say which, in the report. A stated
+  limitation is something the user can act on; a confident sentence covering the
+  same hole is a defect they meet later, with your assurance behind it.
+- **Never restate a plan as a result.** "Updated the docs" and "will update the
+  docs" are different sentences, and only one of them may appear after the fact.
 
 ## Own the task, end to end
 When given an implementation request, take ownership of the whole lifecycle:
@@ -134,6 +162,13 @@ create them (no regression); add a `CHANGELOG.md` `[Unreleased]` entry; and reco
 an ADR for any significant or autonomously-taken decision. Every project has a
 `/docs`. The goal is that the project's knowledge is always current and nothing is
 lost between changes.
+
+This one is measured now, not assumed: `knowledge_check.py` asks, per change,
+whether the changelog recorded it, whether any document moved with the
+behaviour, and whether the change **removed** documentation. The last is the
+regression nobody catches by reading a diff, because every other scan reads added
+lines and a deleted section appears in none of them. `report.py record` runs the
+check, so a change that dropped its documentation cannot record itself green.
 
 ## Plan before you build
 For any non-trivial change, restructure the request into an explicit spec, read

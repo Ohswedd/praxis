@@ -150,6 +150,15 @@ be written another way, the last layer asks git rather than the text: a `commit`
 `push` or `stash` is refused while a Praxis artifact is in the index, however it
 got there.
 
+A fourth layer covers the file that is not Praxis's at all: a `CHANGELOG.md`
+written into a project that never had one belongs to the project, is perfectly
+visible to `git status`, and slipped past every mechanism above into pull
+requests about something else. Praxis now refuses to *create* one, along with a
+`CLAUDE.md`, a `.praxis.toml` or a `/docs` skeleton the repo does not have, at
+the file tool, the shell and the index alike. Updating one the project already
+has stays right, and `/praxis:config project-artifacts on` lifts the rule when
+the maintainers did ask.
+
 ### It refuses to hand back unfinished work
 
 | Refused | Detected by |
@@ -157,6 +166,10 @@ got there.
 | A `TODO`, stub, or `NotImplementedError` in your own diff | deterministic scan of the branch's commits, the working tree **and every untracked file**, so a brand-new file is not invisible | <!-- praxis:ack naming the marker is the point here -->
 | Deferral prose: *"for now"*, *"in a real implementation"*, *"future work will"* | comment-level scan; `praxis:ack` exempts a genuine case |
 | A test suite that was never run | `report.py` executes the suite itself and records the real exit code |
+| A scanner that was "clean" because nobody ran it | `report.py` executes all three itself; recording a report used to be the way past them |
+| An audit verdict with nothing behind it | each vertical is recorded with a summary and a `file:line` that praxis checks resolves |
+| A change whose documentation did not move with it | `knowledge_check.py`, per change, including the sections the change *deleted* |
+| A user-facing change that was never run | the project's own end-to-end harness, executed by `report.py` |
 | Scope quietly narrowed | the completeness auditor checks the change against its own spec |
 | A UI change with no accessibility or design-consistency verdict | the gate resolves "is this UI" from the changed file list, not from how you phrased it |
 | An em dash, anywhere in the text you wrote | `scan_style.py`, because a colon or a comma always says it better |
@@ -286,6 +299,9 @@ Optional, version-controlled `.praxis.toml`, every key has a default:
 ```toml
 [workspace]
 mode          = "auto"   # "auto" | "owner" | "contributor"
+allow_project_artifacts = false  # contributor mode: may praxis create a
+                                 # CHANGELOG.md / CLAUDE.md / docs skeleton
+                                 # the project never had?
 
 [bootstrap]
 auto          = true     # set an unmanaged repo up before working in it
@@ -294,6 +310,9 @@ auto          = true     # set an unmanaged repo up before working in it
 enabled             = true   # the Stop quality/task gate
 require_tests       = true   # a green report must record a passing test run
 require_ui_verticals = true  # a UI change needs the a11y + design verdicts
+require_knowledge   = true   # docs and changelog must move with the behaviour
+require_evidence    = true   # each vertical verdict must cite what it read
+require_runtime     = true   # UI changes run the project's own e2e harness
 
 [autopilot]
 default       = false    # start sessions in auto-pilot

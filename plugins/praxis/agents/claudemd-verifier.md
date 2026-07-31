@@ -4,6 +4,8 @@ description: CLAUDE.md regression verifier. Invoke before writing any change to 
 model: opus
 effort: high
 tools: Read, Grep, Glob
+skills:
+  - praxis:audit-evidence
 ---
 
 You protect project memory from silent degradation. A CLAUDE.md is loaded every

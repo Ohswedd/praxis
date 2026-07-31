@@ -62,7 +62,7 @@
           {
             "type": "command",
             "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/scripts/quality_gate.py\"",
-            "timeout": 30
+            "timeout": 60
           }
         ]
       }

@@ -32,6 +32,14 @@ wrote**. Read it, and report what actually happened: claiming the project's
 changelog was updated when the entry went to local knowledge is exactly the kind
 of quietly wrong statement praxis exists to prevent.
 
+Writing one of these files by hand is refused, not merely discouraged. Creating a
+`CHANGELOG.md`, a `/docs` skeleton, a `CLAUDE.md` or a `.praxis.toml` that the
+project does not have is blocked at the file tool, at the shell, and at the
+index, because prose held for the helpers and did not hold for a direct write:
+that is how an unasked-for changelog reached a pull request about a bug fix. If
+the maintainers do want the convention, `/praxis:config project-artifacts on`
+lifts the rule deliberately.
+
 ## The /docs contract
 Expect and maintain this shape (create what's missing):
 
@@ -101,8 +109,23 @@ CHANGELOG.md           at the repo root (Keep a Changelog)
    ADRs are a historical record: supersede one with a new ADR, never by rewriting
    what it originally said.
 9. **Keep the index current.** Update `docs/README.md` when you add a doc.
-10. **Re-run the drift check** before you call the docs done. It is the cheapest
+10. **Prove it, do not assume it.** Two checks close this phase:
+   ```bash
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/knowledge_check.py"   # this change
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/drift.py"             # the whole repo
+   ```
+   `knowledge_check.py` asks whether the changelog recorded this change, whether
+   any document moved with the behaviour, and whether this change **removed**
+   documentation. That third question is the reason it exists: every other praxis
+   scan reads added lines, so a deleted section appears in none of them, and a
+   still-valid instruction can stop existing inside a change that reports itself
+   clean. A section that merely moved is not a finding. `drift.py` is the cheapest
    proof that this change did not introduce a new stale reference.
+
+   `report.py record` runs the first one itself, so an unresolved finding is a
+   report that will not go green. If one genuinely does not apply, record why:
+   `report.py record --knowledge-ack "<reason>"` keeps the reason in the report
+   instead of losing it.
 
 ## Establishing /docs (new/legacy repos, owner mode)
 If `/docs` or `CHANGELOG.md` is missing, scaffold them (bootstrap does this):
